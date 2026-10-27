@@ -3,10 +3,23 @@
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const { EventEmitter } = require('node:events');
-const { createController, NoticeHistory, notificationDecision, nativeErrorCode, threadUrl, noticeUrl, createNoticeRequest } = require('./codex-notifications.cjs');
+const { createController, NoticeHistory, notificationDecision, nativeErrorCode, threadUrl, noticeUrl, createNoticeRequest, isOwnedShortcut, APP_USER_MODEL_ID } = require('./codex-notifications.cjs');
 
 const THREAD = '00000000-0000-4000-8000-000000000001';
 const notice = (id = 'one') => ({ id, kind: 'completed', title: '任务完成', body: '可以查看结果', threadId: THREAD });
+
+test('通知改名保留AUMID，仅接受本安装的新旧启动参数', () => {
+  assert.equal(APP_USER_MODEL_ID, 'com.wanggong.codex-bluefish');
+  const target = 'C:\\Windows\\System32\\wscript.exe';
+  const args = ['"C:\\Pet\\启动龙娘桌宠.vbs"', '"C:\\Pet\\启动大肥鱼.vbs"'];
+  const own = { target, args: args[0], appUserModelId: APP_USER_MODEL_ID };
+  assert.equal(isOwnedShortcut(own, target, args), true);
+  assert.equal(isOwnedShortcut({ ...own, args: args[1] }, target, args), true);
+  assert.equal(isOwnedShortcut({ ...own, target: target.toUpperCase() }, target, args), true);
+  assert.equal(isOwnedShortcut({ ...own, args: '"C:\\OtherPet\\启动大肥鱼.vbs"' }, target, args), false);
+  assert.equal(isOwnedShortcut({ ...own, appUserModelId: 'other.app' }, target, args), false);
+  assert.equal(isOwnedShortcut({ ...own, target: 'C:\\Other\\wscript.exe' }, target, args), false);
+});
 
 function fixture(foreground, options = {}) {
   const app = new EventEmitter();

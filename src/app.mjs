@@ -7,7 +7,8 @@ import { homedir } from 'node:os';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { locateCodex } from './codex-path.mjs';
 import { createCodexWatcher } from './codex-events.mjs';
-import { createCodexChatHandler } from './codex-chat.mjs';
+import { createCodexChatHandler, MAX_CHAT_BODY_BYTES } from './codex-chat.mjs';
+import { createCodexActivityGate, createCodexTaskHandler, MAX_TASK_BODY_BYTES } from './codex-tasks.mjs';
 import { codexQuotaResult } from './quota.mjs';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
@@ -41,7 +42,7 @@ async function start() {
   if (previous) {
     try {
       const response = await fetch(`http://127.0.0.1:${previous.port}/health`, { signal: AbortSignal.timeout(1500) });
-      if (response.ok) { console.log('大肥鱼已经在运行。'); return; }
+      if (response.ok) { console.log('龙娘桌宠已经在运行。'); return; }
     } catch { /* 已退出进程的旧清单会由新进程覆盖。 */ }
   }
   mkdirSync(join(home, 'dsh-pet'), { recursive: true });
@@ -63,12 +64,15 @@ async function start() {
   if (!existsSync(hostPath)) throw new Error('请先运行 setup.ps1 准备运行时。');
   const host = await import(pathToFileURL(hostPath).href);
   const logger = host.createStandaloneLogger();
-  const chatHandler = createCodexChatHandler({ codexPath, cwd: home, timeoutMs: 55000 });
+  const activityGate = createCodexActivityGate();
+  const chatHandler = createCodexChatHandler({ codexPath, cwd: home, timeoutMs: 120000, activityGate });
+  let receiveTaskChange = () => {};
+  const taskHandler = createCodexTaskHandler({ codexPath, activityGate, onChange: view => receiveTaskChange(view) });
   const chatToken = randomBytes(32).toString('base64url');
   const chatServer = createServer(async (req, res) => {
     if (req.method !== 'POST' || req.url !== '/v1/chat/completions') return json(res, 404, { error: 'not found' });
     if (req.headers.authorization !== `Bearer ${chatToken}` || req.headers.origin) return json(res, 403, { error: '本机调用未授权' });
-    try { await chatHandler(req, res, await requestJson(req, 65536)); }
+    try { await chatHandler(req, res, await requestJson(req, MAX_CHAT_BODY_BYTES)); }
     catch { if (!res.writableEnded) json(res, 400, { error: '请求格式不正确' }); }
   });
   await new Promise((ok, fail) => { chatServer.once('error', fail); chatServer.listen(0, '127.0.0.1', ok); });
@@ -96,6 +100,26 @@ async function start() {
     if (req.method !== 'GET') return json(res, 405, { error: 'method not allowed' });
     json(res, 200, { ...snapshot, codexHome: undefined });
   } });
+  routes.push({ kind: 'exact', path: `${prefix}/codex-chat`, handler: async (req, res) => {
+    if (req.method !== 'POST') return json(res, 405, { error: 'method not allowed' });
+    try { await chatHandler(req, res, await requestJson(req, MAX_CHAT_BODY_BYTES)); }
+    catch { if (!res.writableEnded) json(res, 400, { error: { code: 'invalid_input', message: '图文消息格式不正确。' } }); }
+  } });
+  routes.push({ kind: 'exact', path: `${prefix}/codex-tasks`, handler: async (req, res) => {
+    if (req.method === 'GET') return json(res, 200, taskHandler.snapshot());
+    if (req.method !== 'POST') return json(res, 405, { error: 'method not allowed' });
+    try { await taskHandler(req, res, await requestJson(req, MAX_TASK_BODY_BYTES)); }
+    catch { if (!res.writableEnded) json(res, 400, { error: { code: 'invalid_input', message: '操作任务格式不正确。' } }); }
+  } });
+  routes.push({ kind: 'exact', path: `${prefix}/codex-tasks/cancel`, handler: async (req, res) => {
+    if (req.method !== 'POST') return json(res, 405, { error: 'method not allowed' });
+    try {
+      const body = await requestJson(req, 2048);
+      if (!body || typeof body.id !== 'string' || Object.keys(body).some(key => key !== 'id')) return json(res, 400, { error: { code: 'invalid_input', message: '取消请求格式不正确。' } });
+      if (!taskHandler.cancel(body.id)) return json(res, 409, { error: { code: 'stale_task', message: '任务状态已经变化。' } });
+      json(res, 200, taskHandler.snapshot());
+    } catch { if (!res.writableEnded) json(res, 400, { error: { code: 'invalid_input', message: '取消请求格式不正确。' } }); }
+  } });
   const context = host.createStandaloneContext({ port: () => port, logger, routes, ai, authenticatedUrl: security.authenticatedUrl });
   const server = await host.listenStandaloneServer({ routes, logger, port: Number(process.env.CODEX_PET_PORT || 3080), security, ai,
     status: () => ({ name: 'dsh-pet-codex', pid: process.pid, port }), onShutdown: () => { void shutdown(); } });
@@ -104,7 +128,9 @@ async function start() {
     settingsUrl: security.authenticatedUrl(`http://127.0.0.1:${port}`), pluginRoot: host.packageRoot });
   await writeFile(bridgeFile, JSON.stringify({ pid: process.pid, port, startedAt: new Date().toISOString() }));
   process.env.CODEX_PET_NOTICE_URL = `http://127.0.0.1:${port}${prefix}/codex-notices`;
-  process.env.CODEX_PET_LAUNCHER = join(root, '启动大肥鱼.vbs');
+  process.env.CODEX_PET_API_URL = `http://127.0.0.1:${port}/`;
+  process.env.CODEX_PET_API_TOKEN = security.token;
+  process.env.CODEX_PET_LAUNCHER = join(root, '启动龙娘桌宠.vbs');
   host.apply(context.ctx);
   const releaseQuota = context.ctx.get('petApi7340').balance.register({ id: 'standalone', fetch: async () => codexQuotaResult(snapshot.usage) });
   const petRequest = async (method, path, body) => {
@@ -118,14 +144,23 @@ async function start() {
   let lastState = '';
   let lastQuota = '';
   let stopping = false;
-  // 桌宠跟随用户聊天，内部子代理的中间完成不作为整项任务完成提醒。
-  const watcher = createCodexWatcher({ codexHome, excludeThreadSources: ['pet-chat', 'subagent'], onChange: (next, event) => {
+  let mainSnapshot = snapshot;
+  let manualTaskView = null;
+  let manualTerminalUntil = 0;
+  let manualTimer;
+  const activeTaskStates = new Set(['running', 'cancelling']);
+  const terminalTaskStates = new Set(['completed', 'failed', 'cancelled', 'timed_out']);
+  // 操作面板与主聊天统一决定外观，普通轮询不能把仍在运行的操作任务切回待机。
+  function updateDisplay() {
+    const active = activeTaskStates.has(manualTaskView?.state);
+    const terminal = manualTerminalUntil > Date.now() && terminalTaskStates.has(manualTaskView?.state);
+    const showManual = (active && mainSnapshot.state !== 'waiting') || (terminal && !mainSnapshot.activeCount);
+    const next = showManual ? {
+      ...mainSnapshot, state: active ? 'working' : manualTaskView.state === 'completed' ? 'success' : manualTaskView.state === 'cancelled' ? 'idle' : 'error',
+      task: active ? '正在处理已确认的目录任务' : manualTaskView.state === 'completed' ? '操作任务已返回结果' : manualTaskView.state === 'cancelled' ? '' : '操作任务未完成',
+      activeCount: (mainSnapshot.activeCount || 0) + Number(active),
+    } : mainSnapshot;
     snapshot = next;
-    if (event) {
-      // 多会话并行时，通知跳转跟随事件来源，而不是当前显示工作动画的会话。
-      notices.push({ id: randomBytes(12).toString('hex'), ...event, threadId: event.threadId || next.threadId });
-      if (notices.length > 24) notices.shift();
-    }
     updateChain = updateChain.then(async () => {
       if (stopping) return;
       const stateKey = JSON.stringify([next.state, next.task]);
@@ -139,12 +174,39 @@ async function start() {
         await petRequest('POST', '/balance'); lastQuota = quotaKey;
       }
     }).catch(error => logger.warn(error.message));
+  }
+  receiveTaskChange = view => {
+    const previousState = manualTaskView?.state;
+    manualTaskView = view;
+    if (terminalTaskStates.has(view.state) && view.state !== previousState) {
+      manualTerminalUntil = Date.now() + 10000;
+      clearTimeout(manualTimer);
+      manualTimer = setTimeout(updateDisplay, 10020);
+      if (view.state !== 'cancelled') {
+        notices.push({ id: randomBytes(12).toString('hex'), kind: view.state === 'completed' ? 'success' : 'error',
+          title: view.state === 'completed' ? '操作任务已返回结果' : '操作任务未完成', body: '打开龙娘桌宠的操作任务面板查看结果。', threadId: null });
+        if (notices.length > 24) notices.shift();
+      }
+    }
+    updateDisplay();
+  };
+  // 桌宠跟随用户聊天，内部子代理的中间完成不作为整项任务完成提醒。
+  const watcher = createCodexWatcher({ codexHome, excludeThreadSources: ['pet-chat', 'pet-task', 'subagent'], onChange: (next, event) => {
+    mainSnapshot = next;
+    if (event) {
+      // 多会话并行时，通知跳转跟随事件来源，而不是当前显示工作动画的会话。
+      notices.push({ id: randomBytes(12).toString('hex'), ...event, threadId: event.threadId || next.threadId });
+      if (notices.length > 24) notices.shift();
+    }
+    updateDisplay();
   } });
   shutdown = async () => {
     if (stopping) return;
     stopping = true;
+    clearTimeout(manualTimer);
     await watcher.stop();
     chatHandler.dispose();
+    taskHandler.dispose();
     releaseQuota();
     await context.dispose();
     await server.close();
@@ -156,7 +218,7 @@ async function start() {
   process.on('SIGINT', () => { void shutdown(); });
   process.on('SIGTERM', () => { void shutdown(); });
   await watcher.start();
-  logger.info(`Codex 大肥鱼已启动，本机端口 ${port}，动画与互动沿用 dsh-pet 0.3.8。`);
+  logger.info(`龙娘桌宠已启动，本机端口 ${port}，动画与互动基于 dsh-pet 0.3.8。`);
   logger.info('右键可点播动作、查看额度或对话；自动碎碎念默认十分钟一次，可在 AI 设置中关闭。');
 }
 

@@ -15,7 +15,11 @@ function quotaPatch(text){
   if(text.split(oldGate).length!==2) throw new Error('额度补丁定位失败，停止使用不匹配的运行时。');
   return text.replace(oldGate,newGate);
 }
-const source=await readFile(resolve(pkg,'lib/standalone.js'),'utf8');
+let source=await readFile(resolve(pkg,'lib/standalone.js'),'utf8');
+// 只有独立的图文入口接收大图片，原配置/命令路由继续保留上游请求体上限。
+const bodyLimitAnchor='const limit = pathname === "/standalone-ai/settings" ? MAX_SETTINGS_BYTES : MAX_REQUEST_BYTES;';
+if(source.split(bodyLimitAnchor).length!==2) throw new Error('图文请求大小补丁定位失败。');
+source=source.replace(bodyLimitAnchor,'const limit = pathname === "/dsh-pet-7340/codex-chat" ? 17 * 1024 * 1024 : pathname === "/standalone-ai/settings" ? MAX_SETTINGS_BYTES : MAX_REQUEST_BYTES;');
 const invocation='main().then((code) => {';
 const index=source.lastIndexOf(invocation);
 if(index<0 || source.indexOf(invocation)!==index) throw new Error('宿主入口定位失败。');
@@ -28,8 +32,37 @@ const main=resolve(pkg,'runtime/electron-helper/main.js');
 let mainCode=await readFile(main,'utf8');
 const noticeHook="require('./codex-notifications.cjs').install({hostRequest});";
 if(!mainCode.includes(noticeHook)) await writeFile(main,mainCode+'\n'+noticeHook+'\n');
-for(const file of ['codex-notifications.cjs','foreground-codex.ps1']){
+mainCode=await readFile(main,'utf8');
+const extensionHook=`// codex-pet-extensions-v1
+const codexPanelRequest = require('./codex-api.cjs').createHostRequest();
+const codexTaskPanel = require('./codex-task-window.cjs').install({hostRequest:codexPanelRequest});
+require('./codex-chat-window.cjs').install({hostRequest:codexPanelRequest,openTaskPanel:()=>codexTaskPanel.open()});
+require('./codex-skins.cjs').install({hostRequest,dataRoot:process.env.DSH_HOME});`;
+if(!mainCode.includes('// codex-pet-extensions-v1')) await writeFile(main,mainCode+'\n'+extensionHook+'\n');
+mainCode=await readFile(main,'utf8');
+const oldTray="tray.setToolTip('dsh-pet 桌面宠物');";
+if(mainCode.includes(oldTray)) await writeFile(main,mainCode.replace(oldTray,"tray.setToolTip('龙娘桌宠');"));
+const preload=resolve(pkg,'runtime/electron-helper/preload.js');
+let preloadCode=await readFile(preload,'utf8');
+const preloadHook=`// codex-pet-preloads-v1
+require('./codex-task-window.cjs').installPreload();
+require('./codex-chat-window.cjs').installPreload();
+require('./codex-skins.cjs').installPreload();`;
+if(!preloadCode.includes('// codex-pet-preloads-v1')) await writeFile(preload,preloadCode+'\n'+preloadHook+'\n');
+const html=resolve(pkg,'runtime/electron-helper/index.html');
+let htmlCode=await readFile(html,'utf8');
+htmlCode=htmlCode.replace('<title>dsh-pet 桌宠（桌面模式）</title>','<title>龙娘桌宠</title>');
+if(!htmlCode.includes('codex-skin-renderer.js')){
+  const anchor='<script src="./sprite.js"></script>';
+  if(htmlCode.split(anchor).length!==2) throw new Error('形象渲染入口定位失败。');
+  htmlCode=htmlCode.replace(anchor,anchor+'\n    <script src="skin-actions.cjs"></script>\n    <script src="codex-skin-renderer.js"></script>');
+}
+await writeFile(html,htmlCode);
+for(const file of ['codex-notifications.cjs','foreground-codex.ps1','codex-api.cjs',
+  'codex-task-window.cjs','task-preload.cjs','task-window.html','task-window.js','task-window.css',
+  'codex-chat-window.cjs','chat-preload.cjs','chat-window.html','chat-window.js','chat-window.css',
+  'codex-skins.cjs','codex-skin-renderer.js','skin-actions.cjs']){
   await copyFile(resolve(root,'src',file),resolve(pkg,'runtime/electron-helper',file));
 }
 await mkdir(resolve(root,'data'),{recursive:true});
-console.log('dsh-pet 0.3.8 运行时已准备：Codex 宿主、真实额度窗口与系统通知。');
+console.log('dsh-pet 0.3.8 运行时已准备：龙娘桌宠、图文对话、目录操作任务与系统通知。');

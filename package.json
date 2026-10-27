@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "基于 dsh-pet 的 Codex 独立 Windows 桌宠适配",
+  "description": "龙娘桌宠：配合 Codex 使用的独立 Windows 桌宠，基于 dsh-pet 适配",
   "homepage": "https://github.com/Wxy545/dsh-pet-codex#readme",
   "repository": { "type": "git", "url": "git+https://github.com/Wxy545/dsh-pet-codex.git" },
   "bugs": { "url": "https://github.com/Wxy545/dsh-pet-codex/issues" },

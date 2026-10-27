@@ -1,5 +1,7 @@
 # 开发与维护
 
+产品显示名为“龙娘桌宠”。为兼容已有安装，仓库、npm 包名和默认安装目录仍使用 `dsh-pet-codex`，不随显示名变更。
+
 ## 从源码运行
 
 需要 Windows、Node.js 22.12 或更高版本，以及已安装并正常登录的 Codex CLI。日常安装可直接按 [INSTALL.md](../INSTALL.md) 操作；下面的步骤供修改源码时使用。
@@ -80,7 +82,11 @@ powershell -File scripts/enable-follow.ps1
 
 当前依赖固定为 `dsh-pet@0.3.8`，由 `package-lock.json` 锁定。角色、透明动画、随机动作、点击、拖拽、甩抛、菜单与气泡沿用原实现；本项目接入 Codex 会话聚合、额度、CLI 聊天与通知。
 
-`scripts/prepare-runtime.mjs` 从固定版本生成 Codex 宿主入口，调整额度解析，并向桌面壳挂载通知模块。依赖版本或补丁位置不匹配时会报错停止。安装或升级依赖后需要重新运行准备脚本；需要改补丁时应修改脚本，不只手改 `node_modules/`。
+`scripts/prepare-runtime.mjs` 从固定版本生成 Codex 宿主入口，调整额度解析，并向桌面壳挂载 Codex 扩展。依赖版本或补丁位置不匹配时会报错停止。安装或升级依赖后需要重新运行准备脚本；需要改补丁时应修改脚本，不只手改 `node_modules/`。
+
+原版大肥鱼的 106 段视频动画保留。白龙娘 Q 版、姐姐版和偶尔变身属于本地试作，专属动作按原动作清单逐项补齐。动作入口可调用、基础帧可播放与专属动作制作完成需要分别记录；不能把多个动作复用同一段待机帧计为全部适配。
+
+白龙娘及新制作的非 Q 版参考、图集、角色截图不进入公开提交，待原作者授权和署名、使用范围确认后再发布。原大肥鱼素材的许可仍按 [THIRD_PARTY_NOTICES.md](../THIRD_PARTY_NOTICES.md) 保留。
 
 ## 配置与本机数据
 
@@ -104,7 +110,13 @@ Windows 自动定位使用实际的 `codex.exe`。若终端只能找到 `.cmd` �
 
 额度来自会话日志中的 `rate_limits` 快照，不是持续联网查询的实时账户余额。只显示实际存在且仍有效的窗口，不补造缺失的月度窗口。数据缺失或已过重置时间时，需要在 Codex 主聊天产生新回复后再查看。
 
-聊天仅支持文字。请求通过本机 Codex CLI 生成，配置为只读并关闭相关工具；图片和操作任务应在 Codex 主聊天完成。自动碎碎念初始间隔为十分钟，可在 AI 设置中关闭或调整；文字聊天和自动碎碎念都会消耗 Codex 使用额度。
+聊天支持文字和图片。图片入口接收 PNG、JPEG、WebP 的 data URL，校验文件签名、数量和大小；不接受远程图片 URL 或任意本地文件路径。图片只写入本次请求的临时目录，交给 Codex CLI 的 `--image` 输入，完成、失败或取消后清理。闲聊仍关闭操作工具。
+
+操作任务通过独立面板提交，必须先用系统对话框选择工作目录，填写任务并确认本次权限。默认 `read-only`，禁止写入；选择 `workspace-write` 后，仅允许修改所选目录。工作目录不是文件读取的操作系统隔离边界，读取范围依 Codex CLI 的沙箱策略。此入口不提供全桌面鼠标控制。
+
+聊天和操作任务共用单进程门控，已有请求执行时不会叠加新的 CLI 任务。取消只终止本次 CLI 及其子进程，关闭面板本身不等于取消。
+
+自动碎碎念初始间隔为十分钟，可在 AI 设置中关闭或调整。文字聊天、看图、自动碎碎念和操作任务都会消耗 Codex 使用额度。
 
 ## 通知排查
 
@@ -114,18 +126,37 @@ Codex 处于后台时，新的完成、错误和待确认事件可触发 Windows
 
 先看 `data/app.log` 和 `data/app-error.log`。分享错误时只附脱敏片段或错误码，避免提交聊天正文、完整诊断报告或个人路径。安全问题按 [SECURITY.md](../SECURITY.md) 处理。
 
-## Codex 升级检查
+## 每日兼容检查
+
+可在 Codex 中配置每天运行的维护任务，同时检查本机 Codex 和原版 dsh-pet：
 
 ```powershell
 node scripts/check-codex-compat.mjs
-node scripts/check-codex-compat.mjs --force
+node scripts/check-upstream.mjs
 ```
 
-检查比较已安装的 Codex CLI、桌面版与上次通过检查的版本，核对 CLI 参数、特性名称和近期会话事件字段，并在需要时运行本地回归测试。报告写入 `data/compatibility-report.json`。缺少日志或版本证据时会记录 `unknown`，不能当作通过；检查不发送真实模型请求。
+Codex 检查比较已安装的 CLI、桌面版与上次通过检查的版本，核对 CLI 参数、特性名称和近期会话事件字段，并在需要时运行本地回归测试。报告写入 `data/compatibility-report.json`。缺少日志或版本证据时会记录 `unknown`，不能当作通过；检查不发送真实模型请求。需要对未变化版本重新检查时，运行 `node scripts/check-codex-compat.mjs --force`。
+
+上游检查只访问 [npm 官方元数据](https://registry.npmjs.org/dsh-pet) 和 [原仓库 main 提交](https://api.github.com/repos/PC2005-cloud/dsh-pet/commits/main)，比较最新稳定版、本地依赖和上次已处理的版本及提交。它不使用 GitHub 凭据，不执行 `npm update`，也不自动修改源码。日常未变化时只做两个条件请求，可用 ETag 复用观测，不运行测试或模型请求。
+
+观测与已处理基线保存在 `data/upstream-compatibility.json`，本次报告保存在 `data/upstream-report.json`。报告中的 `candidate` 表示待调查的变更，`unchanged` 表示与已处理基线一致，`unknown` 表示证据不全或检查失败。网络超时、限流或响应异常会保留旧成功观测，不能据此判断没有更新。检查完成的退出码为 0；显式接受被拒绝为 1；检查失败或证据不足为 2。
+
+发现候选后，先查看原版发布内容和提交差异，核对运行时补丁、接口及许可变化。需要升级依赖时，显式修改固定版本和 lock 文件，重新安装依赖并运行 `node scripts/prepare-runtime.mjs`、相关测试及 `npm test`；影响桌面互动、通知或聊天时，再验证对应的实际操作。只有 main 更新、npm 尚未发版时，也应先确认是否影响现有适配。
+
+适配与验证完成后，用本次报告的确切版本及提交接受基线：
+
+```powershell
+$report = Get-Content data/upstream-report.json -Raw | ConvertFrom-Json
+node scripts/check-upstream.mjs --accept --npm-version $report.candidate.npmVersion --github-sha $report.candidate.githubSha --verified
+```
+
+`--verified` 是执行者对已完成验证的声明，脚本不会替代验证。接受时会重新检查两个来源；候选已变化、来源失败，或本地声明、lock、已安装的 dsh-pet 版本未与候选一致时，都不会推进基线。适配失败时保留候选，下次仍会报告，不能为消除提醒而直接接受。
 
 Codex 的 CLI 参数与会话事件可能随版本变化，dsh-pet 补丁也绑定到固定版本。升级后先收集失败证据，再修改适配，完成相关回归和实机验证后提交。
 
-如需自动维护，可自行在 Codex 中配置定时任务：检测版本变化，调查不兼容项，修改、验证并在明确授权的仓库范围内提交或推送。本程序本身不自动改源码或升级依赖，仓库也不包含个人账户的定时任务配置。
+维护者本机配置为每天上午 9 点检查一次，同时关注 Codex 和原版 dsh-pet。该任务不随安装器复制，也不表示其他用户已配置调度。其他用户可按 [README 中的提示](../README.md#更新跟着走) 在自己的 Codex 中建立维护任务。
+
+每日维护任务可在发现变化后调查、修改和验证，并在明确授权的仓库范围内提交、推送。未变化时保持安静；验证失败、访问失败或需要人工处理时再报告。调度由 Codex 任务承担，仓库不包含个人账户的定时任务配置。未获授权的本地角色素材不得随功能更新上传。
 
 ## 验证记录
 

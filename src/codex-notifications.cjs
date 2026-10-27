@@ -1,7 +1,7 @@
 'use strict';
 
 const { execFile, execFileSync } = require('node:child_process');
-const { existsSync, mkdirSync } = require('node:fs');
+const { existsSync, mkdirSync, copyFileSync, unlinkSync, constants: FS_CONSTANTS } = require('node:fs');
 const path = require('node:path');
 
 const APP_USER_MODEL_ID = 'com.wanggong.codex-bluefish';
@@ -65,6 +65,14 @@ function createNoticeRequest(value, fetcher = globalThis.fetch) {
   };
 }
 
+/** 改名只迁移本安装目录原有的通知入口，不能覆盖同名的其他快捷方式。 */
+function isOwnedShortcut(value, target, allowedArgs) {
+  return value && typeof value.target === 'string'
+    && value.target.toLowerCase() === target.toLowerCase()
+    && value.appUserModelId === APP_USER_MODEL_ID
+    && allowedArgs.includes(value.args);
+}
+
 /** Windows 通知需要同一 AUMID 的开始菜单快捷方式；只更新本应用原有的那一项。 */
 function ensureShortcut({ app, shell }, launcher, log) {
   if (process.platform !== 'win32') return;
@@ -73,29 +81,39 @@ function ensureShortcut({ app, shell }, launcher, log) {
     return;
   }
   const directory = path.join(app.getPath('appData'), 'Microsoft', 'Windows', 'Start Menu', 'Programs');
-  const shortcut = path.join(directory, 'Codex 大肥鱼桌宠.lnk');
+  const shortcut = path.join(directory, '龙娘桌宠.lnk');
+  const legacyShortcut = path.join(directory, 'Codex 大肥鱼桌宠.lnk');
   const target = path.join(process.env.SystemRoot || 'C:\\Windows', 'System32', 'wscript.exe');
   const args = `"${launcher}"`;
+  const legacyArgs = `"${path.join(path.dirname(launcher), '启动大肥鱼.vbs')}"`;
   try {
     // 非打包桌面进程需要自己的通知显示名；只登记本应用 AUMID。
     const reg = path.join(process.env.SystemRoot || 'C:\\Windows', 'System32', 'reg.exe');
     const identity = `HKCU\\Software\\Classes\\AppUserModelId\\${APP_USER_MODEL_ID}`;
-    for (const [name, value] of [['DisplayName', 'Codex 大肥鱼'], ['IconUri', path.resolve(__dirname, '../../assets/logo.png')]]) {
+    for (const [name, value] of [['DisplayName', '龙娘桌宠'], ['IconUri', path.resolve(__dirname, '../../assets/logo.png')]]) {
       execFileSync(reg, ['add', identity, '/v', name, '/t', 'REG_SZ', '/d', value, '/f'], { windowsHide: true, stdio: 'ignore' });
     }
     mkdirSync(directory, { recursive: true });
-    const present = existsSync(shortcut);
+    const destination = existsSync(shortcut) ? shortcut : existsSync(legacyShortcut) ? legacyShortcut : shortcut;
+    const present = existsSync(destination);
     if (present) {
-      const old = shell.readShortcutLink(shortcut);
-      if (String(old.target).toLowerCase() !== target.toLowerCase() || old.args !== args || old.appUserModelId !== APP_USER_MODEL_ID) {
+      const old = shell.readShortcutLink(destination);
+      if (!isOwnedShortcut(old, target, [args, legacyArgs])) {
         log('[codex-bluefish] 通知快捷方式名称已被占用。');
         return;
       }
     }
-    const written = shell.writeShortcutLink(shortcut, present ? 'update' : 'create', {
-      target, args, appUserModelId: APP_USER_MODEL_ID, description: 'Codex 大肥鱼桌宠',
+    const written = shell.writeShortcutLink(destination, present ? 'update' : 'create', {
+      target, args, appUserModelId: APP_USER_MODEL_ID, description: '龙娘桌宠',
     });
-    if (!written) log('[codex-bluefish] 通知快捷方式创建失败。');
+    if (!written) { log('[codex-bluefish] 通知快捷方式创建失败。'); return; }
+    if (destination === legacyShortcut) {
+      // 先把原入口改到新启动文件；独占创建新名称，目标冲突时保留仍可用的旧入口。
+      copyFileSync(legacyShortcut, shortcut, FS_CONSTANTS.COPYFILE_EXCL);
+    }
+    if (existsSync(legacyShortcut) && isOwnedShortcut(shell.readShortcutLink(legacyShortcut), target, [args, legacyArgs])) {
+      unlinkSync(legacyShortcut);
+    }
   } catch {
     log('[codex-bluefish] 通知快捷方式创建失败。');
   }
@@ -251,7 +269,7 @@ function createController({ hostRequest, electron, checkForeground = readForegro
 function install({ hostRequest: _hostRequest }) {
   const electron = require('electron');
   // 系统通知按应用名展示，避免原始 Electron 运行时名称混淆来源。
-  electron.app.setName('Codex 大肥鱼');
+  electron.app.setName('龙娘桌宠');
   if (process.platform === 'win32') {
     // 与启动器创建的开始菜单快捷方式保持同一身份。
     electron.app.setAppUserModelId(APP_USER_MODEL_ID);
@@ -267,4 +285,5 @@ function install({ hostRequest: _hostRequest }) {
 module.exports = {
   APP_USER_MODEL_ID, install, createController, createNoticeRequest, noticeUrl,
   normalizeNotice, notificationDecision, nativeErrorCode, threadUrl, NoticeHistory,
+  isOwnedShortcut,
 };

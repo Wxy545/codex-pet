@@ -56,7 +56,7 @@ try {
     try { $taskOwnsMutex = $taskMutex.WaitOne(10000) }
     catch [System.Threading.AbandonedMutexException] { $taskOwnsMutex = $true }
     if (-not $taskOwnsMutex) { throw '桌宠启动正在进行，请稍后重试。' }
-    if (Test-TaskPetRunning) { Write-Output '大肥鱼已经在运行。'; return }
+    if (Test-TaskPetRunning) { Write-Output '龙娘桌宠已经在运行。'; return }
     $taskData = Join-Path $taskRoot 'data'
     New-Item -ItemType Directory -Path $taskData -Force | Out-Null
     Start-Process -FilePath $taskNode -ArgumentList @('"' + $taskApp + '"') -WorkingDirectory $taskRoot -WindowStyle Hidden -RedirectStandardOutput (Join-Path $taskData 'app.log') -RedirectStandardError (Join-Path $taskData 'app-error.log')

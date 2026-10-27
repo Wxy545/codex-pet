@@ -1,16 +1,26 @@
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
-import { readFile, writeFile, mkdir, readdir, stat, open, rename } from 'node:fs/promises';
-import { homedir } from 'node:os';
-import { dirname, join, resolve } from 'node:path';
+import { readFile, writeFile, mkdir, readdir, stat, open, rename, mkdtemp, rm } from 'node:fs/promises';
+import { homedir, tmpdir } from 'node:os';
+import { basename, dirname, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { randomUUID } from 'node:crypto';
+import { locateCodex } from '../src/codex-path.mjs';
+import { createCodexChildEnv } from '../src/codex-child-env.mjs';
 
 const execute = promisify(execFile);
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const KNOWN = 'known';
+const CONTRACT_REVISION = 2;
 const normalizedPath = value => String(value ?? '').replaceAll('\\', '/').toLowerCase();
 const hasVersion = component => typeof component?.version === 'string' && component.version.length > 0;
+
+/** 帮助只解析参数，不进入版本检测、测试和报告持久化流程。 */
+export function parseCompatibilityArgs(args = []) {
+  if (args.length === 1 && ['--help', '-h'].includes(args[0])) return { help: true, force: false };
+  if (args.some(argument => argument !== '--force')) throw new Error('unsupported-argument');
+  return { help: false, force: args.includes('--force') };
+}
 
 /** 纯比较：失败留下的 pending 不会因版本字符串相同而被跳过。 */
 export function compareCodexVersions(current, baseline = {}, force = false) {
@@ -30,8 +40,8 @@ export function compareCodexVersions(current, baseline = {}, force = false) {
 }
 
 /** 只解析适配器中明确的字符串数组，不执行源码。 */
-export function inspectChatRequirements(source) {
-  const featuresBlock = source.match(/const\s+DISABLED_FEATURES\s*=\s*\[([\s\S]*?)\];/);
+function inspectAdapterRequirements(source, featuresName) {
+  const featuresBlock = source.match(new RegExp('const\\s+' + featuresName + '\\s*=\\s*\\[([\\s\\S]*?)\\];'));
   const argsBlock = source.match(/const\s+args\s*=\s*\[([\s\S]*?)\];/);
   if (!featuresBlock || !argsBlock) return { status: 'unknown', reason: 'chat-source-contract-unrecognized', flags: [], disabledFeatures: [] };
   const disabledFeatures = [...featuresBlock[1].matchAll(/['"]([a-z][a-z0-9_]*)['"]/g)].map(match => match[1]);
@@ -40,6 +50,39 @@ export function inspectChatRequirements(source) {
   const flags = [...new Set([...argsBlock[1].matchAll(/['"](--[a-z][a-z0-9-]*)['"]/g)].map(match => match[1]))];
   if (/['"]-c['"]/.test(argsBlock[1])) flags.push('--config');
   return { status: flags.includes('--json') && flags.includes('--disable') ? 'passed' : 'failed', reason: 'static-chat-requirements', flags: [...new Set(flags)], disabledFeatures: [...new Set(disabledFeatures)] };
+}
+
+export function inspectChatRequirements(source) {
+  return inspectAdapterRequirements(source, 'DISABLED_FEATURES');
+}
+
+/** 操作任务使用命名权限，不能回归到本机已证实会丢失写权限的旧参数组合。 */
+export function inspectTaskRequirements(source) {
+  const result = inspectAdapterRequirements(source, 'DISABLED_TASK_FEATURES');
+  if (result.status !== 'passed') return { ...result, reason: 'task-source-contract-unrecognized' };
+  const mapping = source.match(/const\s+permissionProfile\s*=\s*input\.permission\s*===\s*['"]workspace-write['"]\s*\?\s*['"](:[a-z-]+)['"]\s*:\s*['"](:[a-z-]+)['"]\s*;/);
+  const args = source.match(/const\s+args\s*=\s*\[([\s\S]*?)\];/)?.[1] ?? '';
+  const valid = mapping?.[1] === ':workspace' && mapping?.[2] === ':read-only'
+    && args.includes('default_permissions=') && args.includes('windows.sandbox="unelevated"')
+    && !result.flags.includes('--sandbox') && !/sandbox_mode=|sandbox_workspace_write\./.test(args);
+  return { ...result, status: valid ? 'passed' : 'failed', reason: 'static-task-permission-requirements', permissionProfiles: valid ? [':read-only', ':workspace'] : [], windowsSandbox: valid ? 'unelevated' : undefined };
+}
+
+/** 诊断JSON只取权限段的固定枚举，正文、工具参数和全局指令不会进入报告。 */
+export function inspectPermissionPrompt(output, expectedMode) {
+  let parsed;
+  try { parsed = JSON.parse(output); } catch { return { status: 'unknown', reason: 'permission-prompt-json-unavailable' }; }
+  const sections = [];
+  function walk(value) {
+    if (typeof value === 'string') sections.push(...(value.match(/<permissions instructions>[\s\S]*?<\/permissions instructions>/g) ?? []));
+    else if (value && typeof value === 'object') Object.values(value).forEach(walk);
+  }
+  walk(parsed);
+  if (sections.length !== 1) return { status: 'unknown', reason: 'permission-section-unrecognized' };
+  const section = sections[0];
+  const mode = section.match(/sandbox_mode[`'"]?\s*(?:is|=)\s*[`'"]?(read-only|workspace-write|danger-full-access)/)?.[1];
+  const network = /Network access is disabled/i.test(section) ? 'disabled' : /Network access is restricted/i.test(section) ? 'restricted' : /Network access is enabled/i.test(section) ? 'enabled' : undefined;
+  return { status: !mode || !network ? 'unknown' : mode === expectedMode && ['disabled', 'restricted'].includes(network) ? 'passed' : 'failed', reason: 'isolated-permission-config-render', ...(mode ? { mode } : {}), ...(network ? { network } : {}) };
 }
 
 const safeName = value => typeof value === 'string' && /^[A-Za-z0-9_.-]{1,80}$/.test(value);
@@ -95,18 +138,44 @@ async function runCommand(file, args, { cwd, timeoutMs = 8000, env } = {}) {
   }
 }
 
-async function detectCli(run, platform, env) {
-  let path = env.CODEX_PET_CLI;
-  if (!path) {
-    const found = await run(platform === 'win32' ? 'where.exe' : 'which', ['codex']);
-    if (found.code !== 0) return { status: 'unknown', reason: 'cli-executable-not-found' };
-    const paths = found.stdout.trim().split(/\r?\n/).filter(Boolean);
-    path = platform === 'win32' ? paths.find(value => /\.exe$/i.test(value)) ?? paths[0] : paths[0];
-  }
+async function detectCli(run, platform, env, locateCli) {
+  let path;
+  try { path = await locateCli({ env, platform }); }
+  catch { return { status: 'unknown', reason: 'cli-executable-not-found' }; }
   if (!path) return { status: 'unknown', reason: 'cli-executable-not-found' };
   const result = await run(path, ['--version']);
   const version = result.code === 0 ? result.stdout.trim().match(/^codex(?:-cli)?\s+([^\s]+)$/i)?.[1] : undefined;
   return version ? { status: KNOWN, path, version } : { status: 'unknown', path, reason: 'cli-version-unavailable' };
+}
+
+async function inspectPermissionProfiles(run, codexPath, requirements, platform, env) {
+  if (!codexPath || requirements.status !== 'passed') return { status: 'unknown', reason: 'task-permission-contract-unavailable' };
+  const temporaryRoot = resolve(tmpdir());
+  const temporary = await mkdtemp(join(temporaryRoot, 'codex-compat-policy-'));
+  try {
+    const isolatedEnv = createCodexChildEnv(env);
+    // 此诊断不需要登录；隔离用户配置和认证变量，既不读取主配置，也不向模型服务发请求。
+    for (const name of Object.keys(isolatedEnv)) if (/^(?:CODEX_HOME|CODEX_API_KEY|OPENAI_.*|AZURE_OPENAI_.*)$/i.test(name)) delete isolatedEnv[name];
+    isolatedEnv.CODEX_HOME = temporary;
+    const strictArgs = ['app-server', '--print-startup-config', '--strict-config', '-c', 'default_permissions=":workspace"'];
+    if (platform === 'win32') strictArgs.push('-c', 'windows.sandbox="unelevated"');
+    const strict = await run(codexPath, strictArgs, { cwd: temporary, env: isolatedEnv, timeoutMs: 15000 });
+    let strictJson;
+    try { strictJson = JSON.parse(strict.stdout); } catch { /* 不保留原始配置或诊断输出。 */ }
+    const configuration = { status: strict.code !== 0 ? 'failed' : typeof strictJson?.appServerVersion === 'string' && Object.hasOwn(strictJson, 'configRequirements') ? 'passed' : 'unknown', reason: 'isolated-strict-config-recognition' };
+    const profiles = [];
+    for (const [profile, mode] of [[':read-only', 'read-only'], [':workspace', 'workspace-write']]) {
+      const args = ['debug', 'prompt-input', '-c', 'default_permissions=' + JSON.stringify(profile), '-c', 'approval_policy="never"', '-c', 'project_doc_max_bytes=0'];
+      if (platform === 'win32') args.push('-c', 'windows.sandbox="unelevated"');
+      args.push(...requirements.disabledFeatures.flatMap(name => ['--disable', name]), '权限配置诊断，不调用工具。');
+      const result = await run(codexPath, args, { cwd: temporary, env: isolatedEnv, timeoutMs: 15000 });
+      profiles.push({ profile, ...(result.code === 0 ? inspectPermissionPrompt(result.stdout, mode) : { status: 'failed', reason: 'permission-config-render-failed', timedOut: Boolean(result.timedOut) }) });
+    }
+    return { status: foldedStatus([configuration, ...profiles]), reason: 'task-permission-config-contract', verification: 'isolated-config-and-prompt-render-no-model-no-execution', ...(platform === 'win32' ? { windowsSandbox: 'unelevated' } : {}), configuration, profiles };
+  } finally {
+    // 只删除本次创建、且已验证位于系统临时根下的独占目录。
+    if (dirname(resolve(temporary)) === temporaryRoot && basename(temporary).startsWith('codex-compat-policy-')) await rm(temporary, { recursive: true, force: true });
+  }
 }
 
 const DESKTOP_QUERY = String.raw`
@@ -214,8 +283,12 @@ export async function checkCodexCompatibility({ root = ROOT, force = false, plat
   let baseline = {};
   try { baseline = JSON.parse(await readFile(baselinePath, 'utf8')); } catch { /* 首次或损坏的基线必须重新验证。 */ }
   if (!baseline || typeof baseline !== 'object' || Array.isArray(baseline)) baseline = {};
-  const current = { cli: await detectCli(run, platform, env), desktop: await detectDesktop(run, platform, env) };
+  const current = { cli: await detectCli(run, platform, env, deps.locateCli ?? locateCodex), desktop: await detectDesktop(run, platform, env) };
   const comparison = compareCodexVersions(current, baseline, force);
+  if (baseline.lastSuccessfulContractRevision !== CONTRACT_REVISION) {
+    comparison.needsCheck = true;
+    comparison.reasons.push('adapter-contract-changed');
+  }
   const checkedAt = new Date().toISOString();
   const report = { schemaVersion: 1, checkedAt, current, comparison, changed: comparison.changed, forced: force, testsRun: false, baselineUpdated: false, reportPath, checks: {} };
   if (!comparison.needsCheck) {
@@ -230,10 +303,18 @@ export async function checkCodexCompatibility({ root = ROOT, force = false, plat
 
   const checks = report.checks;
   checks.cliVersion = { status: current.cli.status === KNOWN ? 'passed' : 'unknown', reason: current.cli.reason ?? 'executable-version-read' };
-  let requirements;
-  try { requirements = inspectChatRequirements(await readFile(join(root, 'src', 'codex-chat.mjs'), 'utf8')); }
-  catch { requirements = { status: 'unknown', reason: 'chat-source-unavailable', flags: [], disabledFeatures: [] }; }
-  checks.chatSource = requirements;
+  let chatRequirements; let taskRequirements;
+  try { chatRequirements = inspectChatRequirements(await readFile(join(root, 'src', 'codex-chat.mjs'), 'utf8')); }
+  catch { chatRequirements = { status: 'unknown', reason: 'chat-source-unavailable', flags: [], disabledFeatures: [] }; }
+  try { taskRequirements = inspectTaskRequirements(await readFile(join(root, 'src', 'codex-tasks.mjs'), 'utf8')); }
+  catch { taskRequirements = { status: 'unknown', reason: 'task-source-unavailable', flags: [], disabledFeatures: [] }; }
+  checks.chatSource = chatRequirements;
+  checks.taskSource = taskRequirements;
+  const requirements = {
+    status: foldedStatus([chatRequirements, taskRequirements]),
+    flags: [...new Set([...chatRequirements.flags, ...taskRequirements.flags])],
+    disabledFeatures: [...new Set([...chatRequirements.disabledFeatures, ...taskRequirements.disabledFeatures])],
+  };
   const helpResult = current.cli.path ? await run(current.cli.path, ['exec', '--help']) : { code: 1, stdout: '' };
   if (helpResult.code !== 0) {
     checks.execHelp = { status: current.cli.path ? 'failed' : 'unknown', reason: 'exec-help-unavailable' };
@@ -253,6 +334,7 @@ export async function checkCodexCompatibility({ root = ROOT, force = false, plat
     const missingFeatures = requirements.disabledFeatures.filter(name => !knownFeatures.has(name));
     checks.disabledFeatures = { status: features.code !== 0 ? 'failed' : !knownFeatures.size ? 'unknown' : missingFeatures.length ? 'failed' : 'passed', reason: 'read-only-feature-recognition', requestedCount: requirements.disabledFeatures.length, missingFeatures };
   } else checks.disabledFeatures = { status: 'unknown', reason: 'cli-or-feature-contract-unavailable' };
+  checks.permissionProfiles = await inspectPermissionProfiles(run, current.cli.path, taskRequirements, platform, env);
   const tests = await run(process.execPath, ['--test', '--test-concurrency=1', 'test/*.test.mjs', 'src/*.test.cjs'], { timeoutMs: 60000 });
   report.testsRun = true;
   checks.regressionTests = { status: tests.code === 0 ? 'passed' : 'failed', exitCode: tests.code, timedOut: Boolean(tests.timedOut), reason: 'local-mocked-regression-suite' };
@@ -261,11 +343,12 @@ export async function checkCodexCompatibility({ root = ROOT, force = false, plat
   report.coreStatus = foldedStatus(checks);
   checks.desktopVersion = { status: current.desktop.status === KNOWN ? 'passed' : 'unknown', reason: current.desktop.source ?? current.desktop.reason };
   report.status = report.coreStatus === 'passed' && checks.desktopVersion.status === 'unknown' ? 'unknown' : report.coreStatus;
-  report.limitations = ['CLI JSON能力只核对帮助声明和本地解析回归；未发送真实模型请求。'];
+  report.limitations = ['CLI JSON能力核对帮助声明和本地解析回归；权限profile与Windows沙箱枚举只验证隔离配置渲染，未执行工具或发送真实模型请求。'];
   const nextBaseline = { ...baseline, schemaVersion: 1, lastAttempt: { checkedAt, status: report.coreStatus, version: versionStamp(current) } };
   if (report.coreStatus === 'passed') {
     nextBaseline.lastSuccessfulVersion = versionStamp(current, baseline.lastSuccessfulVersion);
     nextBaseline.lastSuccessfulCheckAt = checkedAt;
+    nextBaseline.lastSuccessfulContractRevision = CONTRACT_REVISION;
     delete nextBaseline.pendingVersion;
     report.baselineUpdated = true;
   } else nextBaseline.pendingVersion = versionStamp(current);
@@ -287,10 +370,13 @@ export function summarizeReport(report) {
 
 if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
   try {
-    if (process.argv.slice(2).some(argument => argument !== '--force')) throw new Error('unsupported-argument');
-    const report = await checkCodexCompatibility({ force: process.argv.includes('--force') });
-    console.log(JSON.stringify(summarizeReport(report)));
-    if (report.coreStatus === 'failed') process.exitCode = 1;
+    const options = parseCompatibilityArgs(process.argv.slice(2));
+    if (options.help) console.log('用法：node scripts/check-codex-compat.mjs [--force]\n默认仅在版本、适配合同或待复查状态变化时检查；--force 重新检查当前版本。\n检查不发送模型请求，不升级 Codex；结果保存在 data/compatibility-report.json。');
+    else {
+      const report = await checkCodexCompatibility({ force: options.force });
+      console.log(JSON.stringify(summarizeReport(report)));
+      if (report.coreStatus === 'failed') process.exitCode = 1;
+    }
   } catch {
     const failure = { schemaVersion: 1, checkedAt: new Date().toISOString(), status: 'failed', reason: 'compatibility-check-could-not-complete' };
     try { await saveJson(join(ROOT, 'data', 'compatibility-report.json'), failure); } catch { /* 无法写报告时仍返回失败JSON。 */ }

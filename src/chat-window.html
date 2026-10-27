@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'; frame-src 'none'">
+  <title>龙娘桌宠 · 对话</title>
+  <link rel="stylesheet" href="chat-window.css">
+  <script defer src="chat-window.js"></script>
+</head>
+<body>
+  <main>
+    <div class="toolbar"><div class="toolbar-actions"><button id="new-conversation" type="button">新对话</button><button id="open-tasks" type="button">操作任务</button></div><span id="status" role="status">就绪</span></div>
+    <section id="messages" class="messages" role="log" aria-label="对话消息" aria-live="polite"></section>
+    <form id="chat-form" class="composer">
+      <div id="attachments" class="attachments" aria-label="待发送图片" hidden></div>
+      <label class="sr-only" for="message-input">消息</label>
+      <textarea id="message-input" rows="3" maxlength="8192" placeholder="说点什么…" aria-describedby="image-limit"></textarea>
+      <div class="composer-actions"><div class="attachment-tools"><button id="choose-images" type="button">添加图片</button><span id="image-limit">PNG / JPEG / WebP · 最多4张</span></div><button id="send" class="primary" type="submit" disabled>发送</button></div>
+    </form>
+    <div id="message" class="toast" role="alert" hidden></div>
+  </main>
+</body>
+</html>

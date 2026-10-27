@@ -88,7 +88,7 @@ try {
         throw ('安装目录已存在，未覆盖任何文件：' + $installerTarget + '。已有安装请按 docs/maintenance.md 更新，或通过 -InstallDir 指定新目录。')
     }
     New-Item -ItemType Directory -Path $installerTemp | Out-Null
-    Write-Host '正在下载 dsh-pet-codex ...'
+    Write-Host '正在下载龙娘桌宠 ...'
     $ref = Invoke-RestMethod ('https://api.github.com/repos/' + $installerRepo + '/git/ref/heads/main') -Headers @{ 'User-Agent' = 'dsh-pet-codex-installer' } -UseBasicParsing
     $sourceCommit = [string]$ref.object.sha
     if ($sourceCommit -notmatch '^[a-f0-9]{40}$') { throw 'GitHub 返回的源码版本无效。' }
@@ -144,7 +144,7 @@ try {
     }
     Write-Host ('安装完成：' + $installerTarget)
     Write-Host ('源码版本：' + $sourceCommit)
-    if ($NoStart) { Write-Host '按要求未启动桌宠；可双击安装目录中的“启动大肥鱼.vbs”。' }
+    if ($NoStart) { Write-Host '按要求未启动桌宠；可双击安装目录中的“启动龙娘桌宠.vbs”。' }
 } finally {
     $env:PATH = $installerOldPath
     $tempRoot = [IO.Path]::GetFullPath([IO.Path]::GetTempPath()).TrimEnd([IO.Path]::DirectorySeparatorChar) + [IO.Path]::DirectorySeparatorChar
