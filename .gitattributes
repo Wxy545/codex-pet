@@ -1,0 +1,13 @@
+# 源码和配置统一LF；Windows入口脚本在检出时使用CRLF。
+* text=auto eol=lf
+*.ps1 text eol=crlf
+*.vbs text eol=crlf
+*.cmd text eol=crlf
+*.bat text eol=crlf
+
+# 动画和图片保持原始字节。
+*.png binary
+*.webp binary
+*.gif binary
+*.ico binary
+*.mp4 binary

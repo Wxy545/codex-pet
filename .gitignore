@@ -1,0 +1,11 @@
+node_modules/
+data/
+*.log
+.env
+.env.*
+!.env.example
+*.tmp
+*.tgz
+*.zip
+*.exe
+coverage/

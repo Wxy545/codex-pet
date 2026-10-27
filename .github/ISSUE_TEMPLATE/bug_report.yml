@@ -1,0 +1,66 @@
+name: 故障反馈
+description: 报告启动、动画、对话、通知或 Codex 版本适配问题。
+title: '[Bug] '
+body:
+  - type: markdown
+    attributes:
+      value: |
+        这是公开仓库。请只提供脱敏的复现步骤和相关错误信息，不要粘贴 auth.json、运行 token、任何凭据或私有对话，也不要上传整个 data 目录。
+  - type: input
+    id: pet_version
+    attributes:
+      label: 桌宠版本
+      description: 填写 package.json 中的版本；从源码运行时请同时填写 commit SHA。
+    validations:
+      required: true
+  - type: input
+    id: codex_version
+    attributes:
+      label: Codex 版本
+      description: 填写 Codex 桌面版版本和 codex --version 输出；无法取得的项目请写 unknown。
+    validations:
+      required: true
+  - type: input
+    id: node_version
+    attributes:
+      label: Node.js 版本
+      description: 填写 node --version 输出。
+    validations:
+      required: true
+  - type: input
+    id: windows_version
+    attributes:
+      label: Windows 版本
+      placeholder: 例如 Windows 11 24H2
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: 复现步骤
+      description: 说明如何从启动桌宠到出现问题，保留复现所需的最少操作。
+      value: |
+        1.
+        2.
+    validations:
+      required: true
+  - type: textarea
+    id: result
+    attributes:
+      label: 预期与实际结果
+      value: |
+        预期：
+        实际：
+    validations:
+      required: true
+  - type: textarea
+    id: diagnostics
+    attributes:
+      label: 脱敏诊断信息
+      description: 可提供相关错误码、检查失败项或脱敏截图；请删除 token、凭据、个人路径和私有对话。
+      render: text
+  - type: checkboxes
+    id: privacy
+    attributes:
+      label: 提交前检查
+      options:
+        - label: 我已删除 auth 信息、运行 token、凭据和私有对话。
+          required: true

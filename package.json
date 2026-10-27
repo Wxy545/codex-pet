@@ -1,0 +1,19 @@
+{
+  "name": "dsh-pet-codex",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "基于 dsh-pet 的 Codex 独立 Windows 桌宠适配",
+  "homepage": "https://github.com/WangXinYu123456/dsh-pet-codex#readme",
+  "repository": { "type": "git", "url": "git+https://github.com/WangXinYu123456/dsh-pet-codex.git" },
+  "bugs": { "url": "https://github.com/WangXinYu123456/dsh-pet-codex/issues" },
+  "license": "MIT",
+  "scripts": {
+    "prepare:runtime": "node scripts/prepare-runtime.mjs",
+    "start": "node src/app.mjs",
+    "stop": "node src/app.mjs --stop",
+    "test": "node --test --test-concurrency=1 test/*.test.mjs src/*.test.cjs"
+  },
+  "engines": { "node": ">=22.12.0" },
+  "dependencies": { "dsh-pet": "0.3.8" }
+}
