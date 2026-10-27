@@ -32,7 +32,7 @@ export function locateCodex({ env = process.env, platform = process.platform, ex
 
   try {
     const output = execFileSyncImpl(windows ? 'where.exe' : 'which', [windows ? 'codex.exe' : 'codex'], {
-      encoding: 'utf8', windowsHide: true, shell: false, env, timeout: 5000,
+      encoding: 'utf8', windowsHide: true, shell: false, stdio: ['ignore', 'pipe', 'pipe'], env, timeout: 5000,
     });
     for (const candidate of String(output ?? '').split(/\r?\n/).map(line => line.trim()).filter(Boolean)) {
       const found = executablePath(candidate);

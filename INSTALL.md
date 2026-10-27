@@ -14,7 +14,8 @@
 
 ```powershell
 $installer = Join-Path $env:TEMP ('dsh-pet-codex-install-' + [Guid]::NewGuid().ToString('N') + '.ps1')
-Invoke-WebRequest 'https://raw.githubusercontent.com/Wxy545/dsh-pet-codex/main/install.ps1' -UseBasicParsing -OutFile $installer
+$file = Invoke-RestMethod 'https://api.github.com/repos/Wxy545/dsh-pet-codex/contents/install.ps1?ref=main' -Headers @{'User-Agent'='dsh-pet-codex'}
+[IO.File]::WriteAllBytes($installer, [Convert]::FromBase64String($file.content))
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File $installer
 ```
 

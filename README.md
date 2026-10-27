@@ -17,7 +17,7 @@ Codex CLI 需要提前安装并正常登录。安装器会准备桌宠所需的 
 也可以自己在 PowerShell 里运行这一行：
 
 ```powershell
-$installer = Join-Path $env:TEMP 'dsh-pet-codex-install.ps1'; Invoke-WebRequest 'https://raw.githubusercontent.com/Wxy545/dsh-pet-codex/main/install.ps1' -UseBasicParsing -OutFile $installer; powershell.exe -NoProfile -ExecutionPolicy Bypass -File $installer
+$installer = Join-Path $env:TEMP 'dsh-pet-codex-install.ps1'; $file = Invoke-RestMethod 'https://api.github.com/repos/Wxy545/dsh-pet-codex/contents/install.ps1?ref=main' -Headers @{'User-Agent'='dsh-pet-codex'}; [IO.File]::WriteAllBytes($installer, [Convert]::FromBase64String($file.content)); powershell.exe -NoProfile -ExecutionPolicy Bypass -File $installer
 ```
 
 默认安装到 `%LOCALAPPDATA%\dsh-pet-codex`，装好后启动。以后在安装目录双击 **启动大肥鱼.vbs** 就能叫她出来，双击 **停止大肥鱼.vbs** 让她休息。自定义目录和手动安装见 [INSTALL.md](INSTALL.md)。
@@ -30,9 +30,9 @@ $installer = Join-Path $env:TEMP 'dsh-pet-codex-install.ps1'; Invoke-WebRequest 
 - **点播动作**：右键 → 动作，想看吃白饭、吃火锅还是女仆舞，自己挑。
 
 <p>
-  <img src="https://raw.githubusercontent.com/PC2005-cloud/dsh-pet/main/dsh-pet/assets/preview/dianji-huiying-yuanqi-huishou.gif" width="200" alt="大肥鱼挥手">
-  <img src="https://raw.githubusercontent.com/PC2005-cloud/dsh-pet/main/dsh-pet/assets/preview/yuandi-zhuanxin-wan-mofang.gif" width="200" alt="大肥鱼玩魔方">
-  <img src="https://raw.githubusercontent.com/PC2005-cloud/dsh-pet/main/dsh-pet/assets/preview/chi-baifan.gif" width="200" alt="大肥鱼吃白饭">
+  <img src="https://github.com/PC2005-cloud/dsh-pet/raw/refs/heads/main/dsh-pet/assets/preview/dianji-huiying-yuanqi-huishou.gif" width="200" alt="大肥鱼挥手">
+  <img src="https://github.com/PC2005-cloud/dsh-pet/raw/refs/heads/main/dsh-pet/assets/preview/yuandi-zhuanxin-wan-mofang.gif" width="200" alt="大肥鱼玩魔方">
+  <img src="https://github.com/PC2005-cloud/dsh-pet/raw/refs/heads/main/dsh-pet/assets/preview/chi-baifan.gif" width="200" alt="大肥鱼吃白饭">
 </p>
 
 动画预览来自 [PC2005-cloud/dsh-pet](https://github.com/PC2005-cloud/dsh-pet#效果预览)，本项目沿用原作动画。
