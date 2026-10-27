@@ -4,9 +4,9 @@
   "private": true,
   "type": "module",
   "description": "基于 dsh-pet 的 Codex 独立 Windows 桌宠适配",
-  "homepage": "https://github.com/WangXinYu123456/dsh-pet-codex#readme",
-  "repository": { "type": "git", "url": "git+https://github.com/WangXinYu123456/dsh-pet-codex.git" },
-  "bugs": { "url": "https://github.com/WangXinYu123456/dsh-pet-codex/issues" },
+  "homepage": "https://github.com/Wxy545/dsh-pet-codex#readme",
+  "repository": { "type": "git", "url": "git+https://github.com/Wxy545/dsh-pet-codex.git" },
+  "bugs": { "url": "https://github.com/Wxy545/dsh-pet-codex/issues" },
   "license": "MIT",
   "scripts": {
     "prepare:runtime": "node scripts/prepare-runtime.mjs",

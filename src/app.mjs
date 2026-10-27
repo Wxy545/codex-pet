@@ -5,7 +5,7 @@ import { readFile, writeFile, unlink } from 'node:fs/promises';
 import { resolve, dirname, join } from 'node:path';
 import { homedir } from 'node:os';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { execFileSync } from 'node:child_process';
+import { locateCodex } from './codex-path.mjs';
 import { createCodexWatcher } from './codex-events.mjs';
 import { createCodexChatHandler } from './codex-chat.mjs';
 import { codexQuotaResult } from './quota.mjs';
@@ -57,7 +57,7 @@ async function start() {
       eventsRefreshSec: { balance: 600, whisper: 600 },
     }, null, 2));
   }
-  const codexPath = process.env.CODEX_PET_CLI || locateCodex();
+  const codexPath = locateCodex();
   const codexHome = process.env.CODEX_HOME || join(homedir(), '.codex');
   const hostPath = join(root, 'node_modules', 'dsh-pet', 'lib', 'codex-host.js');
   if (!existsSync(hostPath)) throw new Error('请先运行 setup.ps1 准备运行时。');
@@ -160,14 +160,6 @@ async function start() {
   logger.info('右键可点播动作、查看额度或对话；自动碎碎念默认十分钟一次，可在 AI 设置中关闭。');
 }
 
-function locateCodex() {
-  const command = process.platform === 'win32' ? 'where.exe' : 'which';
-  const candidates = execFileSync(command, ['codex'], { encoding: 'utf8', windowsHide: true }).trim().split(/\r?\n/).filter(Boolean);
-  // Windows 的 npm shim 不能交给 shell:false；只选择真正的可执行文件。
-  const found = process.platform === 'win32' ? candidates.find(path => /\.exe$/i.test(path)) : candidates[0];
-  if (!found) throw new Error('未找到可直接运行的 Codex CLI；Windows 需 codex.exe，可用 CODEX_PET_CLI 指定路径。');
-  return found;
-}
 function json(res, status, body) {
   res.writeHead(status, { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' });
   res.end(JSON.stringify(body));
