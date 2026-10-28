@@ -91,6 +91,8 @@ function characterCopy(id, locale = L.getLocale()) {
       '点击回应-元气挥手': english ? 'A little wave' : '招手眨眼',
       '点击回应-挠痒咯咯笑': english ? 'Ticklish shrug' : '怕痒缩肩',
       '原地漂浮踏步': english ? 'Wing-assisted steps' : '振翼踏步',
+      '轻快记录': english ? 'Reading a spellbook' : '抱书阅读',
+      '悠闲哼歌': english ? 'Cushion break' : '坐垫歇息',
       '余额-钱袋满溢': english ? 'Balance: plenty left' : '余量宽裕',
       '余额-金袋叮当': english ? 'Balance: comfortable' : '余量充足',
       '余额-钱袋如常': english ? 'Balance: moderate' : '余量适中',

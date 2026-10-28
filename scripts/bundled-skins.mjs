@@ -5,6 +5,7 @@ import { isAbsolute, join } from 'node:path';
 import Actions from '../src/skin-actions.cjs';
 import officialBaseline from './bundled-white-dragon-0.3.0.json' with { type: 'json' };
 import officialBaseline031 from './bundled-white-dragon-0.3.1.json' with { type: 'json' };
+import officialBaseline040 from './bundled-white-dragon-0.4.0.json' with { type: 'json' };
 
 const digest = data => createHash('sha256').update(data).digest('hex');
 const mediaName = name => /^[a-z0-9][a-z0-9_-]{0,95}\.webm$/.test(name);
@@ -17,7 +18,7 @@ async function fileHash(file) {
   catch (error) { if (error.code === 'ENOENT') return null; throw error; }
 }
 
-export async function seedBundledWhiteDragon({ projectRoot, dataRoot = join(projectRoot, 'data'), baseline = [officialBaseline, officialBaseline031] }) {
+export async function seedBundledWhiteDragon({ projectRoot, dataRoot = join(projectRoot, 'data'), baseline = [officialBaseline, officialBaseline031, officialBaseline040] }) {
   if (!isAbsolute(projectRoot) || !isAbsolute(dataRoot)) throw new Error('absolute-skin-root-required');
   const source = join(projectRoot, 'assets', 'white-dragon');
   const skinsRoot = join(dataRoot, 'skins');

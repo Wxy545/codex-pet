@@ -29,7 +29,9 @@ const LABELS = {
   magic: ['掌心微光', 'A little magic'], shy: ['害羞卷尾', 'Shy tail curl'], proud: ['叉腰得意', 'Feeling smug'],
   'dragon-snack': ['吃星形饼干', 'Star-cookie snack'], 'wing-fan': ['扇翼纳凉', 'Wing fan'],
   greeting: ['招手眨眼', 'A little wave'], tickle: ['怕痒缩肩', 'Ticklish shrug'], 'wing-hover': ['振翼踏步', 'Wing-assisted steps'],
+  'book-reading': ['抱书阅读', 'Reading a spellbook'], 'cushion-rest': ['坐垫歇息', 'Cushion break'],
 };
+const OPTIONAL_PROFILES = new Set(['book-reading', 'cushion-rest']);
 
 /** 只把实际视频放进原生动画池；事件槽可以共用，不虚增专属动作。 */
 export function buildHarnessConfig({ manifest, locale = 'zh-CN', copy }) {
@@ -38,13 +40,14 @@ export function buildHarnessConfig({ manifest, locale = 'zh-CN', copy }) {
   const media = {}, names = {};
   for (const [key, labels] of Object.entries(LABELS)) {
     const profile = manifest.profiles?.[key];
+    if (profile === undefined && OPTIONAL_PROFILES.has(key)) continue;
     if (profile?.type !== 'video' || !sourceName(profile.file)) throw new Error('harness-profile-video-required: ' + key);
     const action = Object.entries(manifest.actions ?? {}).find(([, value]) => value.profile === key)?.[0];
     const label = copy.actionLabels?.[action] || labels[english ? 1 : 0];
     if (!targetName(label + '.webm') || media[label + '.webm']) throw new Error('invalid-harness-action-label');
     names[key] = label; media[label + '.webm'] = profile.file;
   }
-  const group = (id, weight, keys) => ({ id, weight, actions: keys.map(key => names[key]) });
+  const group = (id, weight, keys) => ({ id, weight, actions: keys.map(key => names[key]).filter(Boolean) });
   const config = {
     whisperPrompt: copy.persona,
     whisperImageEnabled: false, chatImageEnabled: false, memes: {},
@@ -55,7 +58,7 @@ export function buildHarnessConfig({ manifest, locale = 'zh-CN', copy }) {
       clicks: ['click', 'shy', 'proud', 'tickle', 'greeting'].map(key => names[key]),
       moves: { default: { minDist: 60, maxDist: 240, margin: 20, leadSec: .12, tailSec: .12 },
         actions: [{ name: names.walk }, { name: names['wing-hover'], params: { minDist: 40, maxDist: 120 } }] },
-      categories: [group(english ? 'Little gestures' : '小动作', 20, ['wing-care', 'tail-nap']),
+      categories: [group(english ? 'Little gestures' : '小动作', 20, ['wing-care', 'tail-nap', 'book-reading', 'cushion-rest']),
         group(english ? 'Play' : '玩耍', 20, ['magic']), group(english ? 'Snacks' : '吃什么', 16, ['dragon-snack']),
         group(english ? 'Cooling off' : '时节', 14, ['wing-fan']), group(english ? 'Greetings' : '招呼', 10, ['greeting'])],
       events: { balance: ['proud', 'success', 'idle', 'thinking', 'waiting', 'error'].map(key => names[key]),
@@ -67,6 +70,30 @@ export function buildHarnessConfig({ manifest, locale = 'zh-CN', copy }) {
       : ['让我想想。', '这步交给我。', '整理一下。', '这一步，等你。', '搞定。', '再检查一下。']).map(text => [text]),
   };
   return { config, media, coverage: { videos: Object.keys(media).length, balanceSlots: 6, whisperSlots: 3, workSlots: 6, sharedWorkResult: true } };
+}
+
+/** 动作引用必须与实际媒体逐一对应；两条新动作可缺省，旧核心动作不能缺。 */
+function referencedMedia(config, locale) {
+  const animations = config?.animations;
+  if (!animations) throw new Error('invalid-harness-pack');
+  const used = new Set();
+  const add = values => {
+    if (!Array.isArray(values)) throw new Error('invalid-harness-pack');
+    for (const value of values.flat()) {
+      if (typeof value !== 'string' || !targetName(value + '.webm')) throw new Error('invalid-harness-pack-file');
+      used.add(value + '.webm');
+    }
+  };
+  for (const key of ['idle', 'turn', 'drag', 'clicks']) add(animations[key]);
+  if (!Array.isArray(animations.moves?.actions) || !Array.isArray(animations.categories)) throw new Error('invalid-harness-pack');
+  add(animations.moves.actions.map(value => value?.name));
+  for (const category of animations.categories) add(category?.actions);
+  for (const key of ['balance', 'whisper', 'workStatus']) add(animations.events?.[key]);
+  const index = locale === 'en' ? 1 : 0;
+  const known = new Set(Object.values(LABELS).map(labels => labels[index] + '.webm'));
+  const required = Object.entries(LABELS).filter(([key]) => !OPTIONAL_PROFILES.has(key)).map(([, labels]) => labels[index] + '.webm');
+  if ([...used].some(name => !known.has(name)) || required.some(name => !used.has(name))) throw new Error('invalid-harness-pack-file');
+  return used;
 }
 
 function ownDirectory(home, directory) {
@@ -99,10 +126,13 @@ function atomicFile(file, write) {
 export function seedHarnessPack({ sourceRoot, dshHome, locale = 'zh-CN' }) {
   if (!isAbsolute(sourceRoot) || !isAbsolute(dshHome)) throw new Error('absolute-harness-path-required');
   const pack = JSON.parse(readFileSync(join(sourceRoot, 'pack.json'), 'utf8'));
-  const selected = pack.locales?.[locale] ?? pack.locales?.en;
-  if (pack.schemaVersion !== 1 || !selected?.config || !Array.isArray(selected.files) || selected.files.length !== 20) throw new Error('invalid-harness-pack');
+  const selectedLocale = pack.locales?.[locale] ? locale : 'en';
+  const selected = pack.locales?.[selectedLocale];
+  if (pack.schemaVersion !== 1 || !selected?.config || !Array.isArray(selected.files)) throw new Error('invalid-harness-pack');
+  const expected = referencedMedia(selected.config, selectedLocale);
+  if (selected.files.length !== expected.size) throw new Error('invalid-harness-pack');
   const snapshot = selected.files.map(item => {
-    if (!targetName(item.name) || !sourceName(item.source) || !/^[a-f0-9]{64}$/.test(item.sha256)) throw new Error('invalid-harness-pack-file');
+    if (!targetName(item.name) || !expected.has(item.name) || !sourceName(item.source) || !/^[a-f0-9]{64}$/.test(item.sha256)) throw new Error('invalid-harness-pack-file');
     const file = join(sourceRoot, 'assets', item.source);
     if (lstatSync(file).isSymbolicLink() || !lstatSync(file).isFile()) throw new Error('invalid-harness-source-media');
     const data = readFileSync(file);

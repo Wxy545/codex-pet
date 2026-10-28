@@ -57,6 +57,14 @@ test('龙娘五个特色动作使用独立中英文显示名，不改原鱼与�
   assert.equal(fish.actionLabels['鲸鱼吐泡泡特效'],index?'Whale bubbles':'鲸鱼吐泡泡特效');
  }
 });
+
+test('抱书和坐垫两项只替换龙娘日常槽显示名，原鱼保持原动作语义',()=>{
+ for(const [locale,reading,rest] of [['zh-CN','抱书阅读','坐垫歇息'],['en','Reading a spellbook','Cushion break']]){
+  const dragon=C.characterCopy('white-dragon',locale),fish=C.characterCopy('bluefish',locale);
+  assert.equal(dragon.actionLabels['轻快记录'],reading);assert.equal(dragon.actionLabels['悠闲哼歌'],rest);
+  assert.equal(fish.actionLabels['轻快记录'],undefined);assert.equal(fish.actionLabels['悠闲哼歌'],undefined);
+ }
+});
 test('无选择优先就绪Q龙娘，显式选择保留，缺图和无效清单回原鲸',async t=>{
  const f=fixture(t);f.write('skins/white-dragon/sprites.png',f.png);
  assert.equal(C.readCharacter(f.root).id,'white-dragon');

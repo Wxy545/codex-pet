@@ -105,6 +105,11 @@
       "sourceSha256": "bfd1c92eba6328e3f2793ccef72a60da26971f29aabb3a9caef79e9f6af56de6",
       "sha256": "50688df53f73fe962a767c2e954a892a5fdfc5bc2a15e0bdcbeab34e8252ec53",
       "bytes": 914519
+    },
+    "q-cushion-rest.webm": {
+      "sourceSha256": "c500a84cc377d8f94ef8b3a742cd7286fd5202c9951df61dac1a1833f971a5fd",
+      "sha256": "f50e20d31eb67b5002f965bf3176bbc111d89e58623634ab268ad8a40ab263c2",
+      "bytes": 330484
     }
   }
 }

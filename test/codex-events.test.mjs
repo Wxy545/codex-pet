@@ -29,8 +29,9 @@ async function fixture(t, initial = {}, options = {}) {
 }
 
 async function until(predicate, message = '等待事件适配器更新') {
-  const limit = Date.now() + 4000;
-  while (Date.now() < limit) {
+  // 测试可控制事件时间；轮询超时仍按真实经过时间计算，避免时钟冻结后挂起。
+  const limit = performance.now() + 4000;
+  while (performance.now() < limit) {
     if (predicate()) return;
     await new Promise(resolve => setTimeout(resolve, 25));
   }
@@ -173,20 +174,37 @@ test('取消和错误只结束对应会话，不覆盖其他正在工作的会�
 });
 
 test('完成和错误短暂保留后回idle，等待输入和仍在工作的会话不因超时清除', async t => {
-  const f = await fixture(t, { 'hold.jsonl': meta('hold') + event('task_started', { turn_id: 'hold-1' }) }, { terminalHoldMs: 100 });
+  const terminalHoldMs = 100;
+  let now = Date.now();
+  const timestamp = () => new Date(now).toISOString();
+  // 只推进状态过期时钟，文件读取与轮询照常运行，不依赖 CI 在 100ms 内调度断言。
+  t.mock.method(Date, 'now', () => now);
+  const f = await fixture(t, { 'hold.jsonl': meta('hold') + event('task_started', { turn_id: 'hold-1' }, timestamp()) }, { terminalHoldMs });
   await f.watcher.start();
-  await appendFile(join(f.dir, 'hold.jsonl'), event('task_complete', { turn_id: 'hold-1' }));
+  await appendFile(join(f.dir, 'hold.jsonl'), event('task_complete', { turn_id: 'hold-1' }, timestamp()));
   await until(() => f.watcher.snapshot().state === 'success');
-  await until(() => f.watcher.snapshot().state === 'idle');
   assert.equal(f.watcher.snapshot().activeCount, 0);
+  now += terminalHoldMs - 1;
+  assert.equal(f.watcher.snapshot().state, 'success');
+  now += 1;
+  assert.equal(f.watcher.snapshot().state, 'idle');
   await until(() => f.changes.at(-1).state === 'idle');
-  await appendFile(join(f.dir, 'hold.jsonl'), event('task_started', { turn_id: 'hold-2' }) + event('task_complete', { turn_id: 'hold-2', error: { code: 'failed' } }));
+  await appendFile(join(f.dir, 'hold.jsonl'), event('task_started', { turn_id: 'hold-2' }, timestamp()) + event('task_complete', { turn_id: 'hold-2', error: { code: 'failed' } }, timestamp()));
   await until(() => f.watcher.snapshot().state === 'error');
-  await until(() => f.watcher.snapshot().state === 'idle');
-  await appendFile(join(f.dir, 'hold.jsonl'), event('request_user_input', { id: 'wait-forever' }));
+  now += terminalHoldMs - 1;
+  assert.equal(f.watcher.snapshot().state, 'error');
+  now += 1;
+  assert.equal(f.watcher.snapshot().state, 'idle');
+  await until(() => f.changes.at(-1).state === 'idle');
+  await appendFile(join(f.dir, 'hold.jsonl'), event('request_user_input', { id: 'wait-forever' }, timestamp()));
   await until(() => f.watcher.snapshot().state === 'waiting');
-  await new Promise(resolve => setTimeout(resolve, 160));
+  now += terminalHoldMs * 10;
   assert.equal(f.watcher.snapshot().state, 'waiting');
+  assert.equal(f.watcher.snapshot().activeCount, 1);
+  await appendFile(join(f.dir, 'hold.jsonl'), record('response_item', { type: 'function_call', name: 'exec_command' }, timestamp()));
+  await until(() => f.watcher.snapshot().state === 'working');
+  now += terminalHoldMs * 10;
+  assert.equal(f.watcher.snapshot().state, 'working');
   assert.equal(f.watcher.snapshot().activeCount, 1);
 });
 

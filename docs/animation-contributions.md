@@ -2,7 +2,7 @@
 
 [Project home](../README.md) · [项目中文介绍](../README.zh-CN.md)
 
-White Dragon Girl has 20 chibi clips, covering core interactions, work states and everyday gestures. Recent additions include a star-cookie snack, wing fanning, a wave, a ticklish shrug and wing-assisted steps. There are five click reactions and two walking actions. Balance and chatter events reuse suitable clips; shared entries are labelled in the right-click menu.
+White Dragon Girl has 21 chibi clips, covering core interactions, work states and everyday gestures. Recent additions include a cushion break, a star-cookie snack, wing fanning, a wave, a ticklish shrug and wing-assisted steps. There are five click reactions and two walking actions. Balance and chatter events reuse suitable clips; shared entries are labelled in the right-click menu.
 
 We welcome new gestures and improvements to existing clips. A small action that suits the character is a good place to start.
 
@@ -45,4 +45,4 @@ Code and documentation use MIT. Third-party assets keep their own licenses; do n
 
 ## 中文投稿要点
 
-先开 Issue 附小预览、动作名称、时长和来源许可，再决定是否做整套。最终素材需要实际透明通道，并验证循环、动作衔接和 Windows 播放。绿底源视频可以先保留，后期另做抠像。白龙娘已有 20 段 Q 版视频，覆盖核心互动、工作状态及日常动作；新增吃星形饼干、扇翼纳凉、招手眨眼、怕痒缩肩和振翼踏步。点击回应共五种，走位两种；余额与碎碎念复用合适视频，菜单标明共用。欢迎继续扩充符合龙娘性格的动作，角色素材许可见[说明](../assets/white-dragon/NOTICE.md)。投稿由维护者逐项适配。
+先开 Issue 附小预览、动作名称、时长和来源许可，再决定是否做整套。最终素材需要实际透明通道，并验证循环、动作衔接和 Windows 播放。绿底源视频可以先保留，后期另做抠像。白龙娘已有 21 段 Q 版视频，覆盖核心互动、工作状态及日常动作；新增坐垫歇息、吃星形饼干、扇翼纳凉、招手眨眼、怕痒缩肩和振翼踏步。点击回应共五种，走位两种；余额与碎碎念复用合适视频，菜单标明共用。欢迎继续扩充符合龙娘性格的动作，角色素材许可见[说明](../assets/white-dragon/NOTICE.md)。投稿由维护者逐项适配。

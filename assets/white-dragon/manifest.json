@@ -80,6 +80,10 @@
     "wing-hover": {
       "type": "video",
       "file": "q-wing-hover.webm"
+    },
+    "cushion-rest": {
+      "type": "video",
+      "file": "q-cushion-rest.webm"
     }
   },
   "actions": {
@@ -169,6 +173,10 @@
     },
     "原地漂浮踏步": {
       "profile": "wing-hover",
+      "coverage": "dedicated"
+    },
+    "悠闲哼歌": {
+      "profile": "cushion-rest",
       "coverage": "dedicated"
     }
   }

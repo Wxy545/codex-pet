@@ -52,7 +52,7 @@ $installer = Join-Path $env:TEMP 'codex-pet-install.ps1'; $file = Invoke-RestMet
 
 右键打开「形象」切换 Q 版角色：
 
-- **白龙娘**：新安装的默认角色，提供 20 段 Q 版视频。除了散步、点击和工作状态，还会整理龙翼、吃星形饼干、招手眨眼、玩小魔法、抱尾小憩。
+- **白龙娘**：新安装的默认角色，提供 21 段 Q 版视频。除了散步、点击和工作状态，还会整理龙翼、吃星形饼干、招手眨眼、玩小魔法、坐垫歇息、抱尾小憩。
 - **大肥鱼**：保留原版角色及完整动作。
 
 龙娘有五种点击回应，散步之外还能振翼踏步。日常动作覆盖小动作、玩耍、吃东西、纳凉和招呼五类；额度与碎碎念会复用相应视频，菜单中标为「共用动作」。更新时保留已经保存的角色选择。
@@ -67,7 +67,11 @@ $installer = Join-Path $env:TEMP 'codex-pet-install.ps1'; $file = Invoke-RestMet
 
 ## 启动与更新
 
-右键或托盘菜单打开「启动演出」，可选「仅桌宠」「仅启动演出」「桌宠与启动演出」，默认仅桌宠。后两种模式会在 Codex 启动时播放龙娘演出，点击或按 Esc 跳过，也可以用「预览演出」立即查看。
+新安装默认同时开启桌宠和启动演出。启动 Codex 时，龙娘会在全屏星尘中苏醒、施法、招手，再交回 ChatGPT 窗口；配有原创合成音效，正常约 14 秒。可用「跳过」或 Esc 提前结束，右下角可切换声音。
+
+右键或托盘菜单打开「启动演出」，可选「仅桌宠」「仅启动演出」「桌宠与启动演出」；「预览演出」可立即查看。更新时保留已经保存的模式。
+
+<img src="docs/assets/startup-scene.jpg" width="720" alt="龙娘在 ChatGPT 启动演出中招手">
 
 关闭随 Codex 启动：
 
@@ -98,7 +102,7 @@ Codex 和 dsh-pet 的更新检查、源码运行及故障排查见[维护文档]
 
 感谢 [PC2005-cloud/dsh-pet](https://github.com/PC2005-cloud/dsh-pet) 提供桌宠、动画与互动实现。本项目基于 `dsh-pet@0.3.8` 适配。
 
-启动演出参考了 [884048454/codex-startup-animation](https://github.com/884048454/codex-startup-animation)，感谢原作者。
+启动演出参考了 [884048454/codex-startup-animation](https://github.com/884048454/codex-startup-animation) 和 [yushua0808-cpu/dragon-codex-boot](https://github.com/yushua0808-cpu/dragon-codex-boot) 的启动与窗口交接思路，桌宠交互也参考了 [jingh12312-rgb/bailong-desktop-pet](https://github.com/jingh12312-rgb/bailong-desktop-pet)。感谢这些项目的作者；本项目使用自制的龙娘动作与启动画面。
 
 原型“溟月”出自 [上善无形](https://space.bilibili.com/4456176)，DeepSeek 版女仆鲸鱼娘设计出自 [ZipZipPipe](https://space.bilibili.com/4168597)。
 

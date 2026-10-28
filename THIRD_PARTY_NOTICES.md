@@ -58,7 +58,7 @@ SOFTWARE.
 
 ## 白龙娘角色与动画
 
-角色参考图署名为小红书号 **233534463**。原作者已同意本项目使用白龙娘形象并公开发布。内置的 20 段 Q 版视频由本项目使用 MiniMax H3 生成，再完成剪辑、循环处理和透明抠像；其中 10 段覆盖核心动作，另有整理龙翼、抱尾小憩、掌心微光、害羞卷尾、叉腰得意、吃星形饼干、扇翼纳凉、招手眨眼、怕痒缩肩和振翼踏步。工作与结果状态共用打字视频。
+角色参考图署名为小红书号 **233534463**。原作者已同意本项目使用白龙娘形象并公开发布。内置的 21 段 Q 版视频由本项目使用 MiniMax H3 生成，再完成剪辑、循环处理和透明抠像；其中 10 段覆盖核心动作，另有整理龙翼、抱尾小憩、掌心微光、害羞卷尾、叉腰得意、吃星形饼干、扇翼纳凉、招手眨眼、怕痒缩肩、振翼踏步和坐垫歇息。工作与结果状态共用打字视频。
 
 角色及素材许可与项目代码的 MIT 许可分开，详见 [assets/white-dragon/NOTICE.md](assets/white-dragon/NOTICE.md)。本项目的 Codex 桌宠和 DeepSeek Harness 角色插件使用同一套 Q 版素材，并保留该说明。
 
@@ -71,6 +71,10 @@ SOFTWARE.
 该项目的动画页面另基于沈宏宏的 [dsh-startup-screen](https://github.com/6shenhonghong9/dsh-startup-screen)，来源与许可见其 [NOTICE.md](https://github.com/884048454/codex-startup-animation/blob/main/NOTICE.md) 和 [DSH-LICENSE.txt](https://github.com/884048454/codex-startup-animation/blob/main/DSH-LICENSE.txt)。采用相关页面或样式时，也须保留这层上游署名与许可。
 
 其安装器下载的第三方配音和音效不属于代码的 MIT 授权范围。本项目不会将这些声音视为已获授权的素材，新增演出使用自制或取得明确授权的声音。
+
+本次启动窗口交接还参考了 [yushua0808-cpu/dragon-codex-boot](https://github.com/yushua0808-cpu/dragon-codex-boot)（核对提交 `c63a203e5857e85fb3c8a9891eddb570e7a27b54`）等待真实主窗口、按目标屏幕播放和结束后交还焦点的做法。其代码采用 MIT，版权声明为 `Copyright (c) 2026 Dragon Codex Boot contributors`；媒体另有说明。本项目独立实现接线与页面，不复制其代码、视频、角色或声音，不接管快捷方式。
+
+桌宠交互参考 [jingh12312-rgb/bailong-desktop-pet](https://github.com/jingh12312-rgb/bailong-desktop-pet) 的公开说明及 v0.4.1 随包源码。该源码和素材没有另授开放许可，本项目仅借鉴交互思路，未纳入其代码、美术或声音；截图与新版发布说明不作为本项目已经支持某项功能的依据。
 
 ## 其他依赖
 

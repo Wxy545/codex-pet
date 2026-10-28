@@ -11,16 +11,16 @@ let Pack = {};
 try { Pack = await import('../harness/pack.mjs'); } catch (error) { if (error.code !== 'ERR_MODULE_NOT_FOUND') throw error; }
 let Motion = {};
 try { Motion = await import('../harness/motion-fix.mjs'); } catch (error) { if (error.code !== 'ERR_MODULE_NOT_FOUND') throw error; }
-const profiles = ['idle','walk','click','turn','drag','thinking','working','waiting','success','error','wing-care','tail-nap','magic','shy','proud','dragon-snack','wing-fan','greeting','tickle','wing-hover'];
+const profiles = ['idle','walk','click','turn','drag','thinking','working','waiting','success','error','wing-care','tail-nap','magic','shy','proud','dragon-snack','wing-fan','greeting','tickle','wing-hover','book-reading','cushion-rest'];
 const manifest = { schemaVersion: 1, profiles: Object.fromEntries(profiles.map(key => [key, {type:'video',file:`q-${key}.webm`}])) };
-const definition = locale => Pack.buildHarnessConfig({manifest, locale, copy:Character.characterCopy('white-dragon',locale)});
+const definition = (locale, candidate=manifest) => Pack.buildHarnessConfig({manifest:candidate, locale, copy:Character.characterCopy('white-dragon',locale)});
 const digest = data => createHash('sha256').update(data).digest('hex');
-function fixture(t, locale='zh-CN') {
+function fixture(t, locale='zh-CN', candidate=manifest) {
   const dir = mkdtempSync(join(tmpdir(),'codex-pet-harness-'));
   t.after(()=>rmSync(dir,{recursive:true,force:true}));
   const sourceRoot = join(dir,'bundle');
   const media = join(sourceRoot,'assets'); mkdirSync(media,{recursive:true});
-  const built = definition(locale);
+  const built = definition(locale,candidate);
   const files = Object.entries(built.media).map(([name,source]) => {
     const bytes = Buffer.concat([Buffer.from('1a45dfa301000000000000004282847765626d','hex'),Buffer.from(source)]);
     writeFileSync(join(media,source),bytes);
@@ -31,13 +31,14 @@ function fixture(t, locale='zh-CN') {
   return {dir,sourceRoot,home:join(dir,'home'),built,pack};
 }
 
-test('Harness native pack uses twenty actual clips and preserves event slot contracts',()=>{
+test('Harness native pack uses twenty-two actual clips and preserves event slot contracts',()=>{
   assert.equal(typeof Pack.buildHarnessConfig,'function','missing native Harness pack builder');
   const built=definition('zh-CN');
-  assert.equal(Object.keys(built.media).length,20);
+  assert.equal(Object.keys(built.media).length,22);
   assert.equal(built.config.pets[0].id,'codex-white-dragon');
   assert.equal(built.config.animations.clicks.length,5);
   assert.equal(built.config.animations.categories.length,5);
+  assert.deepEqual(built.config.animations.categories[0].actions,['整理龙翼','抱尾小憩','抱书阅读','坐垫歇息']);
   assert.equal(built.config.animations.moves.actions.length,2);
   assert.deepEqual(Object.keys(built.config.animations.events),['balance','whisper','workStatus']);
   assert.equal(built.config.animations.events.balance.length,6);
@@ -58,8 +59,53 @@ test('English pack contains localized role, menu actions and status text',()=>{
   const built=definition('en');
   assert.equal(built.config.pets[0].name,'Dragon Girl');
   assert.ok(Object.keys(built.media).some(key=>key==='Star-cookie snack.webm'));
+  assert.ok(Object.keys(built.media).includes('Reading a spellbook.webm'));
+  assert.ok(Object.keys(built.media).includes('Cushion break.webm'));
   assert.doesNotMatch(JSON.stringify(built.config),/[\u3400-\u9fff]/);
   assert.equal(built.config.animations.categories.reduce((n,c)=>n+c.weight,0),80);
+});
+
+test('optional seated profiles allow the existing pack or either new action without placeholder entries',t=>{
+  for(const available of [[],['book-reading'],['cushion-rest'],['book-reading','cushion-rest']]){
+    const candidate=structuredClone(manifest);
+    for(const key of ['book-reading','cushion-rest'])if(!available.includes(key))delete candidate.profiles[key];
+    const f=fixture(t,'zh-CN',candidate),actions=f.built.config.animations.categories[0].actions;
+    assert.equal(Object.keys(f.built.media).length,20+available.length);
+    assert.equal(actions.includes('抱书阅读'),available.includes('book-reading'));assert.equal(actions.includes('坐垫歇息'),available.includes('cushion-rest'));
+    assert.equal(Pack.seedHarnessPack({sourceRoot:f.sourceRoot,dshHome:f.home}).videos,20+available.length);
+  }
+  const invalid=structuredClone(manifest);invalid.profiles['book-reading']={type:'image',file:'book.png'};
+  assert.throws(()=>definition('zh-CN',invalid),/harness-profile-video-required: book-reading/);
+});
+
+test('seeded media must exactly match the configured actions and reject unknown names',t=>{
+  const f=fixture(t);f.pack.locales['zh-CN'].files.pop();writeFileSync(join(f.sourceRoot,'pack.json'),JSON.stringify(f.pack));
+  assert.throws(()=>Pack.seedHarnessPack({sourceRoot:f.sourceRoot,dshHome:f.home}),/invalid-harness-pack/);
+  assert.throws(()=>readFileSync(join(f.home,'dsh-pet','pet','codex-white-dragon-config.json')),/ENOENT/);
+  const unknown=fixture(t);unknown.pack.locales['zh-CN'].files[0].name='Unknown action.webm';writeFileSync(join(unknown.sourceRoot,'pack.json'),JSON.stringify(unknown.pack));
+  assert.throws(()=>Pack.seedHarnessPack({sourceRoot:unknown.sourceRoot,dshHome:unknown.home}),/invalid-harness-pack-file/);
+  assert.throws(()=>readFileSync(join(unknown.home,'dsh-pet','pet','codex-white-dragon-config.json')),/ENOENT/);
+});
+
+test('managed twenty-clips installation gains both seated actions without changing the original whale or old clips',t=>{
+  const f=fixture(t),animation=join(f.home,'dsh-pet','pet','codex-white-dragon-animation');
+  mkdirSync(animation,{recursive:true});
+  const oldFiles=f.pack.locales['zh-CN'].files.filter(item=>!['q-book-reading.webm','q-cushion-rest.webm'].includes(item.source));
+  assert.equal(oldFiles.length,20);
+  for(const item of oldFiles)writeFileSync(join(animation,item.name),readFileSync(join(f.sourceRoot,'assets',item.source)));
+  const oldConfig=structuredClone(f.built.config);oldConfig.animations.categories[0].actions=['整理龙翼','抱尾小憩'];
+  const oldConfigData=JSON.stringify(oldConfig,null,2)+'\n';
+  writeFileSync(join(f.home,'dsh-pet','pet','codex-white-dragon-config.json'),oldConfigData);
+  writeFileSync(join(animation,'.codex-pet-harness.json'),JSON.stringify({schemaVersion:1,version:'0.4.0',locale:'zh-CN',configHash:digest(Buffer.from(oldConfigData)),files:Object.fromEntries(oldFiles.map(item=>[item.name,item.sha256]))}));
+  const fish=join(f.home,'dsh-pet','main-config.jsonc');writeFileSync(fish,'{"pets":[{"name":"my whale"}]}');
+  f.pack.version='0.5.0';writeFileSync(join(f.sourceRoot,'pack.json'),JSON.stringify(f.pack));
+  const result=Pack.seedHarnessPack({sourceRoot:f.sourceRoot,dshHome:f.home});
+  assert.equal(result.status,'updated');assert.equal(result.videos,22);
+  const current=JSON.parse(readFileSync(join(f.home,'dsh-pet','pet','codex-white-dragon-config.json')));
+  assert.deepEqual(current.animations.categories[0].actions,['整理龙翼','抱尾小憩','抱书阅读','坐垫歇息']);
+  assert.equal(readFileSync(fish,'utf8'),'{"pets":[{"name":"my whale"}]}');
+  for(const item of oldFiles)assert.equal(digest(readFileSync(join(animation,item.name))),item.sha256);
+  assert.equal(readdirSync(animation).filter(name=>name.endsWith('.webm')).length,22);
 });
 
 test('installer seeds independent native pet paths, is idempotent and leaves original whale untouched',t=>{
@@ -71,7 +117,7 @@ test('installer seeds independent native pet paths, is idempotent and leaves ori
   const config=join(f.home,'dsh-pet','pet','codex-white-dragon-config.json');
   const animation=join(f.home,'dsh-pet','pet','codex-white-dragon-animation');
   assert.deepEqual(JSON.parse(readFileSync(config)),f.built.config);
-  assert.equal(readdirSync(animation).filter(x=>x.endsWith('.webm')).length,20);
+  assert.equal(readdirSync(animation).filter(x=>x.endsWith('.webm')).length,22);
   assert.equal(readFileSync(fish,'utf8'),'{"pets":[{"name":"my whale"}]}');
   assert.equal(Pack.seedHarnessPack({sourceRoot:f.sourceRoot,dshHome:f.home,locale:'zh-CN'}).status,'current');
   const changed=JSON.parse(readFileSync(config));changed.pets[0].name='custom dragon';writeFileSync(config,JSON.stringify(changed));

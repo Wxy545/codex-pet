@@ -52,7 +52,7 @@ Chat and idle chatter count toward your Codex usage. Chatter runs every ten minu
 
 Choose a chibi character from **Character** in the right-click menu:
 
-- **White Dragon Girl:** the default for new installations, with 20 chibi clips. She can tend to her wings, snack on a star-shaped cookie, wave, play with a little magic, or nap around her tail, alongside her walking, click and work reactions.
+- **White Dragon Girl:** the default for new installations, with 21 chibi clips. She can tend to her wings, snack on a star-shaped cookie, wave, play with a little magic, take a break on a cushion, or nap around her tail, alongside her walking, click and work reactions.
 - **Blue whale maid:** the original dsh-pet character and its full animation set.
 
 The dragon girl has five click reactions and a second walking action with a flutter of her wings. Her idle pool covers small gestures, play, food, cooling off, and greetings. Balance and chatter events reuse suitable clips and are marked “Shared animation” in the menu. Your saved character choice is kept when updating.
@@ -67,7 +67,11 @@ The original blue whale maid retains her **106 transparent animations**. These p
 
 ## Startup and updates
 
-Open **Startup scene** in the right-click or tray menu to choose **Pet only**, **Startup scene only**, or **Pet and startup scene**. The default is Pet only. The other modes play a dragon-girl scene when Codex starts; click or press Esc to skip it, or choose **Preview scene** to watch it now.
+New installations show a full-screen dragon-girl intro when Codex starts, alongside the pet. She wakes, casts a little magic, and waves you into ChatGPT, with an original synthesized soundtrack. The scene lasts about 14 seconds and hands focus to the app when it finishes. Use **Skip** or Esc to leave early; the sound button toggles audio.
+
+Open **Startup scene** in the right-click or tray menu to choose **Pet only**, **Startup scene only**, or **Pet and startup scene**. **Preview scene** plays it immediately. Updates keep your saved mode.
+
+<img src="docs/assets/startup-scene.jpg" width="720" alt="Dragon Girl greeting you in the ChatGPT startup scene">
 
 To stop the pet from launching with Codex:
 
@@ -77,7 +81,7 @@ powershell -File scripts/disable-follow.ps1
 
 See [maintenance](docs/maintenance.md) for Codex and dsh-pet update checks, development setup, and troubleshooting. For a daily check, ask Codex to set up a maintenance task for your installation.
 
-After updating the source, run `node scripts/prepare-runtime.mjs` to add the new animations to an unchanged official 0.3.0 or 0.3.1 dragon pack. Custom skins and your character choice are kept.
+After updating the source, run `node scripts/prepare-runtime.mjs` to add the new animations to an unchanged official 0.3.0, 0.3.1 or 0.4.0 dragon pack. Custom skins and your character choice are kept.
 
 ## DeepSeek Harness
 
@@ -98,7 +102,7 @@ Want to see more dragon-girl animations? You can help fund the video work throug
 
 Thanks to [PC2005-cloud/dsh-pet](https://github.com/PC2005-cloud/dsh-pet) for the desktop pet, animations, and interactions. This adaptation uses `dsh-pet@0.3.8`.
 
-Startup scenes are inspired by [884048454/codex-startup-animation](https://github.com/884048454/codex-startup-animation).
+Startup scenes draw on [884048454/codex-startup-animation](https://github.com/884048454/codex-startup-animation) and [yushua0808-cpu/dragon-codex-boot](https://github.com/yushua0808-cpu/dragon-codex-boot). Thanks also to [jingh12312-rgb/bailong-desktop-pet](https://github.com/jingh12312-rgb/bailong-desktop-pet) for desktop interaction ideas. This project uses its own dragon clips and startup visuals.
 
 The original “溟月” character is by [上善无形](https://space.bilibili.com/4456176); the DeepSeek whale-maid design is by [ZipZipPipe](https://space.bilibili.com/4168597).
 

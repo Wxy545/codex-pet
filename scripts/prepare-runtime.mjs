@@ -100,7 +100,7 @@ for(const file of ['codex-notifications.cjs','foreground-codex.ps1','codex-api.c
   'codex-skins.cjs','codex-skin-renderer.js','skin-actions.cjs','codex-character.cjs','codex-locale.cjs','locale-en.cjs','codex-runtime-locale.cjs','panel-locale.js','runtime-range.cjs']){
   await copyFile(resolve(root,'src',file),resolve(pkg,'runtime/electron-helper',file));
 }
-for(const file of ['codex-startup.cjs','startup-preload.cjs','startup-menu.js','startup-window.html','startup-window.js','startup-window.css']){
+for(const file of ['codex-startup.cjs','startup-target.ps1','startup-preload.cjs','startup-menu.js','startup-window.html','startup-window.js','startup-window.css']){
   await copyFile(resolve(root,'src',file),resolve(pkg,'runtime/electron-helper',file));
 }
 await mkdir(resolve(root,'data'),{recursive:true});
