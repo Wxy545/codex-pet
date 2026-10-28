@@ -2,6 +2,7 @@
 param([string]$AppRoot, [switch]$NoStart)
 
 $ErrorActionPreference = 'Stop'
+. (Join-Path $PSScriptRoot 'scripts/locale.ps1')
 if (-not $AppRoot) { $AppRoot = $PSScriptRoot }
 $taskRoot = [System.IO.Path]::GetFullPath($AppRoot).TrimEnd('\', '/')
 $taskApp = Join-Path $taskRoot 'src/app.mjs'
@@ -21,8 +22,8 @@ function Test-TaskPetRunning {
             $taskState = Get-Content -LiteralPath $taskRuntime -Raw | ConvertFrom-Json
             $taskPort = [int]$taskState.port
             if ($taskPort -gt 0 -and $taskPort -lt 65536) {
-                $taskHealth = Invoke-WebRequest -UseBasicParsing -Uri ("http://127.0.0.1:{0}/health" -f $taskPort) -TimeoutSec 2
-                if ($taskHealth.StatusCode -eq 200) { return $true }
+                $taskHealth = Invoke-RestMethod -UseBasicParsing -Uri ("http://127.0.0.1:{0}/health" -f $taskPort) -TimeoutSec 2
+                if ($taskHealth.name -in @('codex-pet', 'dsh-pet-codex') -and [int]$taskState.pid -gt 0 -and [int]$taskHealth.pid -eq [int]$taskState.pid) { return $true }
             }
         } catch { # 已退出实例的旧清单不阻止重新启动。
         }
@@ -44,8 +45,8 @@ if ($NoStart) {
     [ordered]@{ alreadyRunning = $taskRunning; nodeAvailable = [bool]$taskNode; portableNode = ($taskNode -eq $taskPortableNode); runtimeReady = [bool]$taskReady; wouldStart = (-not $taskRunning -and [bool]$taskNode -and [bool]$taskReady) } | ConvertTo-Json -Compress
     return
 }
-if (-not $taskNode) { throw '未找到 Node.js，请运行 install.ps1 安装便携运行时，或安装 Node.js 后运行 setup.ps1。' }
-if (-not $taskReady -or -not (Test-Path -LiteralPath $taskApp -PathType Leaf)) { throw '请先运行本目录的 setup.ps1。' }
+if (-not $taskNode) { throw (Get-CodexPetText '未找到 Node.js，请运行 install.ps1 安装便携运行时，或安装 Node.js 后运行 setup.ps1。' 'Node.js was not found. Run install.ps1 for the portable runtime, or install Node.js and run setup.ps1.') }
+if (-not $taskReady -or -not (Test-Path -LiteralPath $taskApp -PathType Leaf)) { throw (Get-CodexPetText '请先运行本目录的 setup.ps1。' 'Run setup.ps1 in this installation folder first.') }
 $taskHasher = [System.Security.Cryptography.SHA256]::Create()
 try {
     $taskKey = ([System.BitConverter]::ToString($taskHasher.ComputeHash([System.Text.Encoding]::UTF8.GetBytes($taskRoot.ToLowerInvariant())))).Replace('-', '').Substring(0, 24)
@@ -55,8 +56,8 @@ $taskOwnsMutex = $false
 try {
     try { $taskOwnsMutex = $taskMutex.WaitOne(10000) }
     catch [System.Threading.AbandonedMutexException] { $taskOwnsMutex = $true }
-    if (-not $taskOwnsMutex) { throw '桌宠启动正在进行，请稍后重试。' }
-    if (Test-TaskPetRunning) { Write-Output '龙娘桌宠已经在运行。'; return }
+    if (-not $taskOwnsMutex) { throw (Get-CodexPetText 'Codex Pet 正在启动，请稍后重试。' 'Codex Pet is starting. Please try again shortly.') }
+    if (Test-TaskPetRunning) { Write-Output (Get-CodexPetText 'Codex Pet 已在运行。' 'Codex Pet is already running.'); return }
     $taskData = Join-Path $taskRoot 'data'
     New-Item -ItemType Directory -Path $taskData -Force | Out-Null
     Start-Process -FilePath $taskNode -ArgumentList @('"' + $taskApp + '"') -WorkingDirectory $taskRoot -WindowStyle Hidden -RedirectStandardOutput (Join-Path $taskData 'app.log') -RedirectStandardError (Join-Path $taskData 'app-error.log')

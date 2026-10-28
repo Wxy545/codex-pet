@@ -1,6 +1,6 @@
 # 第三方来源与许可
 
-本文记录 dsh-pet-codex 使用的主要第三方来源与许可边界，由项目维护者随依赖和分发方式更新。适用范围为本仓库及其运行时准备流程；核对日期为 2026-10-28。
+本文记录 codex-pet 使用的主要第三方来源与许可边界，由项目维护者随依赖和分发方式更新。适用范围为本仓库及其运行时准备流程；核对日期为 2026-10-28。
 
 根目录 [LICENSE](LICENSE) 只适用于本项目自有代码与文档，不替代第三方软件、角色或素材的许可。安装依赖、公开源代码与分发成品时，都应保留所用第三方内容要求的版权和许可说明。
 
@@ -50,7 +50,7 @@ SOFTWARE.
 | 原型“溟月” | [上善无形](https://space.bilibili.com/4456176) |
 | DeepSeek 版女仆鲸鱼娘设计 | [ZipZipPipe](https://space.bilibili.com/4168597) |
 | 桌宠动画与运行实现 | [PC2005-cloud/dsh-pet](https://github.com/PC2005-cloud/dsh-pet) |
-| Codex 接入与本项目适配 | dsh-pet-codex contributors |
+| Codex 接入与本项目适配 | codex-pet contributors |
 
 上游 README 标明角色为社区二创形象，并链接了 ZipZipPipe 于 2026-09-20 发布的[形象使用声明](https://www.bilibili.com/opus/1247156596114456581)。该声明采用 [CC BY-NC-SA 4.0](https://creativecommons.org/licenses/by-nc-sa/4.0/)：署名、非商业、相同方式共享。使用或改编角色材料时，应提供适当署名和协议链接，注明修改，并按该协议要求分享改编材料。
 

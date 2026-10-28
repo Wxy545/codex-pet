@@ -4,6 +4,8 @@ const path = require('node:path');
 const { pathToFileURL, fileURLToPath } = require('node:url');
 const { randomUUID } = require('node:crypto');
 const A = require('./skin-actions.cjs');
+const { readCharacter, characterCopy } = require('./codex-character.cjs');
+const L = require('./codex-locale.cjs');
 const CHARACTERS = [{ id: 'white-dragon', label: '白龙娘', originalVideo: false }, { id: 'bluefish', label: '大肥鱼', originalVideo: true }];
 const MODES = ['q', 'sister', 'occasional'];
 const validSelection = value => value && CHARACTERS.some(character => character.id === value.character) && MODES.includes(value.mode);
@@ -56,11 +58,11 @@ function createSkinStore({ dataRoot, hostRequest, logger = console } = {}) {
     let input;
     try { input = JSON.parse(await readFile(path.join(directory, 'manifest.json'), 'utf8')); }
     catch (error) {
-      if (error.code !== 'ENOENT') { logger.warn('[龙娘桌宠] 形象清单无法读取，保留原版显示。'); return { ...character, available: { q: character.originalVideo, sister: false, occasional: false }, invalidManifest: true, assets: {}, manifest: A.defaultManifest() }; }
+      if (error.code !== 'ENOENT') { logger.warn('[Codex Pet] '+L.t('形象清单无法读取，保留原版显示。')); return { ...character, available: { q: character.originalVideo, sister: false, occasional: false }, invalidManifest: true, assets: {}, manifest: A.defaultManifest() }; }
     }
     let manifest;
     try { manifest = A.normalizeManifest(input); }
-    catch { logger.warn('[龙娘桌宠] 形象清单格式无效，保留原版显示。'); return { ...character, available: { q: character.originalVideo, sister: false, occasional: false }, invalidManifest: true, assets: {}, manifest: A.defaultManifest() }; }
+    catch { logger.warn('[Codex Pet] '+L.t('形象清单格式无效，保留原版显示。')); return { ...character, available: { q: character.originalVideo, sister: false, occasional: false }, invalidManifest: true, assets: {}, manifest: A.defaultManifest() }; }
     const names = [...new Set(Object.values(manifest.profiles).flatMap(profile => ['q', 'sister'].map(form => A.effectiveProfile(profile, form).file)))];
     const images = await Promise.all(names.map(async name => [name, await pngAsset(directory, name)]));
     const assets = Object.fromEntries(images);
@@ -75,17 +77,23 @@ function createSkinStore({ dataRoot, hostRequest, logger = console } = {}) {
   async function readModel() {
     const entries = await actionCatalog();
     const characters = await Promise.all(CHARACTERS.map(character => characterModel(character, entries)));
+    const identity = readCharacter(dataRoot);
+    for (const character of characters) {
+      character.copy = characterCopy(character.id, identity.locale);
+      character.label = character.copy.name;
+      if (character.id === identity.id) character.copy = { ...character.copy, name: identity.name, persona: identity.persona };
+    }
     if (!selection) {
       try {
         const saved = JSON.parse(await readFile(selectionFile, 'utf8'));
         if (validSelection(saved)) selection = { character: saved.character, mode: saved.mode };
-      } catch (error) { if (error.code !== 'ENOENT') logger.warn('[龙娘桌宠] 形象选择无法读取。'); }
-      selection ??= { character: characters[0].available.q ? 'white-dragon' : 'bluefish', mode: 'q' };
+      } catch (error) { if (error.code !== 'ENOENT') logger.warn('[Codex Pet] '+L.t('形象选择无法读取。')); }
+      selection ??= { character: 'bluefish', mode: 'q' };
     }
     const selected = characters.find(character => character.id === selection.character);
     // 已选素材被移走时明确回原视频，不写掉用户保存的选择，恢复文件后仍能切回。
     const effectiveSelection = selected?.available[selection.mode] ? selection : { character: 'bluefish', mode: 'q' };
-    const model = { schemaVersion: 1, selection: effectiveSelection, requestedSelection: selection, characters, catalog: entries, catalogStatus: entries ? 'known' : 'unknown' };
+    const model = { schemaVersion: 1, locale: identity.locale, selection: effectiveSelection, requestedSelection: selection, characters, catalog: entries, catalogStatus: entries ? 'known' : 'unknown' };
     await saveJson(path.join(skinsRoot, 'coverage.json'), { schemaVersion: 1, catalogStatus: model.catalogStatus, total: entries?.length ?? null, characters: Object.fromEntries(characters.map(character => [character.id, character.coverage ?? null])) });
     return model;
   }
@@ -110,14 +118,22 @@ function trustedSender(event, rendererFile = path.join(__dirname, 'index.html'))
   } catch { return false; }
 }
 
-function install({ hostRequest, dataRoot = process.env.DSH_HOME, electronApi } = {}) {
+function install({ hostRequest, dataRoot = process.env.DSH_HOME, electronApi, onSelectionChanged } = {}) {
   const { app, ipcMain, BrowserWindow } = electronApi ?? require('electron');
   const store = createSkinStore({ hostRequest, dataRoot });
   const get = async event => { if (!trustedSender(event)) throw new Error('skin-sender-denied'); return store.readModel(); };
   const select = async (event, value) => {
     if (!trustedSender(event)) throw new Error('skin-sender-denied');
+    const previousCharacter = readCharacter(dataRoot).id;
     const model = await store.select(value);
+    if (previousCharacter !== model.selection.character) {
+      try {
+        const cleared = await hostRequest('POST', '/dsh-pet-7340/bubble/clear?pet=main');
+        if (cleared.status !== 200 || JSON.parse(cleared.body).ok !== true) throw new Error('unavailable');
+      } catch { console.warn('[Codex Pet] '+L.t('旧角色气泡未能清除。')); }
+    }
     for (const win of BrowserWindow.getAllWindows()) if (!win.isDestroyed() && trustedSender({ sender: win.webContents })) win.webContents.send('codex-skin:changed', model);
+    await onSelectionChanged?.(model);
     return model;
   };
   ipcMain.handle('codex-skin:get', get);

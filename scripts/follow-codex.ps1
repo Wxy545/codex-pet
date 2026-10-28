@@ -7,10 +7,11 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
+. (Join-Path $PSScriptRoot 'locale.ps1')
 if (-not $AppRoot) { $AppRoot = Split-Path -Parent $PSScriptRoot }
 $taskRoot = [System.IO.Path]::GetFullPath($AppRoot).TrimEnd('\', '/')
 if (-not (Test-Path -LiteralPath (Join-Path $taskRoot 'start.ps1') -PathType Leaf)) {
-    throw '未找到本项目 start.ps1，请检查 AppRoot。'
+    throw (Get-CodexPetText '未找到 Codex Pet 的 start.ps1，请检查 AppRoot。' 'Codex Pet start.ps1 was not found. Check AppRoot.')
 }
 
 function Get-TaskFollowKey {
@@ -76,7 +77,7 @@ try {
                 & (Join-Path $taskRoot 'start.ps1') -AppRoot $taskRoot | Out-Null
                 $taskRequested = $true
             } catch {
-                [Console]::Error.WriteLine('跟随启动失败，请运行 setup.ps1 并检查桌宠日志。')
+                [Console]::Error.WriteLine((Get-CodexPetText '跟随启动失败，请运行 setup.ps1 并检查 Codex Pet 日志。' 'Follow-startup failed. Run setup.ps1 and check the Codex Pet logs.'))
             }
         }
         if ($Once -or $NoStart -or $taskRisingEdge) { Write-TaskProbe $taskRunning $taskRisingEdge $taskRequested }

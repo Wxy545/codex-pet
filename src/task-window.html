@@ -1,37 +1,40 @@
 <!doctype html>
-<html lang="zh-CN">
+<html lang="en">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self'; connect-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'; frame-src 'none'">
-  <title>龙娘桌宠 · 操作任务</title>
+  <title>Codex Pet · Tasks</title>
   <link rel="stylesheet" href="task-window.css">
+  <script defer src="locale-en.cjs"></script>
+  <script defer src="codex-locale.cjs"></script>
+  <script defer src="panel-locale.js"></script>
   <script defer src="task-window.js"></script>
 </head>
 <body>
   <main>
     <form id="task-form">
       <div class="field">
-        <label for="directory">工作目录</label>
-        <div class="directory-row"><input id="directory" readonly aria-describedby="directory-note"><button id="choose-directory" type="button">选择文件夹</button></div>
-        <span id="directory-note" class="field-note">任务从此工作目录开始执行。</span>
+        <label for="directory" data-i18n="工作目录">Working folder</label>
+        <div class="directory-row"><input id="directory" readonly aria-describedby="directory-note"><button id="choose-directory" type="button" data-i18n="选择文件夹">Choose folder</button></div>
+        <span id="directory-note" class="field-note" data-i18n="任务从此工作目录开始执行。">The task starts in this folder.</span>
       </div>
       <div class="field">
-        <div class="field-label"><label for="task">任务</label><span id="character-count" class="field-note">0 / 12000</span></div>
+        <div class="field-label"><label for="task" data-i18n="任务">Task</label><span id="character-count" class="field-note">0 / 12000</span></div>
         <textarea id="task" rows="5" maxlength="12000" required></textarea>
       </div>
       <fieldset id="permissions">
-        <legend>本次权限</legend>
-        <label class="permission-option"><input type="radio" name="permission" value="read-only" checked><span>只读查看<small>分析、检查和回答问题，禁止写入文件。</small></span></label>
-        <label class="permission-option"><input type="radio" name="permission" value="workspace-write"><span>允许修改所选目录<small>仅允许在所选目录中新增、修改和删除文件。</small></span></label>
+        <legend data-i18n="本次权限">Permissions for this task</legend>
+        <label class="permission-option"><input type="radio" name="permission" value="read-only" checked><span><span data-i18n="只读查看">Read only</span><small data-i18n="分析、检查和回答问题，禁止写入文件。">Inspect and answer questions without writing files.</small></span></label>
+        <label class="permission-option"><input type="radio" name="permission" value="workspace-write"><span><span data-i18n="允许修改所选目录">Allow edits in this folder</span><small data-i18n="按 Codex 的工作目录写入权限执行。">Run with Codex workspace write permissions.</small></span></label>
       </fieldset>
-      <div class="confirmation" id="confirmation" aria-live="polite">选择目录并填写任务后，可确认执行。</div>
-      <div class="actions"><button id="submit-task" class="primary" type="submit" disabled>确认执行</button><button id="cancel-task" class="danger" type="button" hidden>取消本次任务</button><button id="retry-state" type="button" hidden>重新连接</button></div>
+      <div class="confirmation" id="confirmation" aria-live="polite" data-i18n="选择目录并填写任务后，可确认执行。">Choose a folder and enter a task to continue.</div>
+      <div class="actions"><button id="submit-task" class="primary" type="submit" disabled data-i18n="确认执行">Run task</button><button id="cancel-task" class="danger" type="button" hidden data-i18n="取消本次任务">Cancel task</button><button id="retry-state" type="button" hidden data-i18n="重新连接">Reconnect</button></div>
     </form>
-    <section class="result" aria-label="执行结果">
-      <div class="result-bar"><span id="execution-state" role="status">尚未开始</span><button id="copy-result" type="button" disabled>复制结果</button></div>
+    <section class="result" aria-label="Task result" data-i18n-aria="执行结果">
+      <div class="result-bar"><span id="execution-state" role="status" data-i18n="尚未开始">Not started</span><button id="copy-result" type="button" disabled data-i18n="复制结果">Copy result</button></div>
       <div id="active-scope" class="active-scope" hidden></div>
-      <ol id="progress" aria-label="执行进度"></ol>
+      <ol id="progress" aria-label="Task progress" data-i18n-aria="执行进度"></ol>
       <pre id="result-text" tabindex="0"></pre>
     </section>
     <div id="message" class="message" role="alert" hidden></div>

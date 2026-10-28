@@ -126,7 +126,7 @@ async function fixture(t) {
 test('形象选择落盘并重启恢复，原大肥鱼Q始终可选，未准备的姐姐素材不能选择', async t => {
   const options = await fixture(t);
   const store = createSkinStore(options);
-  assert.deepEqual((await store.readModel()).selection, { character: 'white-dragon', mode: 'q' });
+  assert.deepEqual((await store.readModel()).selection, { character: 'bluefish', mode: 'q' });
   await assert.rejects(store.select({ character: 'white-dragon', mode: 'sister' }), /skin-unavailable/);
   await store.select({ character: 'bluefish', mode: 'q' });
   assert.deepEqual((await createSkinStore(options).readModel()).selection, { character: 'bluefish', mode: 'q' });

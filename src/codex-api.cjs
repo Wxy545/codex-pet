@@ -1,6 +1,7 @@
 'use strict';
 
 const PATHS = new Map([
+  ['/dsh-pet-7340/codex-character', new Set(['GET'])],
   ['/dsh-pet-7340/codex-chat', new Set(['POST'])],
   ['/dsh-pet-7340/codex-tasks', new Set(['GET', 'POST'])],
   ['/dsh-pet-7340/codex-tasks/cancel', new Set(['POST'])],

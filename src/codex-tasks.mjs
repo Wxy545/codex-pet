@@ -4,6 +4,7 @@ import { realpath, stat } from 'node:fs/promises';
 import { isAbsolute } from 'node:path';
 import { StringDecoder } from 'node:string_decoder';
 import { createCodexChildEnv } from './codex-child-env.mjs';
+import Locale from './codex-locale.cjs';
 
 export const MAX_TASK_BODY_BYTES = 64 * 1024;
 const TASK_RULES = '你正在执行用户在独立操作面板明确确认的本地任务。只在用户选择的工作目录内按所授予的只读或工作目录读写权限处理本次正文。不得扩大目录、申请提权、关闭沙箱、读取或修改登录凭据及密钥、调用外部应用或联网代办。只读任务不得修改文件。遇到超出范围的操作，说明限制并停止该操作。遵循工作目录内相关项目约定，完成后用简短中文说明结果和实际修改；不要输出思考过程、秘密信息或无关内容。';
@@ -26,8 +27,8 @@ const ERRORS = {
   tools_disabled: [502, '任务请求了未开放的外部能力，已请求停止。'],
 };
 
-function taskError(code) {
-  return Object.assign(new Error((ERRORS[code] ?? ERRORS.process_failed)[1]), { code, statusCode: (ERRORS[code] ?? ERRORS.process_failed)[0] });
+function taskError(code, locale = Locale.getLocale()) {
+  return Object.assign(new Error(Locale.t((ERRORS[code] ?? ERRORS.process_failed)[1], {}, locale)), { code, statusCode: (ERRORS[code] ?? ERRORS.process_failed)[0] });
 }
 
 /** 同一个实例同时交给聊天和操作入口；释放函数幂等且不会误释放下一次请求。 */
@@ -43,13 +44,13 @@ export function createCodexActivityGate() {
   };
 }
 
-function validateBody(body) {
-  if (!body || typeof body !== 'object' || Array.isArray(body)) throw taskError('invalid_input');
-  if (body.confirmed !== true) throw taskError('confirmation_required');
-  if (Object.keys(body).some(key => !['cwd', 'task', 'permission', 'confirmed'].includes(key))) throw taskError('invalid_input');
-  if (typeof body.cwd !== 'string' || !isAbsolute(body.cwd) || body.cwd.length > 32768) throw taskError('invalid_cwd');
-  if (typeof body.task !== 'string' || !body.task.trim() || body.task.length > 12000) throw taskError('invalid_input');
-  if (!['read-only', 'workspace-write'].includes(body.permission)) throw taskError('invalid_input');
+function validateBody(body, locale) {
+  if (!body || typeof body !== 'object' || Array.isArray(body)) throw taskError('invalid_input', locale);
+  if (body.confirmed !== true) throw taskError('confirmation_required', locale);
+  if (Object.keys(body).some(key => !['cwd', 'task', 'permission', 'confirmed'].includes(key))) throw taskError('invalid_input', locale);
+  if (typeof body.cwd !== 'string' || !isAbsolute(body.cwd) || body.cwd.length > 32768) throw taskError('invalid_cwd', locale);
+  if (typeof body.task !== 'string' || !body.task.trim() || body.task.length > 12000) throw taskError('invalid_input', locale);
+  if (!['read-only', 'workspace-write'].includes(body.permission)) throw taskError('invalid_input', locale);
   return { cwd: body.cwd, task: body.task.trim(), permission: body.permission };
 }
 
@@ -63,10 +64,11 @@ function terminateOwnChild(child) {
 }
 
 /** POST接受后后台执行；snapshot供轮询，取消必须携带当前任务ID。 */
-export function createCodexTaskHandler({ codexPath, timeoutMs = 600000, spawnImpl = spawn, terminateImpl = terminateOwnChild, fsImpl = {}, activityGate, onChange = () => {} } = {}) {
+export function createCodexTaskHandler({ codexPath, timeoutMs = 600000, spawnImpl = spawn, terminateImpl = terminateOwnChild, fsImpl = {}, activityGate, onChange = () => {}, locale = Locale.getLocale() } = {}) {
   if (typeof codexPath !== 'string' || !codexPath) throw new TypeError('codexPath is required');
   if (!Number.isFinite(timeoutMs) || timeoutMs <= 0) throw new TypeError('timeoutMs must be positive');
   if (typeof onChange !== 'function') throw new TypeError('onChange must be a function');
+  const failure = code => taskError(code, locale);
   const io = { realpath, stat, ...fsImpl };
   let active;
   let last = { state: 'idle', progress: [], summary: '' };
@@ -74,6 +76,7 @@ export function createCodexTaskHandler({ codexPath, timeoutMs = 600000, spawnImp
   const snapshot = () => structuredClone(last);
   const publish = () => { try { onChange(snapshot()); } catch { /* 界面更新不影响本次进程收尾。 */ } };
   function note(view, kind, text) {
+    text = Locale.t(text, {}, locale);
     const previous = view.progress.at(-1);
     if (!previous || previous.kind !== kind || previous.text !== text) {
       view.progress.push({ at: new Date().toISOString(), kind, text });
@@ -92,9 +95,9 @@ export function createCodexTaskHandler({ codexPath, timeoutMs = 600000, spawnImp
     token.view.state = state;
     token.view.finishedAt = new Date().toISOString();
     token.view.summary = summary;
-    if (code) token.view.error = { code, message: taskError(code).message };
+    if (code) token.view.error = { code, message: failure(code).message };
     // CLI零退出只代表本轮已返回；摘要可能包含能力限制，不能据此声称业务操作成功。
-    note(token.view, state, state === 'completed' ? '执行已结束，请核对返回结果' : code === 'cancelled' ? '任务已取消' : taskError(code ?? 'process_failed').message);
+    note(token.view, state, state === 'completed' ? '执行已结束，请核对返回结果' : code === 'cancelled' ? '任务已取消' : failure(code ?? 'process_failed').message);
     release(token);
   }
   function requestStop(token, reason) {
@@ -111,18 +114,18 @@ export function createCodexTaskHandler({ codexPath, timeoutMs = 600000, spawnImp
   }
 
   async function start(body) {
-    const input = validateBody(body);
-    if (active) throw taskError('busy');
+    const input = validateBody(body, locale);
+    if (active) throw failure('busy');
     const releaseGate = activityGate?.acquire('task');
-    if (activityGate && typeof releaseGate !== 'function') throw taskError('busy');
+    if (activityGate && typeof releaseGate !== 'function') throw failure('busy');
     const token = { releaseGate, child: null, closed: false, done: false, stopReason: null };
     active = token;
     let canonicalCwd;
     try {
       canonicalCwd = await io.realpath(input.cwd);
-      if (!(await io.stat(canonicalCwd)).isDirectory()) throw taskError('invalid_cwd');
-    } catch { release(token); throw taskError('invalid_cwd'); }
-    if (token.stopReason) { release(token); throw taskError('cancelled'); }
+      if (!(await io.stat(canonicalCwd)).isDirectory()) throw failure('invalid_cwd');
+    } catch { release(token); throw failure('invalid_cwd'); }
+    if (token.stopReason) { release(token); throw failure('cancelled'); }
     const view = { id: randomUUID(), state: 'running', cwd: canonicalCwd, permission: input.permission, startedAt: new Date().toISOString(), progress: [], summary: '' };
     token.view = view;
     last = view;
@@ -137,7 +140,7 @@ export function createCodexTaskHandler({ codexPath, timeoutMs = 600000, spawnImp
       // 忽略用户配置时Windows不会选择可执行的沙箱；显式使用无需管理员的受限令牌沙箱。
       ...(process.platform === 'win32' ? ['-c', 'windows.sandbox="unelevated"'] : []),
       '-c', 'approval_policy="never"', '-c', 'web_search="disabled"',
-      '-c', 'developer_instructions=' + JSON.stringify(TASK_RULES),
+      '-c', 'developer_instructions=' + JSON.stringify(Locale.t(TASK_RULES, {}, locale)),
       ...DISABLED_TASK_FEATURES.flatMap(feature => ['--disable', feature]), '-',
     ];
     const decoder = new StringDecoder('utf8');
@@ -205,7 +208,7 @@ export function createCodexTaskHandler({ codexPath, timeoutMs = 600000, spawnImp
     } catch {
       if (token.child) requestStop(token, 'process_failed');
       else finish(token, 'failed', 'process_failed');
-      throw taskError('process_failed');
+      throw failure('process_failed');
     }
     return snapshot();
   }
@@ -214,13 +217,13 @@ export function createCodexTaskHandler({ codexPath, timeoutMs = 600000, spawnImp
     if (res.destroyed || res.writableEnded) return;
     res.setHeader('content-type', 'application/json; charset=utf-8');
     res.setHeader('cache-control', 'no-store');
-    if (req.method && req.method !== 'POST') { res.statusCode = 405; res.end(JSON.stringify({ error: { code: 'method_not_allowed', message: '请使用POST提交任务。' } })); return; }
+    if (req.method && req.method !== 'POST') { res.statusCode = 405; res.end(JSON.stringify({ error: { code: 'method_not_allowed', message: Locale.t('请使用POST提交任务。', {}, locale) } })); return; }
     try {
       const accepted = await start(body);
       res.statusCode = 202;
       res.end(JSON.stringify(accepted));
     } catch (error) {
-      const safe = taskError(error.code ?? 'process_failed');
+      const safe = failure(error.code ?? 'process_failed');
       res.statusCode = safe.statusCode;
       res.end(JSON.stringify({ error: { code: safe.code, type: 'codex_pet_task_error', message: safe.message } }));
     }

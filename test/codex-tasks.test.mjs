@@ -17,6 +17,7 @@ function rig(options = {}) {
   const calls = []; const children = []; const changes = [];
   const handler = createCodexTaskHandler({
     codexPath: 'C:/Codex/codex.exe',
+    locale: 'zh-CN',
     fsImpl: { async realpath(path) { return path; }, async stat() { return { isDirectory: () => true }; } },
     ...options,
     onChange(snapshot) { changes.push(snapshot); },
@@ -44,6 +45,23 @@ async function until(predicate) {
   }
   assert.fail('等待任务状态更新超时');
 }
+
+test('English任务规则与固定进度不改变用户正文、摘要或CLI权限', async () => {
+  const r = rig({ locale: 'en' }); const task = '只查看本地中文文件，保留正文。';
+  const view = await r.handler.start(body({ task }));
+  assert.equal(view.progress[0].text, 'Scope confirmed. Starting the task');
+  assert.equal(r.children[0].input, task);
+  const instructions = JSON.parse(r.calls[0].args.find(value => value.startsWith('developer_instructions=')).slice('developer_instructions='.length));
+  assert.match(instructions, /granted read-only or workspace-write permissions/);
+  assert.match(instructions, /Do not.*credentials/);
+  assert.equal(r.calls[0].args.includes('default_permissions=":read-only"'), true);
+  r.emit(r.children[0], { type: 'item.started', item: { type: 'command_execution' } });
+  assert.equal(r.handler.snapshot().progress.at(-1).text, 'Running the confirmed local task');
+  r.complete(r.children[0], '用户摘要保持中文，不翻译。');
+  assert.equal(r.handler.snapshot().summary, '用户摘要保持中文，不翻译。');
+  assert.equal(r.handler.snapshot().progress.at(-1).text, 'Execution ended. Review the returned result');
+  await assert.rejects(r.handler.start(body({ confirmed: false })), error => error.code === 'confirmation_required' && /confirm/i.test(error.message) && !/[\u3400-\u9fff]/.test(error.message));
+});
 
 test('共享gate只允许单进程，旧release不能释放新任务的锁', () => {
   const gate = createCodexActivityGate();

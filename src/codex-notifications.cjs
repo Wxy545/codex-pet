@@ -3,6 +3,7 @@
 const { execFile, execFileSync } = require('node:child_process');
 const { existsSync, mkdirSync, copyFileSync, unlinkSync, constants: FS_CONSTANTS } = require('node:fs');
 const path = require('node:path');
+const Locale = require('./codex-locale.cjs');
 
 const APP_USER_MODEL_ID = 'com.wanggong.codex-bluefish';
 const NOTICE_PATH = '/dsh-pet-7340/codex-notices';
@@ -74,49 +75,43 @@ function isOwnedShortcut(value, target, allowedArgs) {
 }
 
 /** Windows 通知需要同一 AUMID 的开始菜单快捷方式；只更新本应用原有的那一项。 */
-function ensureShortcut({ app, shell }, launcher, log) {
-  if (process.platform !== 'win32') return;
-  if (typeof launcher !== 'string' || !path.isAbsolute(launcher) || path.extname(launcher).toLowerCase() !== '.vbs' || !existsSync(launcher)) {
-    log('[codex-bluefish] 通知快捷方式缺少启动入口。');
+function ensureShortcut({ app, shell }, launcher, log, { platform = process.platform, fsImpl = {}, execFileSyncImpl = execFileSync, locale = Locale.getLocale() } = {}) {
+  if (platform !== 'win32') return;
+  const io = { existsSync, mkdirSync, copyFileSync, unlinkSync, ...fsImpl };
+  const warn = key => log('[Codex Pet] ' + Locale.t(key, {}, locale));
+  if (typeof launcher !== 'string' || !path.isAbsolute(launcher) || path.extname(launcher).toLowerCase() !== '.vbs' || !io.existsSync(launcher)) {
+    warn('通知快捷方式缺少启动入口。');
     return;
   }
   const directory = path.join(app.getPath('appData'), 'Microsoft', 'Windows', 'Start Menu', 'Programs');
-  const shortcut = path.join(directory, '龙娘桌宠.lnk');
-  const legacyShortcut = path.join(directory, 'Codex 大肥鱼桌宠.lnk');
+  const shortcut = path.join(directory, 'Codex Pet.lnk');
+  const legacyShortcuts = ['龙娘桌宠.lnk', 'Codex 大肥鱼桌宠.lnk'].map(name => path.join(directory, name));
   const target = path.join(process.env.SystemRoot || 'C:\\Windows', 'System32', 'wscript.exe');
   const args = `"${launcher}"`;
-  const legacyArgs = `"${path.join(path.dirname(launcher), '启动大肥鱼.vbs')}"`;
+  const allowedArgs = [args, ...['启动龙娘桌宠.vbs', '启动大肥鱼.vbs'].map(name => `"${path.join(path.dirname(launcher), name)}"`)];
   try {
-    // 非打包桌面进程需要自己的通知显示名；只登记本应用 AUMID。
+    // 新名称已被其他程序占用时停止；不能先改写快捷方式或注册表。
+    if (io.existsSync(shortcut) && !isOwnedShortcut(shell.readShortcutLink(shortcut), target, allowedArgs)) {
+      warn('通知快捷方式名称已被占用。'); return;
+    }
+    const ownedLegacy = legacyShortcuts.filter(file => io.existsSync(file) && isOwnedShortcut(shell.readShortcutLink(file), target, allowedArgs));
     const reg = path.join(process.env.SystemRoot || 'C:\\Windows', 'System32', 'reg.exe');
     const identity = `HKCU\\Software\\Classes\\AppUserModelId\\${APP_USER_MODEL_ID}`;
-    for (const [name, value] of [['DisplayName', '龙娘桌宠'], ['IconUri', path.resolve(__dirname, '../../assets/logo.png')]]) {
-      execFileSync(reg, ['add', identity, '/v', name, '/t', 'REG_SZ', '/d', value, '/f'], { windowsHide: true, stdio: 'ignore' });
+    for (const [name, value] of [['DisplayName', 'Codex Pet'], ['IconUri', path.resolve(__dirname, '../../assets/logo.png')]]) {
+      execFileSyncImpl(reg, ['add', identity, '/v', name, '/t', 'REG_SZ', '/d', value, '/f'], { windowsHide: true, stdio: 'ignore' });
     }
-    mkdirSync(directory, { recursive: true });
-    const destination = existsSync(shortcut) ? shortcut : existsSync(legacyShortcut) ? legacyShortcut : shortcut;
-    const present = existsSync(destination);
-    if (present) {
-      const old = shell.readShortcutLink(destination);
-      if (!isOwnedShortcut(old, target, [args, legacyArgs])) {
-        log('[codex-bluefish] 通知快捷方式名称已被占用。');
-        return;
-      }
-    }
-    const written = shell.writeShortcutLink(destination, present ? 'update' : 'create', {
-      target, args, appUserModelId: APP_USER_MODEL_ID, description: '龙娘桌宠',
+    io.mkdirSync(directory, { recursive: true });
+    const destination = io.existsSync(shortcut) ? shortcut : ownedLegacy[0] || shortcut;
+    const written = shell.writeShortcutLink(destination, io.existsSync(destination) ? 'update' : 'create', {
+      target, args, appUserModelId: APP_USER_MODEL_ID, description: 'Codex Pet',
     });
-    if (!written) { log('[codex-bluefish] 通知快捷方式创建失败。'); return; }
-    if (destination === legacyShortcut) {
-      // 先把原入口改到新启动文件；独占创建新名称，目标冲突时保留仍可用的旧入口。
-      copyFileSync(legacyShortcut, shortcut, FS_CONSTANTS.COPYFILE_EXCL);
+    if (!written) { warn('通知快捷方式创建失败。'); return; }
+    // 先确保新名称已独占创建，失败时旧入口仍指向可用启动器；绝不覆盖竞态产生的同名项。
+    if (destination !== shortcut) io.copyFileSync(destination, shortcut, FS_CONSTANTS.COPYFILE_EXCL);
+    for (const file of legacyShortcuts) {
+      if (io.existsSync(file) && isOwnedShortcut(shell.readShortcutLink(file), target, allowedArgs)) io.unlinkSync(file);
     }
-    if (existsSync(legacyShortcut) && isOwnedShortcut(shell.readShortcutLink(legacyShortcut), target, [args, legacyArgs])) {
-      unlinkSync(legacyShortcut);
-    }
-  } catch {
-    log('[codex-bluefish] 通知快捷方式创建失败。');
-  }
+  } catch { warn('通知快捷方式创建失败。'); }
 }
 
 /** 去重容量固定；前台抑制也会消费事件，之后切后台不追发旧通知。 */
@@ -159,7 +154,7 @@ function readForeground() {
 }
 
 /** 可注入依赖用于验证通知分支；生产入口 install 使用真实 Electron 和前台探测。 */
-function createController({ hostRequest, electron, checkForeground = readForeground, log = console.warn, beforeStart = () => {} }) {
+function createController({ hostRequest, electron, checkForeground = readForeground, log = console.warn, beforeStart = () => {}, locale = Locale.getLocale() }) {
   if (typeof hostRequest !== 'function') throw new TypeError('hostRequest is required');
   const { app, Notification, shell } = electron;
   const history = new NoticeHistory();
@@ -169,10 +164,10 @@ function createController({ hostRequest, electron, checkForeground = readForegro
   let stopped = false;
   let inFlight = false;
 
-  const logOnce = (key, message) => {
+  const logOnce = (key, message, values = {}) => {
     if (logged.has(key)) return;
     logged.add(key);
-    log(`[codex-bluefish] ${message}`);
+    log(`[Codex Pet] ${Locale.t(message, values, locale)}`);
   };
 
   const poll = async () => {
@@ -209,7 +204,7 @@ function createController({ hostRequest, electron, checkForeground = readForegro
           notification.once('failed', (event, error) => {
             release();
             const code = nativeErrorCode(error || event);
-            logOnce(`show:${code}`, `系统通知显示失败（${code}）。`);
+            logOnce(`show:${code}`, '系统通知显示失败（{code}）。', { code });
           });
           notification.once('show', () => logOnce('shown', '系统通知已提交。'));
           notification.once('click', () => {
@@ -232,7 +227,7 @@ function createController({ hostRequest, electron, checkForeground = readForegro
           }
         } catch (error) {
           const code = nativeErrorCode(error);
-          logOnce(`show:${code}`, `系统通知显示失败（${code}）。`);
+          logOnce(`show:${code}`, '系统通知显示失败（{code}）。', { code });
         }
       }
     } catch {
@@ -269,7 +264,7 @@ function createController({ hostRequest, electron, checkForeground = readForegro
 function install({ hostRequest: _hostRequest }) {
   const electron = require('electron');
   // 系统通知按应用名展示，避免原始 Electron 运行时名称混淆来源。
-  electron.app.setName('龙娘桌宠');
+  electron.app.setName('Codex Pet');
   if (process.platform === 'win32') {
     // 与启动器创建的开始菜单快捷方式保持同一身份。
     electron.app.setAppUserModelId(APP_USER_MODEL_ID);
@@ -285,5 +280,5 @@ function install({ hostRequest: _hostRequest }) {
 module.exports = {
   APP_USER_MODEL_ID, install, createController, createNoticeRequest, noticeUrl,
   normalizeNotice, notificationDecision, nativeErrorCode, threadUrl, NoticeHistory,
-  isOwnedShortcut,
+  isOwnedShortcut, ensureShortcut,
 };

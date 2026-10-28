@@ -25,7 +25,7 @@ async function runPs(command, timeout = 12000) {
 const fakeCodexPath = 'C:\\Program Files\\WindowsApps\\OpenAI.Codex_1.0.0.0_x64__test\\app\\ChatGPT.exe';
 
 test('Windows脚本均为UTF8 BOM，Windows PowerShell 5可解析', windowsOnly, async () => {
-  const files = ['start.ps1', 'scripts/follow-codex.ps1', 'scripts/enable-follow.ps1', 'scripts/disable-follow.ps1'];
+  const files = ['install.ps1', 'start.ps1', 'stop.ps1', 'setup.ps1', 'scripts/locale.ps1', 'scripts/follow-codex.ps1', 'scripts/enable-follow.ps1', 'scripts/disable-follow.ps1'];
   for (const file of files) assert.equal((await readFile(join(root, file))).subarray(0, 3).toString('hex'), 'efbbbf');
   const command = "$ErrorActionPreference='Stop'; foreach($taskFile in @(" + files.map(file => psQuote(join(root, file))).join(',') + ")) { $taskTokens=$null; $taskErrors=$null; [System.Management.Automation.Language.Parser]::ParseFile($taskFile,[ref]$taskTokens,[ref]$taskErrors) | Out-Null; if($taskErrors.Count){throw 'parse-failed'} }; 'ok'";
   assert.equal((await runPs(command)).stdout.trim(), 'ok');

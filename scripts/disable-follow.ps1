@@ -2,6 +2,7 @@
 param([string]$AppRoot)
 
 $ErrorActionPreference = 'Stop'
+. (Join-Path $PSScriptRoot 'locale.ps1')
 if (-not $AppRoot) { $AppRoot = Split-Path -Parent $PSScriptRoot }
 $taskRoot = [System.IO.Path]::GetFullPath($AppRoot).TrimEnd('\', '/')
 $taskStartup = [Environment]::GetFolderPath('Startup')
@@ -12,7 +13,7 @@ if ($taskShortcut -and (Test-Path -LiteralPath $taskShortcut)) {
     $taskLink = $taskShell.CreateShortcut($taskShortcut)
     $taskVbs = Join-Path $taskRoot 'scripts/follow-codex.vbs'
     $taskOwned = $taskLink.Description -eq 'dsh-pet-codex follow Codex startup' -and $taskLink.Arguments.IndexOf(('"' + $taskVbs + '"'), [StringComparison]::OrdinalIgnoreCase) -ge 0
-    if ($taskOwned -and $PSCmdlet.ShouldProcess($taskShortcut, '移除本安装目录的跟随启动项')) {
+    if ($taskOwned -and $PSCmdlet.ShouldProcess($taskShortcut, (Get-CodexPetText '移除本安装目录的跟随启动项' 'Remove follow-startup for this installation'))) {
         Remove-Item -LiteralPath $taskShortcut
         $taskRemoved = $true
     }
@@ -29,7 +30,7 @@ $taskStopped = $false
 try {
     try { $taskStop = [System.Threading.EventWaitHandle]::OpenExisting("Local\dsh-pet-codex-follow-stop-$taskKey") }
     catch [System.Threading.WaitHandleCannotBeOpenedException] { $taskStopped = $true }
-    if ($taskStop -and $PSCmdlet.ShouldProcess($taskRoot, '停止本安装目录的跟随监控器')) {
+    if ($taskStop -and $PSCmdlet.ShouldProcess($taskRoot, (Get-CodexPetText '停止本安装目录的跟随监控器' 'Stop the follow watcher for this installation'))) {
         # 只发给本目录派生的退出事件；不按进程名杀进程，也不结束Codex或宠物。
         $taskStop.Set() | Out-Null
         try { $taskMutex = [System.Threading.Mutex]::OpenExisting("Local\dsh-pet-codex-follow-$taskKey") }
@@ -38,7 +39,7 @@ try {
             try { $taskStopped = $taskMutex.WaitOne(10000) }
             catch [System.Threading.AbandonedMutexException] { $taskStopped = $true }
             if ($taskStopped) { $taskMutex.ReleaseMutex() }
-            else { throw '已发送退出信号，但监控器尚未退出，请稍后重试。' }
+            else { throw (Get-CodexPetText '已发送退出信号，但监控器尚未退出，请稍后重试。' 'A stop signal was sent, but the watcher has not exited. Please try again shortly.') }
         }
     }
 } finally {

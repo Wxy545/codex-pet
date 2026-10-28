@@ -1,14 +1,14 @@
 # 开发与维护
 
-产品显示名为“龙娘桌宠”。为兼容已有安装，仓库、npm 包名和默认安装目录仍使用 `dsh-pet-codex`，不随显示名变更。
+产品名为 Codex Pet，公开仓库为 `Wxy545/codex-pet`。新安装默认目录为 `%LOCALAPPDATA%\codex-pet`；已有安装可以保留原目录。底层协议、通知身份等兼容标识不随产品名变更。
 
 ## 从源码运行
 
 需要 Windows、Node.js 22.12 或更高版本，以及已安装并正常登录的 Codex CLI。日常安装可直接按 [INSTALL.md](../INSTALL.md) 操作；下面的步骤供修改源码时使用。
 
 ```powershell
-git clone https://github.com/Wxy545/dsh-pet-codex.git
-cd dsh-pet-codex
+git clone https://github.com/Wxy545/codex-pet.git
+cd codex-pet
 npm ci --legacy-peer-deps --ignore-scripts
 node scripts/prepare-runtime.mjs
 npm start
@@ -84,7 +84,7 @@ powershell -File scripts/enable-follow.ps1
 
 `scripts/prepare-runtime.mjs` 从固定版本生成 Codex 宿主入口，调整额度解析，并向桌面壳挂载 Codex 扩展。依赖版本或补丁位置不匹配时会报错停止。安装或升级依赖后需要重新运行准备脚本；需要改补丁时应修改脚本，不只手改 `node_modules/`。
 
-原版大肥鱼的 106 段视频动画保留。白龙娘 Q 版、姐姐版和偶尔变身属于本地试作，专属动作按原动作清单逐项补齐。动作入口可调用、基础帧可播放与专属动作制作完成需要分别记录；不能把多个动作复用同一段待机帧计为全部适配。
+原版蓝色鲸鱼女仆的 106 段视频动画保留，公开安装默认使用原版角色。白龙娘四帧图集属于本地动作草稿，不是 106 段视频的完成版。后续先适配少量核心原创动作；正常比例的姐姐形态另做独立素材。欢迎通过 [Issue](https://github.com/Wxy545/codex-pet/issues) 提供来源、授权和规格清楚的视频，逐项适配与验收，不能把帧图复用或文件可播放当作完整动画交付。
 
 白龙娘及新制作的非 Q 版参考、图集、角色截图不进入公开提交，待原作者授权和署名、使用范围确认后再发布。原大肥鱼素材的许可仍按 [THIRD_PARTY_NOTICES.md](../THIRD_PARTY_NOTICES.md) 保留。
 
@@ -154,7 +154,7 @@ node scripts/check-upstream.mjs --accept --npm-version $report.candidate.npmVers
 
 Codex 的 CLI 参数与会话事件可能随版本变化，dsh-pet 补丁也绑定到固定版本。升级后先收集失败证据，再修改适配，完成相关回归和实机验证后提交。
 
-维护者本机配置为每天上午 9 点检查一次，同时关注 Codex 和原版 dsh-pet。该任务不随安装器复制，也不表示其他用户已配置调度。其他用户可按 [README 中的提示](../README.md#更新跟着走) 在自己的 Codex 中建立维护任务。
+维护者本机配置为每天上午 9 点检查一次，同时关注 Codex 和原版 dsh-pet。该任务不随安装器复制，也不表示其他用户已配置调度。其他用户可按 [中文 README 中的提示](../README.zh-CN.md) 在自己的 Codex 中建立维护任务。
 
 每日维护任务可在发现变化后调查、修改和验证，并在明确授权的仓库范围内提交、推送。未变化时保持安静；验证失败、访问失败或需要人工处理时再报告。调度由 Codex 任务承担，仓库不包含个人账户的定时任务配置。未获授权的本地角色素材不得随功能更新上传。
 

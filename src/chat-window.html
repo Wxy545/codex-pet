@@ -1,22 +1,25 @@
 <!doctype html>
-<html lang="zh-CN">
+<html lang="en">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'; frame-src 'none'">
-  <title>龙娘桌宠 · 对话</title>
+  <title>Codex Pet · Chat</title>
   <link rel="stylesheet" href="chat-window.css">
+  <script defer src="locale-en.cjs"></script>
+  <script defer src="codex-locale.cjs"></script>
+  <script defer src="panel-locale.js"></script>
   <script defer src="chat-window.js"></script>
 </head>
 <body>
   <main>
-    <div class="toolbar"><div class="toolbar-actions"><button id="new-conversation" type="button">新对话</button><button id="open-tasks" type="button">操作任务</button></div><span id="status" role="status">就绪</span></div>
-    <section id="messages" class="messages" role="log" aria-label="对话消息" aria-live="polite"></section>
+    <div class="toolbar"><div class="toolbar-actions"><button id="new-conversation" type="button" data-i18n="新对话">New chat</button><button id="open-tasks" type="button" data-i18n="操作任务">Tasks</button></div><span id="status" role="status" data-i18n="就绪">Ready</span></div>
+    <section id="messages" class="messages" role="log" aria-label="Chat messages" data-i18n-aria="对话消息" aria-live="polite"></section>
     <form id="chat-form" class="composer">
-      <div id="attachments" class="attachments" aria-label="待发送图片" hidden></div>
-      <label class="sr-only" for="message-input">消息</label>
-      <textarea id="message-input" rows="3" maxlength="8192" placeholder="说点什么…" aria-describedby="image-limit"></textarea>
-      <div class="composer-actions"><div class="attachment-tools"><button id="choose-images" type="button">添加图片</button><span id="image-limit">PNG / JPEG / WebP · 最多4张</span></div><button id="send" class="primary" type="submit" disabled>发送</button></div>
+      <div id="attachments" class="attachments" aria-label="Images to send" data-i18n-aria="待发送图片" hidden></div>
+      <label class="sr-only" for="message-input" data-i18n="消息">Message</label>
+      <textarea id="message-input" rows="3" maxlength="8192" placeholder="Say something…" data-i18n-placeholder="说点什么…" aria-describedby="image-limit"></textarea>
+      <div class="composer-actions"><div class="attachment-tools"><button id="choose-images" type="button" data-i18n="添加图片">Add images</button><span id="image-limit" data-i18n="PNG / JPEG / WebP · 最多4张">PNG / JPEG / WebP · Up to 4</span></div><button id="send" class="primary" type="submit" disabled data-i18n="发送">Send</button></div>
     </form>
     <div id="message" class="toast" role="alert" hidden></div>
   </main>

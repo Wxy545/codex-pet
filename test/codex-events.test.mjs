@@ -17,7 +17,7 @@ async function fixture(t, initial = {}, options = {}) {
   for (const [name, text] of Object.entries(initial)) await writeFile(join(dir, name), text);
   const changes = [];
   const notifications = [];
-  const watcher = createCodexWatcher({ codexHome: home, pollMs: 20, ...options, onChange(snapshot, notification) {
+  const watcher = createCodexWatcher({ codexHome: home, pollMs: 20, locale: 'zh-CN', ...options, onChange(snapshot, notification) {
     changes.push(snapshot);
     if (notification) notifications.push(notification);
   } });
@@ -36,6 +36,18 @@ async function until(predicate, message = '等待事件适配器更新') {
   }
   assert.fail(message);
 }
+
+test('English事件状态、窗口与通知固定文案可读，线程ID与自报窗口名保留', async t => {
+  const f = await fixture(t, { 'a.jsonl': meta('thread-a') + event('task_started'), 'b.jsonl': meta('thread-b') + event('task_started') }, { locale: 'en' });
+  await f.watcher.start(); assert.equal(f.watcher.snapshot().task, '2 chats · Thinking');
+  await appendFile(join(f.dir, 'a.jsonl'), event('token_count', { rate_limits: { primary: { used_percent: 8, window_minutes: 300 }, secondary: { used_percent: 12, window_label: '自报窗口名' } } }));
+  await until(() => f.watcher.snapshot().usage?.usedPercent === 12);
+  assert.equal(f.watcher.snapshot().usage.windows[0].windowLabel, '5-hour window');
+  assert.equal(f.watcher.snapshot().usage.windows[1].windowLabel, '自报窗口名');
+  await appendFile(join(f.dir, 'a.jsonl'), event('request_user_input', { turn_id: 'approval-en' }));
+  await until(() => f.notifications.length === 1);
+  assert.equal(f.notifications[0].title, 'Codex needs your input'); assert.equal(f.notifications[0].threadId, 'thread-a');
+});
 
 test('聚合多个会话：一个完成不会清除另一个运行中的会话，且不泄漏正文', async t => {
   const f = await fixture(t, {

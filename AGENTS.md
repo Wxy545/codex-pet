@@ -1,4 +1,4 @@
-# dsh-pet-codex 维护规则
+# Codex Pet 维护规则
 
 适用范围：本仓库源码、运行时适配补丁、文档和测试。先读 README.md 与 THIRD_PARTY_NOTICES.md，再定位受影响的实现和调用方。
 

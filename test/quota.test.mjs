@@ -11,7 +11,14 @@ test('只映射真实5小时与周额度，缺失月度保持缺失',()=>{
 });
 test('缺失、非法及过期额度不能伪装为零',()=>{
   for(const usage of [undefined,{}, {windows:[{usedPercent:NaN}]}, {windows:[{usedPercent:10,resetsAt:1}]}])
-    assert.throws(()=>codexQuotaResult(usage,2000),/暂无有效/);
+    assert.throws(()=>codexQuotaResult(usage,2000,'zh-CN'),/暂无有效/);
+});
+
+test('English额度错误与默认标签本地化，真实窗口数值和自定义标签不改',()=>{
+  assert.throws(()=>codexQuotaResult(undefined,1000,'en'),/No fresh Codex usage snapshot/);
+  const value=codexQuotaResult({windows:[{usedPercent:12},{usedPercent:20,windowMinutes:300,windowLabel:'用户窗口名'}]},1000,'en');
+  assert.equal(value.data.rolling,20);assert.equal(value.data.rollingLabel,'用户窗口名');
+  assert.equal(codexQuotaResult({usedPercent:12},1000,'en').data.rollingLabel,'Current');
 });
 test('原桌面额度解析与六档展示接受无月度的Codex快照',()=>{
   const code=readFileSync(new URL('../node_modules/dsh-pet/runtime/electron-helper/shared-core.js',import.meta.url),'utf8');

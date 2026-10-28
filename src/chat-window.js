@@ -2,6 +2,9 @@
 
 (() => {
   const api = window.chatPanel;
+  const L = window.CodexLocale;
+  const T = L.t;
+  const localize = locale => window.CodexPanelLocale.apply(locale);
   const byId = id => document.getElementById(id);
   const ui = {
     form: byId('chat-form'), input: byId('message-input'), messages: byId('messages'),
@@ -15,7 +18,7 @@
   let unsubscribe = () => {};
   const locked = () => pending || state.busy || state.selecting;
   function notify(text) {
-    ui.toast.textContent = text;
+    ui.toast.textContent = T(text);
     ui.toast.hidden = false;
     clearTimeout(toastTimer);
     toastTimer = setTimeout(() => { ui.toast.hidden = true; }, 6000);
@@ -23,7 +26,7 @@
   function imageElement(image) {
     const img = document.createElement('img');
     img.src = image.dataUrl;
-    img.alt = image.name || '用户图片';
+    img.alt = image.name || T('用户图片');
     img.loading = 'lazy';
     img.decoding = 'async';
     return img;
@@ -32,10 +35,10 @@
     ui.messages.replaceChildren(...state.messages.map(message => {
       const article = document.createElement('article');
       article.className = 'bubble ' + (message.role === 'user' ? 'user' : 'assistant');
-      article.setAttribute('aria-label', message.role === 'user' ? '我' : '桌宠');
+      article.setAttribute('aria-label', message.role === 'user' ? T('我') : state.character?.name || T('桌宠'));
       const body = document.createElement('div');
       body.className = 'message-text';
-      body.textContent = message.text || (message.imageNote ? '[较早图片已移出本轮上下文]' : '');
+      body.textContent = message.text || (message.imageNote ? T('[较早图片已移出本轮上下文]') : '');
       article.append(body);
       if (message.images?.length) {
         const images = document.createElement('div'); images.className = 'sent-images';
@@ -46,25 +49,33 @@
     ui.messages.scrollTop = ui.messages.scrollHeight;
   }
   function render() {
+    localize(state.locale);
+    document.title = `Codex Pet · ${state.character?.name || T('桌宠')} · ${T('对话')}`;
     const busy = locked();
     ui.input.disabled = busy; ui.choose.disabled = busy || state.attachments.length >= 4;
     ui.reset.disabled = busy;
     ui.send.disabled = busy || (!ui.input.value.trim() && !state.attachments.length);
-    ui.send.textContent = state.busy ? '思考中…' : '发送';
-    ui.status.textContent = state.busy ? '思考中，结束前不能再次发送' : state.selecting ? '正在读取图片…' : '就绪';
+    ui.send.textContent = T(state.busy ? '思考中…' : '发送');
+    ui.status.textContent = T(state.busy ? '思考中，结束前不能再次发送' : state.selecting ? '正在读取图片…' : '就绪');
     ui.attachments.hidden = state.attachments.length === 0;
     ui.attachments.replaceChildren(...state.attachments.map(image => {
       const item = document.createElement('div'); item.className = 'attachment';
       item.append(imageElement(image));
       const label = document.createElement('span'); label.textContent = image.name; label.title = image.name;
-      const remove = document.createElement('button'); remove.type = 'button'; remove.textContent = '移除'; remove.disabled = busy;
-      remove.setAttribute('aria-label', '移除' + image.name);
+      const remove = document.createElement('button'); remove.type = 'button'; remove.textContent = T('移除'); remove.disabled = busy;
+      remove.setAttribute('aria-label', T('移除 {name}', { name: image.name }));
       remove.addEventListener('click', () => operate(() => api.removeImage(image.id)));
       item.append(label, remove); return item;
     }));
   }
+  function updateState(next) {
+    if (!next || (next.revision ?? 0) < (state.revision ?? 0)) return;
+    // 草稿与当前角色一致；切角色或语言后不把未提交的话带入新对话。
+    if (state.character && (state.character.id !== next.character?.id || state.locale !== next.locale)) ui.input.value = '';
+    state = next; localize(state.locale); renderMessages();
+  }
   function receive(response, announce = true) {
-    if (response?.state) { state = response.state; renderMessages(); }
+    updateState(response?.state);
     if (!response?.ok && announce) notify(response?.message || '操作未完成，请稍后重试。');
     render();
     return response?.ok === true;
@@ -101,20 +112,21 @@
     event.preventDefault();
     if (locked() || ui.send.disabled) return;
     const text = ui.input.value;
+    const context = `${state.character?.id}/${state.locale}`;
     const imageIds = state.attachments.map(image => image.id);
     pending = true; render();
     ui.input.value = '';
     try {
       const response = await api.sendMessage({ text, imageIds });
-      if (!receive(response)) ui.input.value = text;
-    } catch { ui.input.value = text; notify('暂时无法连接桌宠服务，请稍后重试。'); }
+      if (!receive(response) && response?.code !== 'character_changed' && context === `${state.character?.id}/${state.locale}`) ui.input.value = text;
+    } catch { if (context === `${state.character?.id}/${state.locale}`) ui.input.value = text; notify('暂时无法连接桌宠服务，请稍后重试。'); }
     finally { pending = false; if (!stopped) { render(); ui.input.focus(); } }
   });
   window.addEventListener('beforeunload', () => { stopped = true; unsubscribe(); clearTimeout(toastTimer); });
   if (!api) { notify('对话窗口未连接，请从桌宠右键菜单重新打开。'); render(); return; }
   unsubscribe = api.onState(next => {
     if (stopped) return;
-    state = next; renderMessages(); render();
+    updateState(next); render();
   });
   void api.getState().then(response => { receive(response, false); if (!locked()) ui.input.focus(); }).catch(() => notify('暂时无法读取对话状态。'));
   render();

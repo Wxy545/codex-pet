@@ -1,12 +1,12 @@
 {
-  "name": "dsh-pet-codex",
-  "version": "0.1.0",
+  "name": "codex-pet",
+  "version": "0.2.0",
   "private": true,
   "type": "module",
-  "description": "龙娘桌宠：配合 Codex 使用的独立 Windows 桌宠，基于 dsh-pet 适配",
-  "homepage": "https://github.com/Wxy545/dsh-pet-codex#readme",
-  "repository": { "type": "git", "url": "git+https://github.com/Wxy545/dsh-pet-codex.git" },
-  "bugs": { "url": "https://github.com/Wxy545/dsh-pet-codex/issues" },
+  "description": "Codex Pet: a Windows desktop companion for Codex, based on dsh-pet",
+  "homepage": "https://github.com/Wxy545/codex-pet#readme",
+  "repository": { "type": "git", "url": "git+https://github.com/Wxy545/codex-pet.git" },
+  "bugs": { "url": "https://github.com/Wxy545/codex-pet/issues" },
   "license": "MIT",
   "scripts": {
     "prepare:runtime": "node scripts/prepare-runtime.mjs",

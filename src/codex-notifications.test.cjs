@@ -3,7 +3,10 @@
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const { EventEmitter } = require('node:events');
-const { createController, NoticeHistory, notificationDecision, nativeErrorCode, threadUrl, noticeUrl, createNoticeRequest, isOwnedShortcut, APP_USER_MODEL_ID } = require('./codex-notifications.cjs');
+const { readFileSync } = require('node:fs');
+const path = require('node:path');
+const vm = require('node:vm');
+const { createController, NoticeHistory, notificationDecision, nativeErrorCode, threadUrl, noticeUrl, createNoticeRequest, isOwnedShortcut, ensureShortcut, APP_USER_MODEL_ID } = require('./codex-notifications.cjs');
 
 const THREAD = '00000000-0000-4000-8000-000000000001';
 const notice = (id = 'one') => ({ id, kind: 'completed', title: '任务完成', body: '可以查看结果', threadId: THREAD });
@@ -36,6 +39,7 @@ function fixture(foreground, options = {}) {
   }
   let checks = 0;
   const controller = createController({
+    locale: options.locale || 'zh-CN',
     hostRequest: options.hostRequest || (async () => ({ status: 200, body: JSON.stringify({ notices: [notice()] }) })),
     checkForeground: async () => { checks += 1; if (foreground instanceof Error) throw foreground; return foreground; },
     electron: { app, Notification, shell: { openExternal: async (url) => { opened.push(url); } } },
@@ -55,6 +59,67 @@ test('foreground and failed checks suppress notifications; errors never disclose
     f.controller.stop();
   }
   assert.equal(notificationDecision(null), 'error');
+});
+
+test('English通知诊断不翻译通知正文，也不泄漏原生错误正文', async () => {
+  const f = fixture({ ok: true, isCodexForeground: false, protocolRegistered: true }, { locale: 'en' });
+  await f.controller.poll();
+  assert.equal(f.shown[0].value.title, '任务完成'); assert.equal(f.shown[0].value.body, '可以查看结果');
+  f.shown[0].emit('failed', {}, 'HRESULT: -2147023728 PRIVATE_BODY');
+  assert.ok(f.logs.some(line => /Could not display.*0x80070490/.test(line)));
+  assert.ok(f.logs.every(line => !line.includes('PRIVATE_BODY'))); f.controller.stop();
+});
+
+function shortcutFixture() {
+  const directory = path.join(path.resolve('fakeAppData'), 'Microsoft', 'Windows', 'Start Menu', 'Programs');
+  const launcher = path.resolve('fakePet', 'Start Codex Pet.vbs');
+  const target = path.join(process.env.SystemRoot || 'C:\\Windows', 'System32', 'wscript.exe');
+  const links = new Map(), commands = [], logs = [];
+  const owned = name => ({ target, args: '"' + path.join(path.dirname(launcher), name) + '"', appUserModelId: APP_USER_MODEL_ID });
+  const electron = { app: { getPath: () => path.resolve('fakeAppData') }, shell: {
+    readShortcutLink: name => links.get(name),
+    writeShortcutLink: (name, _mode, value) => { links.set(name, value); return true; },
+  } };
+  const deps = { platform: 'win32', locale: 'en', execFileSyncImpl: (_file, args) => commands.push(args), fsImpl: {
+    existsSync: name => name === launcher || links.has(name), mkdirSync() {},
+    copyFileSync: (from, to) => { if (links.has(to)) throw new Error('already exists'); links.set(to, { ...links.get(from) }); },
+    unlinkSync: name => links.delete(name),
+  } };
+  return { directory, launcher, target, links, commands, logs, owned, deps, electron, run: () => ensureShortcut(electron, launcher, value => logs.push(value), deps) };
+}
+
+test('Codex Pet快捷方式迁移两种旧名，仅删除同安装参数/AUMID/目标均匹配的项', () => {
+  const f = shortcutFixture(); const dragon = path.join(f.directory, '龙娘桌宠.lnk'), fish = path.join(f.directory, 'Codex 大肥鱼桌宠.lnk');
+  f.links.set(dragon, f.owned('启动龙娘桌宠.vbs')); f.links.set(fish, f.owned('启动大肥鱼.vbs')); f.run();
+  const current = f.links.get(path.join(f.directory, 'Codex Pet.lnk'));
+  assert.equal(current.description, 'Codex Pet'); assert.equal(current.appUserModelId, APP_USER_MODEL_ID);
+  assert.equal(current.args, '"' + f.launcher + '"'); assert.equal(f.links.has(dragon), false); assert.equal(f.links.has(fish), false);
+  assert.ok(f.commands.some(args => args.includes('DisplayName') && args.includes('Codex Pet')));
+});
+
+test('同名新快捷方式不属于本项目时不改动；外部目录旧快捷方式不迁移不删除', () => {
+  const blocked = shortcutFixture(); const current = path.join(blocked.directory, 'Codex Pet.lnk');
+  const foreign = { ...blocked.owned('Start Codex Pet.vbs'), appUserModelId: 'another.app' }; blocked.links.set(current, foreign); blocked.run();
+  assert.equal(blocked.links.get(current), foreign); assert.equal(blocked.commands.length, 0);
+  const safe = shortcutFixture(); const old = path.join(safe.directory, '龙娘桌宠.lnk');
+  const otherDirectory = { ...safe.owned('启动龙娘桌宠.vbs'), args: '"' + path.resolve('otherPet', '启动龙娘桌宠.vbs') + '"' };
+  safe.links.set(old, otherDirectory); safe.run(); assert.equal(safe.links.get(old), otherDirectory); assert.ok(safe.links.has(path.join(safe.directory, 'Codex Pet.lnk')));
+});
+
+test('安装通知入口使用Codex Pet显示名，但AUMID继续兼容原通知身份', () => {
+  const names = [], identities = []; const app = new EventEmitter(); app.setName = name => names.push(name); app.setAppUserModelId = id => identities.push(id); app.isReady = () => false; app.whenReady = () => new Promise(() => {});
+  const box = { module: { exports: {} }, require: name => name === 'electron' ? { app, Notification: {}, shell: {} } : require(name), process: { platform: 'win32', env: {} }, __dirname, URL, AbortSignal, setInterval, clearInterval, console };
+  vm.runInNewContext(readFileSync(path.join(__dirname, 'codex-notifications.cjs'), 'utf8'), box);
+  const controller = box.module.exports.install({}); assert.deepEqual(names, ['Codex Pet']); assert.deepEqual(identities, ['com.wanggong.codex-bluefish']); controller.stop();
+});
+
+test('改名时新名称发生竞态冲突，保留可用旧入口，不覆盖或删除外部快捷方式', () => {
+  const f = shortcutFixture(), old = path.join(f.directory, '龙娘桌宠.lnk'), current = path.join(f.directory, 'Codex Pet.lnk');
+  f.links.set(old, f.owned('启动龙娘桌宠.vbs'));
+  const foreign = { target: 'other.exe', args: '', appUserModelId: 'other.app' };
+  f.deps.fsImpl.copyFileSync = () => { f.links.set(current, foreign); throw new Error('COPYFILE_EXCL conflict'); };
+  f.run(); assert.equal(f.links.get(current), foreign); assert.ok(f.links.has(old));
+  assert.equal(f.links.get(old).args, '"' + f.launcher + '"'); assert.ok(f.logs.some(line => /Could not create/.test(line)));
 });
 
 test('background sends once, validates thread UUID and opens only a registered Codex protocol', async () => {

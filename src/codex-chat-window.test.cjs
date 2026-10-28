@@ -6,13 +6,17 @@ const path = require('node:path');
 const fs = require('node:fs');
 const { pathToFileURL } = require('node:url');
 const { createController, installPreload, CHANNELS } = require('./codex-chat-window.cjs');
+const L = require('./codex-locale.cjs');
+L.setLocale('zh-CN');
 const PNG = Buffer.from('89504e470d0a1a0a0000000000000000', 'hex');
 
 function fixture(options = {}) {
   const handlers = new Map(); const ipcMain = new EventEmitter();
   ipcMain.handle = (channel, callback) => handlers.set(channel, callback);
   ipcMain.removeHandler = channel => handlers.delete(channel);
-  const windows = []; const calls = []; const broadcasts = [];
+  const windows = []; const calls = []; const identityCalls = []; const broadcasts = [];
+  let identity = options.identity || { id: 'bluefish', name: '蓝色大肥鱼', locale: 'zh-CN' };
+  let characterRequest;
   const app = new EventEmitter(); app.whenReady = async () => {};
   const pet = new EventEmitter(); pet.mainFrame = {};
   pet.getURL = () => pathToFileURL(path.join(__dirname, 'index.html')).href + '?petIndex=0';
@@ -26,7 +30,7 @@ function fixture(options = {}) {
       this.webContents.setWindowOpenHandler = callback => { this.openHandler = callback; };
       windows.push(this);
     }
-    setMenu() {} isDestroyed() { return this.destroyed; } isMinimized() { return false; }
+    setMenu() {} setTitle(value) { this.title = value; } isDestroyed() { return this.destroyed; } isMinimized() { return false; }
     show() {} focus() {}
     async loadFile(file) { this.url = pathToFileURL(file).href; }
     destroy() { this.destroyed = true; this.emit('closed'); }
@@ -44,6 +48,11 @@ function fixture(options = {}) {
       return { async stat() { return { size: image.length, isFile: () => true }; }, async read(buffer) { image.copy(buffer); return { bytesRead: image.length }; }, async close() {} };
     } },
     hostRequest: async (method, route, body) => {
+      if (method === 'GET') {
+        identityCalls.push({ method, route });
+        if (characterRequest) return characterRequest();
+        return { status: 200, body: JSON.stringify(identity) };
+      }
       calls.push({ method, route, body });
       if (options.hostRequest) return options.hostRequest(method, route, body);
       return { status: 200, body: JSON.stringify({ choices: [{ message: { content: '<img src=x onerror=alert(1)> 你好。' } }] }) };
@@ -52,7 +61,8 @@ function fixture(options = {}) {
   });
   const panelEvent = () => ({ sender: windows.at(-1).webContents, senderFrame: windows.at(-1).webContents.mainFrame });
   const invoke = (channel, value, event = panelEvent()) => handlers.get(channel)(event, value);
-  return { controller, windows, handlers, ipcMain, app, pet, invoke, calls, broadcasts,
+  return { controller, windows, handlers, ipcMain, app, pet, invoke, calls, identityCalls, broadcasts,
+    setIdentity(value) { identity = value; }, setCharacterRequest(value) { characterRequest = value; },
     setDialog(value) { dialogResult = value; }, setImage(value) { image = value; },
     reads: () => ({ clipboard: clipboardReads, files: fileReads }) };
 }
@@ -65,7 +75,7 @@ test('聊天窗口单实例、隔离Node并阻止导航；原宠物只得到打�
   assert.equal(win.settings.webPreferences.nodeIntegration, false);
   assert.equal(win.settings.webPreferences.contextIsolation, true);
   assert.equal(win.settings.webPreferences.sandbox, true);
-  assert.equal(win.settings.title, '龙娘桌宠 · 对话');
+  assert.equal(win.settings.title, 'Codex Pet · 蓝色大肥鱼 · 对话');
   assert.deepEqual(win.openHandler(), { action: 'deny' });
   let prevented = false;
   win.webContents.emit('will-navigate', { preventDefault() { prevented = true; } }, 'https://example.com');
@@ -143,6 +153,8 @@ test('思考期间拒绝重复发送，关闭重开也不另开请求，旧响�
   t.after(() => f.controller.dispose()); await f.controller.open();
   const pending = f.invoke(CHANNELS.send, { text: '你好', imageIds: [] });
   assert.equal((await f.invoke(CHANNELS.send, { text: '第二轮', imageIds: [] })).code, 'busy');
+  await new Promise(setImmediate);
+  assert.equal(typeof finish, 'function');
   f.windows[0].destroy(); await f.controller.open();
   assert.equal((await f.invoke(CHANNELS.state)).state.busy, true);
   assert.equal((await f.invoke(CHANNELS.send, { text: '重开窗口', imageIds: [] })).code, 'busy');
@@ -178,4 +190,73 @@ test('HTML与renderer不执行外来内容，不使用持久化或远程连接',
   assert.doesNotMatch(renderer, /innerHTML|insertAdjacentHTML|localStorage|sessionStorage|fetch\s*\(/);
   assert.match(renderer, /textContent/);
   assert.match(renderer, /clipboardData/);
+});
+
+test('身份只取可信GET，按角色隔离历史；角色不能由renderer system载荷覆盖', async t => {
+  const f = fixture(); t.after(() => f.controller.dispose()); await f.controller.open();
+  await f.invoke(CHANNELS.send, { text: '蓝鱼的问题', imageIds: [] });
+  assert.equal(JSON.parse(f.calls[0].body).messages.some(item => item.role === 'system'), false);
+  const dragon = { id: 'white-dragon', name: 'Dragon Girl', locale: 'en' };
+  f.setIdentity(dragon); f.controller.onCharacterChanged(dragon);
+  assert.deepEqual((await f.invoke(CHANNELS.state)).state.messages, []);
+  await f.invoke(CHANNELS.send, { text: 'A dragon question', imageIds: [] });
+  const messages = JSON.parse(f.calls[1].body).messages;
+  assert.equal(messages.length, 1);
+  assert.equal(messages[0].content, 'A dragon question');
+  assert.equal(f.windows[0].title, 'Codex Pet · Dragon Girl · Chat');
+  const blue = { id: 'bluefish', name: '蓝色大肥鱼', locale: 'zh-CN' };
+  f.setIdentity(blue); f.controller.onCharacterChanged(blue);
+  assert.equal((await f.invoke(CHANNELS.state)).state.messages[0].text, '蓝鱼的问题');
+  assert.ok(f.identityCalls.every(call => call.route === '/dsh-pet-7340/codex-character'));
+});
+
+test('身份GET等待期间关窗或重复发送，不得启动模型；关闭窗口历史不复活', async t => {
+  const f = fixture(); t.after(() => f.controller.dispose()); await f.controller.open();
+  let resume;
+  f.setCharacterRequest(() => new Promise(resolve => { resume = resolve; }));
+  const pending = f.invoke(CHANNELS.send, { text: '不应发送', imageIds: [] });
+  assert.equal((await f.invoke(CHANNELS.send, { text: '重复', imageIds: [] })).code, 'busy');
+  f.windows[0].destroy();
+  resume({ status: 200, body: JSON.stringify({ id: 'bluefish', name: '蓝色大肥鱼', locale: 'zh-CN' }) });
+  assert.equal((await pending).code, 'closed');
+  assert.equal(f.calls.length, 0);
+  f.setCharacterRequest(null); await f.controller.open();
+  assert.deepEqual((await f.invoke(CHANNELS.state)).state.messages, []);
+});
+
+test('跨角色时丢弃在途模型响应，并撤回原角色未完成轮次', async t => {
+  let finish;
+  const f = fixture({ hostRequest: () => new Promise(resolve => { finish = resolve; }) });
+  t.after(() => f.controller.dispose()); await f.controller.open();
+  const pending = f.invoke(CHANNELS.send, { text: '旧角色未完成的问题', imageIds: [] });
+  await new Promise(setImmediate);
+  const dragon = { id: 'white-dragon', name: '白龙娘', locale: 'zh-CN' };
+  f.setIdentity(dragon); f.controller.onCharacterChanged(dragon);
+  finish({ status: 200, body: JSON.stringify({ choices: [{ message: { content: '旧鱼回复' } }] }) });
+  const cancelled = await pending;
+  assert.equal(cancelled.code, 'character_changed');
+  assert.equal(cancelled.state.busy, false);
+  assert.deepEqual((await f.invoke(CHANNELS.state)).state.messages, []);
+  const blue = { id: 'bluefish', name: '蓝色大肥鱼', locale: 'zh-CN' };
+  f.setIdentity(blue); f.controller.onCharacterChanged(blue);
+  assert.deepEqual((await f.invoke(CHANNELS.state)).state.messages, []);
+});
+
+test('关闭重开后旧轮次完成，不恢复关闭前已有的完整历史', async t => {
+  let finish; let count = 0;
+  const f = fixture({ hostRequest: () => ++count === 1
+    ? Promise.resolve({ status: 200, body: { choices: [{ message: { content: '第一轮回复' } }] } })
+    : new Promise(resolve => { finish = resolve; }) });
+  t.after(() => f.controller.dispose()); await f.controller.open();
+  await f.invoke(CHANNELS.send, { text: '第一轮', imageIds: [] });
+  const pending = f.invoke(CHANNELS.send, { text: '旧窗口第二轮', imageIds: [] });
+  await new Promise(setImmediate);
+  f.windows[0].destroy(); await f.controller.open();
+  assert.deepEqual((await f.invoke(CHANNELS.state)).state.messages, []);
+  finish({ status: 200, body: { choices: [{ message: { content: '迟到回复' } }] } });
+  const result = await pending;
+  assert.equal(result.code, 'closed');
+  assert.equal(result.state.busy, false);
+  assert.deepEqual(result.state.messages, []);
+  assert.deepEqual((await f.invoke(CHANNELS.state)).state.messages, []);
 });

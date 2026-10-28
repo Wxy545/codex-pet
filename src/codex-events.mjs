@@ -1,6 +1,7 @@
 import { readdir, stat, open } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { join, basename, resolve } from 'node:path';
+import Locale from './codex-locale.cjs';
 
 const RECENT_MS = 48 * 60 * 60 * 1000;
 const INITIAL_TAIL_BYTES = 128 * 1024;
@@ -39,15 +40,15 @@ function timestampOf(record, fallback) {
   return Number.isFinite(parsed) ? parsed : fallback;
 }
 
-function windowLabel(minutes) {
-  if (!Number.isFinite(minutes) || minutes <= 0) return '额度窗口';
-  if (minutes % 1440 === 0) return `${minutes / 1440} 天额度`;
-  if (minutes % 60 === 0) return `${minutes / 60} 小时额度`;
-  return `${minutes} 分钟额度`;
+function windowLabel(minutes, locale) {
+  if (!Number.isFinite(minutes) || minutes <= 0) return Locale.t('额度窗口', {}, locale);
+  if (minutes % 1440 === 0) return Locale.t('{count} 天额度', { count: minutes / 1440 }, locale);
+  if (minutes % 60 === 0) return Locale.t('{count} 小时额度', { count: minutes / 60 }, locale);
+  return Locale.t('{count} 分钟额度', { count: minutes }, locale);
 }
 
 // 额度来自真实 rate_limits 字段；不使用 token 数推算账号余额。
-function usageFrom(rateLimits) {
+function usageFrom(rateLimits, locale) {
   const groups = Array.isArray(rateLimits) ? rateLimits : [rateLimits];
   const windows = [];
   for (const group of groups) {
@@ -58,9 +59,9 @@ function usageFrom(rateLimits) {
       const usage = {
         usedPercent: Math.min(100, Math.max(0, value.used_percent)),
         windowLabel: Number.isFinite(value.window_minutes) && value.window_minutes > 0
-          ? windowLabel(value.window_minutes)
+          ? windowLabel(value.window_minutes, locale)
           : typeof value.window_label === 'string' && value.window_label.trim()
-            ? value.window_label.trim().slice(0, 80) : '额度窗口',
+            ? value.window_label.trim().slice(0, 80) : Locale.t('额度窗口', {}, locale),
       };
       if (Number.isFinite(value.window_minutes) && value.window_minutes > 0) usage.windowMinutes = value.window_minutes;
       if (typeof value.resets_at === 'number' && Number.isFinite(value.resets_at)) usage.resetsAt = value.resets_at;
@@ -122,12 +123,12 @@ function transitionFor(record) {
  * 只读跟随 Codex 会话日志。snapshot 与通知只包含固定状态文案，不返回对话或命令正文。
  * start/stop 可 await；snapshot 同步读取，onChange 只在快照变化或出现新通知时调用。
  */
-export function createCodexWatcher({ codexHome = process.env.CODEX_HOME || join(homedir(), '.codex'), onChange = () => {}, pollMs = 1500, excludeThreadSources = ['pet-chat'], terminalHoldMs = 10000 } = {}) {
-  if (typeof codexHome !== 'string' || !codexHome) throw new TypeError('codexHome 必须是目录路径');
-  if (typeof onChange !== 'function') throw new TypeError('onChange 必须是函数');
-  if (!Number.isFinite(pollMs) || pollMs < 10) throw new TypeError('pollMs 必须不少于 10 毫秒');
-  if (!Number.isFinite(terminalHoldMs) || terminalHoldMs < 0) throw new TypeError('terminalHoldMs 必须是非负毫秒数');
-  if (!Array.isArray(excludeThreadSources)) throw new TypeError('excludeThreadSources 必须是数组');
+export function createCodexWatcher({ codexHome = process.env.CODEX_HOME || join(homedir(), '.codex'), onChange = () => {}, pollMs = 1500, excludeThreadSources = ['pet-chat'], terminalHoldMs = 10000, locale = Locale.getLocale() } = {}) {
+  if (typeof codexHome !== 'string' || !codexHome) throw new TypeError(Locale.t('codexHome 必须是目录路径', {}, locale));
+  if (typeof onChange !== 'function') throw new TypeError(Locale.t('onChange 必须是函数', {}, locale));
+  if (!Number.isFinite(pollMs) || pollMs < 10) throw new TypeError(Locale.t('pollMs 必须不少于 10 毫秒', {}, locale));
+  if (!Number.isFinite(terminalHoldMs) || terminalHoldMs < 0) throw new TypeError(Locale.t('terminalHoldMs 必须是非负毫秒数', {}, locale));
+  if (!Array.isArray(excludeThreadSources)) throw new TypeError(Locale.t('excludeThreadSources 必须是数组', {}, locale));
   const sessionsRoot = join(resolve(codexHome), 'sessions');
   const excludedSources = new Set(excludeThreadSources);
   const files = new Map();
@@ -156,7 +157,8 @@ export function createCodexWatcher({ codexHome = process.env.CODEX_HOME || join(
       && Date.now() - Math.min(selected.updatedAt, selected.observedAt) >= terminalHoldMs;
     // 终态只短暂展示；仍在运行或等待确认的会话不以时间推断为结束。
     const state = terminalExpired ? 'idle' : selected?.state ?? 'idle';
-    const result = { state, task: active.length > 1 ? `${active.length} 个会话${TASK_TEXT[state]}` : TASK_TEXT[state], activeCount: active.length };
+    const task = Locale.t(TASK_TEXT[state], {}, locale);
+    const result = { state, task: active.length > 1 ? Locale.t('{count} 个会话{task}', { count: active.length, task }, locale) : task, activeCount: active.length };
     if (quota) result.usage = usageSnapshot(quota);
     if (selected) result.threadId = selected.threadId;
     return result;
@@ -182,7 +184,7 @@ export function createCodexWatcher({ codexHome = process.env.CODEX_HOME || join(
     if (cursor.excluded) return;
     const updatedAt = timestampOf(record, cursor.mtimeMs);
     if (record.type === 'event_msg' && payload?.type === 'token_count') {
-      const next = usageFrom(payload.rate_limits);
+      const next = usageFrom(payload.rate_limits, locale);
       if (next && updatedAt >= quotaTimestamp) { quota = next; quotaTimestamp = updatedAt; publish(); }
     }
     const transition = transitionFor(record);
@@ -209,7 +211,10 @@ export function createCodexWatcher({ codexHome = process.env.CODEX_HOME || join(
       const hasTime = Number.isFinite(Date.parse(record.timestamp));
       const newEnough = hasTime ? updatedAt >= startedAt : mode === 'append';
       // 聚合快照可能仍选中另一条活动会话，通知跳转必须使用本条事件的来源会话。
-      if (!seen && mode !== 'silent' && newEnough) notification = { ...NOTICE[transition.notice], threadId: cursor.threadId };
+      if (!seen && mode !== 'silent' && newEnough) {
+        const notice = NOTICE[transition.notice];
+        notification = { ...notice, title: Locale.t(notice.title, {}, locale), body: Locale.t(notice.body, {}, locale), threadId: cursor.threadId };
+      }
     }
     publish(notification);
   }

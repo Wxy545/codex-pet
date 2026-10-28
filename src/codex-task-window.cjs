@@ -3,6 +3,7 @@
 const path = require('node:path');
 const { pathToFileURL } = require('node:url');
 const fs = require('node:fs/promises');
+const L = require('./codex-locale.cjs');
 
 const TASK_PATH = '/dsh-pet-7340/codex-tasks';
 const CHANNELS = Object.freeze({
@@ -30,7 +31,7 @@ const ERRORS = Object.freeze({
 });
 
 const knownError = code => typeof code === 'string' && Object.hasOwn(ERRORS, code);
-const failure = code => ({ ok: false, code: knownError(code) ? code : 'host_unavailable', message: knownError(code) ? ERRORS[code] : ERRORS.host_unavailable });
+const failure = code => ({ ok: false, code: knownError(code) ? code : 'host_unavailable', message: L.t(knownError(code) ? ERRORS[code] : ERRORS.host_unavailable), locale: L.getLocale() });
 const samePath = (left, right) => process.platform === 'win32'
   ? String(left).toLowerCase() === String(right).toLowerCase() : left === right;
 
@@ -39,16 +40,17 @@ function sanitizeSnapshot(value) {
   if (!value || typeof value !== 'object' || !STATES.has(value.state)) return null;
   const result = {
     state: value.state,
+    locale: L.getLocale(),
     progress: Array.isArray(value.progress) ? value.progress.slice(-24).flatMap(item => {
       if (!item || typeof item.kind !== 'string' || !Object.hasOwn(PROGRESS, item.kind)) return [];
-      return [{ kind: item.kind, text: PROGRESS[item.kind], at: typeof item.at === 'string' ? item.at.slice(0, 40) : '' }];
+      return [{ kind: item.kind, text: L.t(PROGRESS[item.kind]), at: typeof item.at === 'string' ? item.at.slice(0, 40) : '' }];
     }) : [],
     summary: typeof value.summary === 'string' ? value.summary.slice(0, 64000) : '',
   };
   if (typeof value.id === 'string' && /^[a-zA-Z0-9-]{1,100}$/.test(value.id)) result.id = value.id;
   if (typeof value.cwd === 'string' && path.isAbsolute(value.cwd)) result.cwd = value.cwd.slice(0, 32768);
   if (['read-only', 'workspace-write'].includes(value.permission)) result.permission = value.permission;
-  if (value.error && knownError(value.error.code)) result.error = { code: value.error.code, message: ERRORS[value.error.code] };
+  if (value.error && knownError(value.error.code)) result.error = { code: value.error.code, message: L.t(ERRORS[value.error.code]) };
   return result;
 }
 
@@ -102,7 +104,7 @@ function createController({ hostRequest, electron, fileRoot = __dirname, fsImpl 
     }
     const win = new BrowserWindow({
       width: 760, height: 760, minWidth: 560, minHeight: 580,
-      title: '龙娘桌宠 · 操作任务', backgroundColor: '#f7f8fa', show: false, autoHideMenuBar: true,
+      title: `Codex Pet · ${L.t('操作任务')}`, backgroundColor: '#f7f8fa', show: false, autoHideMenuBar: true,
       webPreferences: {
         preload: path.join(fileRoot, 'task-preload.cjs'), nodeIntegration: false,
         contextIsolation: true, sandbox: true, webSecurity: true, spellcheck: false,
@@ -125,7 +127,7 @@ function createController({ hostRequest, electron, fileRoot = __dirname, fsImpl 
       if (!owned(event)) return failure('unauthorized');
       if (submitPending) return failure('busy');
       try {
-        const chosen = await dialog.showOpenDialog(windowRef, { title: '选择本次任务的工作目录', buttonLabel: '使用这个目录', properties: ['openDirectory', 'dontAddToRecent'], ...(selectedDirectory ? { defaultPath: selectedDirectory } : {}) });
+        const chosen = await dialog.showOpenDialog(windowRef, { title: L.t('选择本次任务的工作目录'), buttonLabel: L.t('使用这个目录'), properties: ['openDirectory', 'dontAddToRecent'], ...(selectedDirectory ? { defaultPath: selectedDirectory } : {}) });
         if (chosen.canceled || chosen.filePaths.length !== 1) return { ok: true, cancelled: true, directory: selectedDirectory };
         const directory = await io.realpath(chosen.filePaths[0]);
         if (!path.isAbsolute(directory) || !(await io.stat(directory)).isDirectory()) return failure('invalid_cwd');

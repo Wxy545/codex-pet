@@ -2,6 +2,8 @@
 
 (() => {
   const api = window.taskPanel;
+  const L = window.CodexLocale;
+  const T = L.t;
   const element = id => document.getElementById(id);
   const fields = {
     form: element('task-form'), directory: element('directory'), choose: element('choose-directory'),
@@ -23,29 +25,31 @@
   const permission = () => fields.form.elements.permission.value;
   const active = () => ['running', 'cancelling'].includes(snapshot.state);
   function notify(text) {
-    fields.message.textContent = text;
+    fields.message.textContent = T(text);
     fields.message.hidden = false;
     clearTimeout(messageTimer);
     messageTimer = setTimeout(() => { fields.message.hidden = true; }, 6000);
   }
   function render() {
+    window.CodexPanelLocale.apply(snapshot.locale);
+    document.title = `Codex Pet · ${T('操作任务')}`;
     const busy = pending || active();
     fields.choose.disabled = busy;
     fields.task.disabled = busy;
     fields.permissions.disabled = busy;
     fields.count.textContent = fields.task.value.length + ' / 12000';
     fields.submit.disabled = busy || !connected || !fields.directory.value || !fields.task.value.trim();
-    fields.submit.textContent = permission() === 'workspace-write' ? '确认并允许修改' : '确认执行';
+    fields.submit.textContent = T(permission() === 'workspace-write' ? '确认并允许修改' : '确认执行');
     fields.cancel.hidden = !active();
     fields.cancel.disabled = pending || snapshot.state === 'cancelling';
     fields.retry.hidden = connected;
     fields.copy.disabled = pending || !snapshot.summary;
     fields.confirmation.textContent = fields.directory.value && fields.task.value.trim()
-      ? (permission() === 'workspace-write' ? '确认后，仅允许修改所选目录中的文件：' : '本次禁止写入，工作目录：') + fields.directory.value
-      : '选择目录并填写任务后，可确认执行。';
-    fields.state.textContent = connected ? STATE_TEXT[snapshot.state] || '状态未知' : '暂时无法读取任务状态';
+      ? T(permission() === 'workspace-write' ? '确认后，按工作目录写入权限执行：' : '本次禁止写入，工作目录：') + fields.directory.value
+      : T('选择目录并填写任务后，可确认执行。');
+    fields.state.textContent = T(connected ? STATE_TEXT[snapshot.state] || '状态未知' : '暂时无法读取任务状态');
     fields.scope.hidden = !snapshot.cwd;
-    fields.scope.textContent = snapshot.cwd ? (snapshot.permission === 'workspace-write' ? '修改仅限所选目录 · ' : '只读，禁止写入 · ') + snapshot.cwd : '';
+    fields.scope.textContent = snapshot.cwd ? T(snapshot.permission === 'workspace-write' ? '工作目录读写 · ' : '只读，禁止写入 · ') + snapshot.cwd : '';
     fields.progress.replaceChildren(...(snapshot.progress || []).map(item => {
       const li = document.createElement('li');
       li.textContent = item.text;

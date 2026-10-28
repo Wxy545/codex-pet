@@ -5,6 +5,8 @@ const { EventEmitter } = require('node:events');
 const path = require('node:path');
 const { pathToFileURL } = require('node:url');
 const { createController, installPreload, sanitizeSnapshot, CHANNELS } = require('./codex-task-window.cjs');
+const L = require('./codex-locale.cjs');
+L.setLocale('zh-CN');
 
 const ID = '00000000-0000-4000-8000-000000000001';
 const directory = path.resolve('test-task-directory');
@@ -68,7 +70,7 @@ test('面板单实例并隔离Node权限，阻止任意导航与新窗口', asyn
   assert.equal(win.settings.webPreferences.nodeIntegration, false);
   assert.equal(win.settings.webPreferences.contextIsolation, true);
   assert.equal(win.settings.webPreferences.sandbox, true);
-  assert.equal(win.settings.title, '龙娘桌宠 · 操作任务');
+  assert.equal(win.settings.title, 'Codex Pet · 操作任务');
   assert.deepEqual(win.openHandler({ url: 'https://example.com' }), { action: 'deny' });
   let prevented = 0;
   win.webContents.emit('will-navigate', { preventDefault: () => { prevented++; } }, 'https://example.com');
