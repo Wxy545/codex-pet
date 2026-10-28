@@ -158,6 +158,8 @@ Codex 的 CLI 参数与会话事件可能随版本变化，dsh-pet 补丁也绑�
 
 每日维护任务可在发现变化后调查、修改和验证，并在明确授权的仓库范围内提交、推送。未变化时保持安静；验证失败、访问失败或需要人工处理时再报告。调度由 Codex 任务承担，仓库不包含个人账户的定时任务配置。未获授权的本地角色素材不得随功能更新上传。
 
+2026-10-28 对上游 `b78e3fc` 至 `4a222e2` 的十个提交做过差异审查。在 npm 仍为 `0.3.8` 时，择取 [4864269 的素材 Range 修复](https://github.com/PC2005-cloud/dsh-pet/commit/48642698ee73ecf2029ea85a2e8f76f562b710e5)、[86181ce 的负距离走位修复](https://github.com/PC2005-cloud/dsh-pet/commit/86181ce1660a57ab27336630bab5b344de71b28c)和 [e0c5f97 的独立模式设置菜单文案](https://github.com/PC2005-cloud/dsh-pet/commit/e0c5f9749ab74dfc31e0624b8c778dc6f1ecd044)，由 `scripts/upstream-fixes.mjs` 在准备运行时应用；锚点不匹配会停止。没有合入 DSH 专属右栏、Web 宠物改动或未接入播报的语音功能，也没有改变代码、角色和动画各自的许可。
+
 ## 验证记录
 
 点击、拖拽和菜单已由使用者验收；Windows 通知做过 WinRT 投递验证。这些结果对应开发时的 Windows 环境。通知中心、横幅和点击跳转应分别检查，不能由其中一项推定其余项通过。

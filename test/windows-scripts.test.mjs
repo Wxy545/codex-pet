@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync, spawnSync } from 'node:child_process';
-import { mkdtempSync, writeFileSync, readFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, writeFileSync, readFileSync, rmSync, realpathSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -39,7 +39,8 @@ test('无旧安装时实际解析的新默认目录和GitHub请求都使用codex
   try {
     const script = `$ErrorActionPreference='Stop'; $env:LOCALAPPDATA=${psQuote(folder)}; function global:Invoke-RestMethod { param($Uri); throw ('NETWORK_BLOCKED_URI='+$Uri) }; try { . (Join-Path $env:PET_SCRIPT_ROOT 'install.ps1') -NoStart -NoFollow 6>$null } catch { @{target=$installerTarget;repo=$installerRepo;message=$_.Exception.Message} | ConvertTo-Json -Compress }`;
     const result = JSON.parse(runPs(script));
-    assert.equal(result.target.toLowerCase(), join(folder, 'codex-pet').toLowerCase());
+    // CI的TEMP可能是8.3短路径；比较同一目录的规范路径，不能把长短名称当成安装目录错误。
+    assert.equal(result.target.toLowerCase(), join(realpathSync.native(folder), 'codex-pet').toLowerCase());
     assert.equal(result.repo, 'Wxy545/codex-pet');
     assert.match(result.message, /https:\/\/api\.github\.com\/repos\/Wxy545\/codex-pet\/git\/ref\/heads\/main/);
   } finally { rmSync(folder, { recursive: true, force: true }); }

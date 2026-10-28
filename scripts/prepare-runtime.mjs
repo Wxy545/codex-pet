@@ -3,6 +3,7 @@ import { readFile, writeFile, copyFile, mkdir } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { resolve, dirname } from 'node:path';
 import { localizeHost, localizeCore, localizeEvents, localizeIndexHtml } from './runtime-locale-patches.mjs';
+import { patchHostAssets, patchBridgeAssets, patchDesktopMotion } from './upstream-fixes.mjs';
 
 const root=resolve(dirname(fileURLToPath(import.meta.url)),'..');
 const pkg=resolve(root,'node_modules/dsh-pet');
@@ -17,6 +18,7 @@ function quotaPatch(text){
   return text.replace(oldGate,newGate);
 }
 let source=await readFile(resolve(pkg,'lib/standalone.js'),'utf8');
+source=patchHostAssets(source);
 function patchOnce(text,anchor,replacement,label){
   if(text.split(anchor).length!==2) throw new Error(`${label}补丁定位失败。`);
   return text.replace(anchor,replacement);
@@ -47,9 +49,13 @@ const core=resolve(pkg,'runtime/electron-helper/shared-core.js');
 await writeFile(core,localizeCore(quotaPatch(await readFile(core,'utf8'))));
 const events=resolve(pkg,'runtime/electron-helper/events.js');
 await writeFile(events,localizeEvents(await readFile(events,'utf8')));
+const sprite=resolve(pkg,'runtime/electron-helper/sprite.js');
+await writeFile(sprite,patchDesktopMotion(await readFile(sprite,'utf8')));
 // 仅向原桌面壳追加通知入口，动画、物理、菜单仍运行原实现。
 const main=resolve(pkg,'runtime/electron-helper/main.js');
 let mainCode=await readFile(main,'utf8');
+mainCode=patchBridgeAssets(mainCode);
+await writeFile(main,mainCode);
 const noticeHook="require('./codex-notifications.cjs').install({hostRequest});";
 if(!mainCode.includes(noticeHook)) await writeFile(main,mainCode+'\n'+noticeHook+'\n');
 mainCode=await readFile(main,'utf8');
@@ -84,7 +90,7 @@ await writeFile(html,htmlCode);
 for(const file of ['codex-notifications.cjs','foreground-codex.ps1','codex-api.cjs',
   'codex-task-window.cjs','task-preload.cjs','task-window.html','task-window.js','task-window.css',
   'codex-chat-window.cjs','chat-preload.cjs','chat-window.html','chat-window.js','chat-window.css',
-  'codex-skins.cjs','codex-skin-renderer.js','skin-actions.cjs','codex-character.cjs','codex-locale.cjs','locale-en.cjs','codex-runtime-locale.cjs','panel-locale.js']){
+  'codex-skins.cjs','codex-skin-renderer.js','skin-actions.cjs','codex-character.cjs','codex-locale.cjs','locale-en.cjs','codex-runtime-locale.cjs','panel-locale.js','runtime-range.cjs']){
   await copyFile(resolve(root,'src',file),resolve(pkg,'runtime/electron-helper',file));
 }
 await mkdir(resolve(root,'data'),{recursive:true});

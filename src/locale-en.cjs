@@ -4,6 +4,7 @@
 })(typeof window === 'object' ? window : globalThis, function () {
   'use strict';
   return {
+    '打开 AI 设置': 'Open AI settings',
     '龙娘桌宠': 'Codex Pet',
     '白龙娘': 'Dragon Girl',
     '大肥鱼': 'Blue',
