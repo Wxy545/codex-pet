@@ -48,6 +48,13 @@ $installer = Join-Path $env:TEMP 'codex-pet-install.ps1'; $file = Invoke-RestMet
 
 ## 形象与动画
 
+右键打开「形象」即可切换：
+
+- **白龙娘**：10 段 Q 版动画，包括待机、散步、点击、转向、拖拽、思考、打字、等待、完成和出错。会跟随 Codex 工作状态变化，菜单只显示已经做好的动作。
+- **大肥鱼**：保留原版角色及完整动作。
+
+<img src="docs/assets/white-dragon-idle.webp" width="220" alt="白龙娘待机动画">
+
 默认提供原版蓝色鲸鱼女仆，保留 **106 段透明动画**。下面的预览来自 [dsh-pet](https://github.com/PC2005-cloud/dsh-pet)：
 
 <p>
@@ -82,6 +89,8 @@ Codex 和 dsh-pet 的更新检查、源码运行及故障排查见[维护文档]
 感谢 [PC2005-cloud/dsh-pet](https://github.com/PC2005-cloud/dsh-pet) 提供桌宠、动画与互动实现。本项目基于 `dsh-pet@0.3.8` 适配。
 
 原型“溟月”出自 [上善无形](https://space.bilibili.com/4456176)，DeepSeek 版女仆鲸鱼娘设计出自 [ZipZipPipe](https://space.bilibili.com/4168597)。
+
+白龙娘形象已获原作者许可，参考图署名为小红书号 **233534463**；角色素材遵循[独立许可说明](assets/white-dragon/NOTICE.md)。
 
 项目自有代码和文档采用 [MIT](LICENSE)，原版动画等素材遵守上游非商用约定，鲸鱼娘形象采用 [CC BY-NC-SA 4.0](https://creativecommons.org/licenses/by-nc-sa/4.0/)。完整来源与许可见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。
 

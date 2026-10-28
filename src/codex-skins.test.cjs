@@ -19,6 +19,35 @@ test('动作目录保留事件候选槽位、移动参数及唯一ID，不漏掉
 
 const baseAssets = { 'sprites.png': { available: true, width: 1254, height: 1254 }, 'sister.png': { available: true, width: 1254, height: 1254 } };
 
+test('透明WebM清单与姐姐PNG独立，视频不冒充单张PNG且拒绝越界路径', () => {
+  const input = { schemaVersion: 1, profiles: { idle: { type: 'video', file: 'q-idle.webm', sisterFile: 'sister.png', forms: { sister: { file: 'sister.png', columns: 4, rows: 2, frames: [[0,0],[1,0]], fps: 2 } } } }, actions: { '呼吸': { profile: 'idle', coverage: 'dedicated' } } };
+  const manifest = actions.normalizeManifest(input);
+  assert.deepEqual(actions.effectiveProfile(manifest.profiles.idle), { type:'video', file:'q-idle.webm' });
+  assert.equal(actions.effectiveProfile(manifest.profiles.idle,'sister').type, undefined);
+  const assets = {...baseAssets,'q-idle.webm':{available:true,type:'video'}};
+  assert.equal(actions.profileReady(manifest.profiles.idle,assets,'q'),true);
+  assert.equal(actions.buildCoverage([{id:'呼吸',group:'idle'}],manifest,assets,'q').summary.dedicated,1);
+  assert.equal(actions.profileReady(manifest.profiles.idle,baseAssets,'q'),false);
+  const reused=structuredClone(input);reused.actions['别的动作']={profile:'idle',coverage:'dedicated'};
+  assert.equal(actions.buildCoverage([{id:'呼吸',group:'idle'},{id:'别的动作'}],actions.normalizeManifest(reused),assets,'q').summary.dedicated,0);
+  for (const file of ['../q.webm','C:/private.webm','bad.png']) assert.throws(()=>actions.normalizeManifest({schemaVersion:1,profiles:{idle:{type:'video',file}}}),/invalid-skin-manifest/);
+  assert.throws(()=>actions.normalizeManifest({schemaVersion:1,profiles:{idle:{type:'video',file:'q.webm',frames:[[0,0]]}}}),/invalid-skin-manifest/);
+});
+
+test('本机视频素材仅接受WebM头，损坏文件不标为可用', async () => {
+  const dataRoot=await mkdtemp(join(tmpdir(),'codex-skin-video-'));
+  try {
+    const directory=join(dataRoot,'skins','white-dragon');await mkdir(directory,{recursive:true});
+    await writeFile(join(directory,'manifest.json'),JSON.stringify({schemaVersion:1,profiles:{idle:{type:'video',file:'q-idle.webm',sisterFile:'sister.png'}}}));
+    await writeFile(join(directory,'q-idle.webm'),Buffer.from('1a45dfa3934282847765626d000000000000','hex'));
+    const store=createSkinStore({dataRoot});
+    const model=await store.readModel();const dragon=model.characters.find(c=>c.id==='white-dragon');
+    assert.equal(dragon.available.q,true);assert.equal(dragon.assets['q-idle.webm'].type,'video');
+    await writeFile(join(directory,'q-idle.webm'),'not a webm');
+    assert.equal((await store.readModel()).characters.find(c=>c.id==='white-dragon').available.q,false);
+  } finally { await rm(dataRoot,{recursive:true,force:true}); }
+});
+
 test('16帧基础样稿支持106动作的代用映射，但专属动画完成数必须是0', () => {
   const manifest = actions.normalizeManifest();
   const coverage = actions.buildCoverage(catalog.actions, manifest, baseAssets, 'q');

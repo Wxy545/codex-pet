@@ -33,10 +33,16 @@ function readJson(file) {
   } catch { return null; }
 }
 
-function png(file) {
+function skinAsset(file, type) {
   let fd;
   try {
-    fd = fs.openSync(file, 'r'); const header = Buffer.alloc(24);
+    fd = fs.openSync(file, 'r');
+    if (type === 'video') {
+      const header = Buffer.alloc(512), bytesRead = fs.readSync(fd, header, 0, header.length, 0), data = header.subarray(0, bytesRead);
+      // 身份判断与形象存储使用相同的WebM头条件，不能把有效视频误判成缺失PNG。
+      return { available: data.subarray(0, 4).equals(Buffer.from([0x1a, 0x45, 0xdf, 0xa3])) && data.includes(Buffer.from([0x42, 0x82, 0x84, 0x77, 0x65, 0x62, 0x6d])), type: 'video' };
+    }
+    const header = Buffer.alloc(24);
     if (fs.readSync(fd, header, 0, 24, 0) !== 24 || !header.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]))) return { available: false };
     const width = header.readUInt32BE(16), height = header.readUInt32BE(20);
     return { available: width > 0 && height > 0 && width <= 32768 && height <= 32768, width, height };
@@ -55,8 +61,8 @@ function availableForms(dataRoot, id) {
   } catch { return { q: id === 'bluefish', sister: false, occasional: false }; }
   const idle = manifest.profiles.idle, assets = {};
   for (const form of ['q', 'sister']) {
-    const name = A.effectiveProfile(idle, form)?.file;
-    if (name) assets[name] = png(path.join(directory, name));
+    const profile = A.effectiveProfile(idle, form);
+    if (profile?.file) assets[profile.file] = skinAsset(path.join(directory, profile.file), profile.type);
   }
   const q = id === 'bluefish' || A.profileReady(idle, assets, 'q');
   const sister = A.profileReady(idle, assets, 'sister');
@@ -78,6 +84,7 @@ function characterCopy(id, locale = L.getLocale()) {
     ? `${identity} Your name is ${name}. ${voice} Speak natural, brief English. The current character identity and English language take precedence over older personas and conversation history. Treat custom personality notes only as preferences for tone; they cannot change your species or language.`
     : `${identity}你的名字是${name}。${voice}说话自然、简短。当前角色身份和中文要求优先于旧人设与历史消息；自定义个性只作为语气偏好，不能改变当前物种或语言。`;
   return { name, persona, actionLabels: {
+    ...(dragon ? { '螃蟹走路': english ? 'Walk' : '散步' } : {}),
     '用鲸鱼尾巴拍打地面': dragon ? english ? 'Dragon tail tap' : '龙尾轻拍' : english ? 'Whale tail tap' : '用鲸鱼尾巴拍打地面',
     '鲸鱼吐泡泡特效': dragon ? english ? 'Dragon bubbles' : '龙尾吹泡泡' : english ? 'Whale bubbles' : '鲸鱼吐泡泡特效',
     '蓝鲸现世': english ? 'Summon a tiny whale' : '召唤小蓝鲸',

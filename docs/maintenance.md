@@ -84,9 +84,9 @@ powershell -File scripts/enable-follow.ps1
 
 `scripts/prepare-runtime.mjs` 从固定版本生成 Codex 宿主入口，调整额度解析，并向桌面壳挂载 Codex 扩展。依赖版本或补丁位置不匹配时会报错停止。安装或升级依赖后需要重新运行准备脚本；需要改补丁时应修改脚本，不只手改 `node_modules/`。
 
-原版蓝色鲸鱼女仆的 106 段视频动画保留，公开安装默认使用原版角色。白龙娘四帧图集属于本地动作草稿，不是 106 段视频的完成版。后续先适配少量核心原创动作；正常比例的姐姐形态另做独立素材。欢迎通过 [Issue](https://github.com/Wxy545/codex-pet/issues) 提供来源、授权和规格清楚的视频，逐项适配与验收，不能把帧图复用或文件可播放当作完整动画交付。
+原版蓝色鲸鱼女仆保留 106 段视频动画。白龙娘提供 10 段 Q 版核心视频，覆盖待机、散步、点击、转向、拖拽和 Codex 工作状态；工作与结果档共用打字素材。白龙娘的随机动作和菜单按已就绪的视频筛选，原版角色保留完整动作。欢迎通过 [Issue](https://github.com/Wxy545/codex-pet/issues) 提供来源、许可和规格清楚的动作视频。
 
-白龙娘及新制作的非 Q 版参考、图集、角色截图不进入公开提交，待原作者授权和署名、使用范围确认后再发布。原大肥鱼素材的许可仍按 [THIRD_PARTY_NOTICES.md](../THIRD_PARTY_NOTICES.md) 保留。
+白龙娘素材位于 `assets/white-dragon/`，许可见该目录的 [NOTICE.md](../assets/white-dragon/NOTICE.md)。准备运行时会为尚无该角色目录的安装复制内置包，已有 `data/skins/white-dragon/` 及角色选择不会覆盖。原大肥鱼素材继续遵循 [THIRD_PARTY_NOTICES.md](../THIRD_PARTY_NOTICES.md)。
 
 ## 配置与本机数据
 

@@ -15,7 +15,7 @@
   const style = document.createElement('style');
   document.head.appendChild(style);
   // 覆盖层一一对应原videoA/B，沿用180ms交接；图帧不另开CSS播放时钟。
-  style.textContent = '.codex-skin-active>video.pet-video{opacity:0!important}.codex-skin-layer{position:absolute;inset:0;pointer-events:none;z-index:0;opacity:0;transition:opacity .18s ease}.codex-skin-frame{position:absolute;left:50%;top:13.888889%;height:79.166667%;transform:translateX(-50%);pointer-events:none}.codex-skin-frame>canvas{display:block;width:100%;height:100%;pointer-events:none}@media(prefers-reduced-motion:reduce){.codex-skin-layer{transition:none!important}}';
+  style.textContent = '.codex-skin-active>video.pet-video{opacity:0!important}.codex-skin-layer{position:absolute;inset:0;pointer-events:none;z-index:0;opacity:0;transition:opacity .18s ease}.codex-skin-frame{position:absolute;left:50%;top:13.888889%;height:79.166667%;transform:translateX(-50%);pointer-events:none}.codex-skin-frame>canvas,.codex-skin-frame>video{display:block;width:100%;height:100%;pointer-events:none;object-fit:contain}@media(prefers-reduced-motion:reduce){.codex-skin-layer{transition:none!important}}';
   let model;
   let modelRevision = 0;
   let modelSignature = '';
@@ -48,9 +48,24 @@
     image.onload = () => finish(true); image.onerror = () => finish(false); image.src = url;
   }
 
+  function pauseMedia(media) {
+    if (!media || (!media.playing && media.element.paused)) return;
+    // pause会打断尚未兑现的play Promise；代次失效后不得清掉新一次播放或把AbortError记为坏素材。
+    media.playAttempt = (media.playAttempt || 0) + 1; media.playing = false;
+    if (!media.element.paused) media.element.pause();
+  }
   function stopLayer(layer) {
     if (layer.raf != null) window.cancelAnimationFrame(layer.raf);
     layer.raf = null;
+    pauseMedia(layer.media);
+  }
+  function releaseMedia(layer) {
+    const media = layer.media;
+    if (!media) return;
+    layer.media = null;
+    window.clearTimeout(media.timeout);
+    for (const [name, handler] of media.listeners) media.element.removeEventListener(name, handler);
+    media.element.pause(); media.element.removeAttribute('src'); media.element.load(); media.element.remove();
   }
   function hold(controller) {
     for (const layer of controller.layers) stopLayer(layer);
@@ -92,10 +107,26 @@
     const asset = profile && character.assets[profile.file];
     return { character, entry, resolved, profile, asset };
   }
+  function selectedForm(controller) {
+    return model?.selection.mode === 'sister' ? 'sister' : controller?.transformation.form || 'q';
+  }
+  function readyNativeAction(character, id, form = 'q') {
+    const explicit = character?.manifest.actions[id];
+    if (!explicit) return false;
+    const profile = A.effectiveProfile(character.manifest.profiles[explicit.profile], form);
+    const asset = profile && character.assets[profile.file];
+    return profile?.type === 'video' && A.profileReady(character.manifest.profiles[explicit.profile], character.assets, form) && !failedAssets.has(asset?.url);
+  }
+  function coreCharacter(controller) {
+    const character = model?.characters.find(value => value.id === model.selection.character);
+    if (character?.id !== 'white-dragon' || selectedForm(controller) !== 'q') return null;
+    const idle = A.effectiveProfile(character.manifest.profiles.idle, 'q');
+    return idle?.type === 'video' && A.profileReady(character.manifest.profiles.idle, character.assets, 'q') && !failedAssets.has(character.assets[idle.file]?.url) ? character : null;
+  }
   function preload(controller, request) {
     const form = model?.selection.mode === 'sister' ? 'sister' : controller.transformation.form || 'q';
     const value = visual(controller, request, form);
-    if (!value?.original && value?.asset?.available && value.resolved.coverage !== 'missing') loadAsset(value.asset.url);
+    if (!value?.original && value?.profile.type !== 'video' && value?.asset?.available && value.resolved.coverage !== 'missing') loadAsset(value.asset.url);
   }
 
   function frameIndex(paint, video) {
@@ -117,6 +148,7 @@
   }
 
   function paintLayer(controller, layer, value, form) {
+    if (layer.media) { releaseMedia(layer); layer.paintKey = null; }
     const { profile, asset, entry } = value;
     const key = JSON.stringify([assetRevision, layer.request.gen, model.selection.character, form, value.resolved.profile, asset.url, profile]);
     if (layer.paintKey !== key) {
@@ -161,6 +193,110 @@
     return true;
   }
 
+  function paintVideoLayer(controller, layer, value, form) {
+    const identity = JSON.stringify([assetRevision, model.selection.character, form, value.asset.url]);
+    const key = JSON.stringify([assetRevision, layer.request.gen, model.selection.character, form, value.resolved.profile, value.asset.url]);
+    if (layer.media?.key !== key) {
+      // 重复同一待机仍由原状态机发新请求；先快照可见相位，释放旧缓冲不能把它清零。
+      const previous = value.entry.group === 'idle' && controller.layers.find(item => item.layer.style.opacity === '1' && item.media?.identity === identity && item.media.group === 'idle')?.media;
+      const resumeAt = previous?.ready && Number.isFinite(previous.element.currentTime) ? Math.max(0, previous.element.currentTime) : 0;
+      stopLayer(layer); releaseMedia(layer); layer.paint = null; layer.paintKey = null;
+      const element = document.createElement('video');
+      element.muted = true; element.playsInline = true; element.preload = 'auto';
+      element.style.display = 'none';
+      const media = { key, identity, group: value.entry.group, element, ready: false, listeners: [] };
+      layer.media = media; layer.frame.appendChild(element);
+      const listen = (name, handler) => { element.addEventListener(name, handler); media.listeners.push([name, handler]); };
+      const failed = () => {
+        if (controller.disposed || layer.media !== media) return;
+        window.clearTimeout(media.timeout); failedAssets.add(value.asset.url);
+        refresh(controller, false);
+      };
+      const ready = () => {
+        if (controller.disposed || layer.media !== media || element.readyState < 2) return;
+        window.clearTimeout(media.timeout); media.ready = true;
+        layer.frame.style.aspectRatio = `${element.videoWidth} / ${element.videoHeight}`;
+        refresh(controller, false);
+      };
+      listen('loadeddata', () => {
+        if (controller.disposed || layer.media !== media || element.readyState < 2 || media.seekRequested) return;
+        if (resumeAt > 0) {
+          media.seekRequested = true;
+          media.seekTarget = Number.isFinite(element.duration) && element.duration > 0 ? resumeAt % element.duration : resumeAt;
+          // 等目标帧完成解码再淡入，不能先显示新源的第零帧。
+          element.currentTime = media.seekTarget;
+          return;
+        }
+        ready();
+      });
+      listen('seeked', () => {
+        if (media.seekRequested && Math.abs(element.currentTime - media.seekTarget) < .1) ready();
+      });
+      listen('error', failed);
+      listen('ended', () => {
+        if (controller.disposed || layer.media !== media) return;
+        const sprite = controller.sprite;
+        // 拿起期间由pointerUp结束拖拽，素材结束不能提前报结束或接回待机。
+        if (value.entry.group === 'drag' && (sprite.dragState?.active || sprite.dragState?.dragging)) return;
+        media.ended = true;
+        // 单候选工作回空闲时上游只解除loop，不重发once请求；沿它已安装的onended收尾。
+        const workReturnedIdle = value.entry.group === 'event:workStatus' && sprite.workState == null && !layer.video.loop && typeof layer.video.onended === 'function';
+        if (!element.ended || media.completed || value.entry.group === 'idle' || value.entry.group === 'moves' || (!layer.request.once && !workReturnedIdle) || controller.active !== layer || controller.activeRequest !== layer.request || controller.pendingRequest || sprite.pending || sprite.gen !== layer.request.gen || sprite.frozen) return;
+        const currentForm = model?.selection.mode === 'sister' ? 'sister' : controller.transformation.form || 'q';
+        const current = visual(controller, layer.request, currentForm);
+        if (current?.original || current?.profile.type !== 'video' || current?.asset.url !== value.asset.url || current.character.id !== value.character.id || currentForm !== form) return;
+        const ended = layer.video.onended;
+        if (typeof ended !== 'function') return;
+        // 以新单次素材的真实结束推进原动画链与回执，先拆隐藏视频回调以防十秒后二次结束。
+        media.completed = true; layer.video.onended = null; layer.video.pause();
+        ended.call(layer.video);
+      });
+      media.timeout = window.setTimeout(failed, 10000);
+      element.src = value.asset.url; element.load();
+    }
+    const media = layer.media;
+    if (!media.ready) return false;
+    layer.canvas.style.display = 'none'; media.element.style.display = 'block';
+    const drive = () => {
+      if (controller.disposed || controller.active !== layer || controller.pendingRequest || layer.media !== media) return;
+      const source = layer.video;
+      const moving = value.entry.group === 'moves';
+      const lead = Math.max(0, Number(value.entry.params?.leadSec) || 0);
+      const tail = Math.max(0, Number(value.entry.params?.tailSec) || 0);
+      const seconds = Number.isFinite(source.currentTime) ? source.currentTime : 0;
+      const duration = Number.isFinite(source.duration) && source.duration > 0 ? source.duration : 10.09;
+      const heldDrag = value.entry.group === 'drag' && (controller.sprite.dragState?.active || controller.sprite.dragState?.dragging) && !controller.sprite.frozen;
+      // 同上游位移窗口采样；规划失败、未发车、已停步时不能只因动作ID是move就踏步。
+      const travel = !moving || (controller.sprite.moveRef != null && seconds > lead && seconds < duration - tail);
+      media.element.loop = moving || heldDrag || value.entry.group === 'idle' || source.loop;
+      // 隐藏原片十秒结束后，仍拿在手上的新素材继续循环；物理和松手回调保持原实现。
+      const sourceStopped = (source.paused || source.ended) && !(heldDrag && source.ended);
+      if (sourceStopped || !travel) {
+        pauseMedia(media);
+        // 准备和收尾用已选定的完整落脚首帧；冻结保留当时的姿势。
+        if (moving && !source.paused && !source.ended && !travel && media.element.currentTime > 0) media.element.currentTime = 0;
+      } else if (media.element.paused && !media.element.ended && !media.ended && !media.playing) {
+        media.playing = true;
+        const attempt = media.playAttempt = (media.playAttempt || 0) + 1;
+        void Promise.resolve(media.element.play()).catch(() => {
+          if (!controller.disposed && layer.media === media && media.playAttempt === attempt) { failedAssets.add(value.asset.url); refresh(controller, false); }
+        }).finally(() => {
+          if (layer.media !== media || media.playAttempt !== attempt) return;
+          media.playing = false;
+          // 真实EOS的pause/ended可能早于play兑现；兑现后补一次事件协调，不依赖1500ms轮询。
+          if (!controller.disposed && !failedAssets.has(value.asset.url)) defer(() => {
+            if (!controller.disposed && layer.media === media && media.playAttempt === attempt) refresh(controller, false);
+          });
+        });
+      }
+      // timeupdate可间隔约250ms；每帧只读原时钟以对齐实际窗口的起步和到达。
+      if (moving && !source.paused && !source.ended && layer.raf == null) layer.raf = window.requestAnimationFrame(() => { layer.raf = null; drive(); });
+    };
+    layer.draw = drive;
+    drive();
+    return true;
+  }
+
   function refresh(controller, allowRandom) {
     if (!model || controller.disposed) return;
     abandonFailedRequest(controller);
@@ -196,13 +332,21 @@
       return;
     }
     if (!value?.asset?.available || value.resolved.coverage === 'missing' || failedAssets.has(value.asset.url)) { originalVisual(controller); return; }
-    if (!decodedImages.has(value.asset.url)) {
+    if (value.profile.type !== 'video' && !decodedImages.has(value.asset.url)) {
       hold(controller); loadAsset(value.asset.url); return;
     }
-    if (!paintLayer(controller, layer, value, form)) { originalVisual(controller); return; }
-    for (const other of controller.layers) other.layer.style.opacity = other === layer ? '1' : '0';
+    if (value.profile.type === 'video') {
+      if (!paintVideoLayer(controller, layer, value, form)) return;
+    } else {
+      if (!paintLayer(controller, layer, value, form)) { originalVisual(controller); return; }
+      layer.canvas.style.display = 'block';
+    }
+    for (const other of controller.layers) {
+      other.layer.style.opacity = other === layer ? '1' : '0';
+      if (other !== layer) stopLayer(other);
+    }
     sprite.stage.classList.add('codex-skin-active');
-    window.__codexSkinDebug = { ...debug, profile: value.resolved.profile, coverage: value.resolved.coverage, playback: 'frame-prototype' };
+    window.__codexSkinDebug = { ...debug, profile: value.resolved.profile, coverage: value.resolved.coverage, playback: value.profile.type === 'video' ? 'transparent-video' : 'frame-prototype' };
   }
 
   function reconcile(controller) {
@@ -226,7 +370,7 @@
   }
   function ensure(sprite) {
     if (sprite.__codexSkinController) return sprite.__codexSkinController;
-    const controller = { sprite, layers: [], catalog: A.catalogFromAnimations(sprite.animations), transformation: {}, disposed: false, listeners: [] };
+    const controller = { sprite, layers: [], baseAnimations: sprite.animations, catalog: A.catalogFromAnimations(sprite.animations), transformation: {}, disposed: false, listeners: [] };
     const schedule = () => {
       if (controller.queued || controller.disposed) return;
       controller.queued = true;
@@ -253,6 +397,38 @@
   }
 
   const proto = PetSprite.prototype;
+  const playIdle = proto.playIdle;
+  proto.playIdle = function () {
+    const controller = ensure(this);
+    const character = coreCharacter(controller);
+    if (!character) return playIdle.apply(this, arguments);
+    const original = this.animations, weights = this.weights;
+    const ready = id => readyNativeAction(character, id);
+    const idle = (original.idle ?? []).filter(ready);
+    if (!idle.length) return;
+    const turn = (original.turn ?? []).filter(ready);
+    const moves = { ...original.moves, actions: (original.moves?.actions ?? []).filter(action => ready(action.name)) };
+    const categories = (original.categories ?? []).map(category => ({ ...category, actions: category.actions.filter(ready) })).filter(category => category.actions.length);
+    // 只在随机链同步取候选期间使用核心表；事件档位、拖拽、共享配置和原catalog保持完整。
+    this.animations = { ...original, idle, turn, moves, categories };
+    this.weights = { ...weights, turn: turn.length ? weights?.turn ?? 0 : 0, move: moves.actions.length ? weights?.move ?? 0 : 0 };
+    try { return playIdle.apply(this, arguments); }
+    finally { this.animations = original; this.weights = weights; }
+  };
+  const onClick = proto.onClick;
+  proto.onClick = function () {
+    const controller = ensure(this);
+    const character = model?.characters.find(value => value.id === model.selection.character);
+    const form = selectedForm(controller);
+    const animations = this.animations;
+    if (!character || character.originalVideo || form !== 'q' || !Array.isArray(animations?.clicks)) return onClick.apply(this, arguments);
+    const candidates = animations.clicks.filter(id => readyNativeAction(character, id, form));
+    if (!candidates.length) return onClick.apply(this, arguments);
+    // 仅普通点击同步取候选时替换；菜单、结束回调和共享配置始终保留完整原动作表。
+    this.animations = { ...animations, clicks: candidates };
+    try { return onClick.apply(this, arguments); }
+    finally { this.animations = animations; }
+  };
   const switchTo = proto.switchTo;
   proto.switchTo = function (next, once, playbackId, url) {
     const controller = ensure(this);
@@ -285,7 +461,7 @@
     controller.disposed = true; hold(controller); controller.observer.disconnect();
     if (controller.expiryTimer != null) window.clearTimeout(controller.expiryTimer);
     for (const [video, name, handler] of controller.listeners) video.removeEventListener(name, handler);
-    for (const layer of controller.layers) { layer.paint = null; layer.layer.remove?.(); }
+    for (const layer of controller.layers) { releaseMedia(layer); layer.paint = null; layer.layer.remove?.(); }
     controllers.delete(controller);
   }
   const dispose = proto.dispose;
@@ -298,23 +474,30 @@
   function hasRegisteredMenu(nodes) {
     return Array.isArray(nodes) && nodes.some(node => node.action === 'third-party' || hasRegisteredMenu(node.children));
   }
+  function hasAnimationMenu(nodes) {
+    return Array.isArray(nodes) && nodes.some(node => node.anim || hasAnimationMenu(node.children));
+  }
   function decorateTree(nodes, preserveRegistered = false) {
     const selected = model?.characters.find(character => character.id === model.selection.character);
     const form = model?.selection.mode === 'sister' ? 'sister' : 'q';
-    return nodes.map(node => {
+    const limited = coreCharacter();
+    return nodes.flatMap(node => {
       const copy = { ...node };
       // 更多下的owner分组没有owner字段；整段原文都是注册协议数据，仅根标题可翻译。
       const registeredChildren = preserveRegistered || (copy.label === shared.MORE_MENU_LABEL && hasRegisteredMenu(copy.children));
       if (copy.children) copy.children = decorateTree(copy.children, registeredChildren);
-      if (preserveRegistered || copy.action === 'third-party') return copy;
+      if (preserveRegistered || copy.action === 'third-party') return [copy];
+      if (limited && copy.anim && !readyNativeAction(limited, copy.anim)) return [];
+      if (limited && copy.children?.length === 0 && hasAnimationMenu(node.children)) return [];
       if (typeof copy.label === 'string') copy.label = copy.anim ? selected?.copy?.actionLabels?.[copy.anim] || t(copy.label) : t(copy.label);
       if (copy.action === 'chat' && window.codexChatPanel?.open) copy.label = t('图文对话');
       if (copy.anim && selected && !(selected.originalVideo && form === 'q')) {
         const entry = model.catalog?.find(item => item.id === copy.anim) || { id: copy.anim };
         const resolved = A.resolveAction(entry, selected.manifest, selected.assets, form);
-        copy.hint = [t('逐帧试作'), resolved.coverage !== 'dedicated' ? t(resolved.coverage === 'missing' ? '专属帧待制作' : '基础动画代用') : ''].filter(Boolean).join(' · ');
+        const profile = A.effectiveProfile(selected.manifest.profiles[resolved.profile], form);
+        copy.hint = [profile?.type === 'video' ? '' : t('逐帧试作'), resolved.coverage !== 'dedicated' ? t(resolved.coverage === 'missing' ? '专属帧待制作' : '基础动画代用') : ''].filter(Boolean).join(' · ');
       }
-      return copy;
+      return [copy];
     });
   }
   const mountContextMenu = shared.mountContextMenu;

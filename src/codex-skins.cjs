@@ -32,6 +32,21 @@ async function pngAsset(directory, name) {
   finally { await handle?.close().catch(() => {}); }
 }
 
+async function videoAsset(directory, name) {
+  let handle;
+  try {
+    const file = path.join(directory, name);
+    handle = await open(file, 'r');
+    const header = Buffer.alloc(512);
+    const { bytesRead } = await handle.read(header, 0, header.length, 0);
+    const data = header.subarray(0, bytesRead);
+    // 仅读取WebM容器头；实际解码由Electron完成，不把其他文件当成本地视频开放。
+    if (!data.subarray(0, 4).equals(Buffer.from([0x1a, 0x45, 0xdf, 0xa3])) || !data.includes(Buffer.from([0x42, 0x82, 0x84, 0x77, 0x65, 0x62, 0x6d]))) return { available: false };
+    return { available: true, type: 'video', url: pathToFileURL(file).href };
+  } catch { return { available: false }; }
+  finally { await handle?.close().catch(() => {}); }
+}
+
 function createSkinStore({ dataRoot, hostRequest, logger = console } = {}) {
   if (!dataRoot || !path.isAbsolute(dataRoot)) throw new Error('skin-data-root-required');
   const skinsRoot = path.join(dataRoot, 'skins');
@@ -64,7 +79,7 @@ function createSkinStore({ dataRoot, hostRequest, logger = console } = {}) {
     try { manifest = A.normalizeManifest(input); }
     catch { logger.warn('[Codex Pet] '+L.t('形象清单格式无效，保留原版显示。')); return { ...character, available: { q: character.originalVideo, sister: false, occasional: false }, invalidManifest: true, assets: {}, manifest: A.defaultManifest() }; }
     const names = [...new Set(Object.values(manifest.profiles).flatMap(profile => ['q', 'sister'].map(form => A.effectiveProfile(profile, form).file)))];
-    const images = await Promise.all(names.map(async name => [name, await pngAsset(directory, name)]));
+    const images = await Promise.all(names.map(async name => [name, await (name.endsWith('.webm') ? videoAsset : pngAsset)(directory, name)]));
     const assets = Object.fromEntries(images);
     const q = character.originalVideo || A.profileReady(manifest.profiles.idle, assets, 'q');
     const sister = A.profileReady(manifest.profiles.idle, assets, 'sister');

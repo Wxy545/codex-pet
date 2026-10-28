@@ -48,6 +48,13 @@ Chat and idle chatter count toward your Codex usage. Chatter runs every ten minu
 
 ## Characters and animations
 
+Choose a character from **Appearance** in the right-click menu:
+
+- **White Dragon Girl:** 10 chibi animations covering idle, walking, click response, turning, dragging, thinking, typing, waiting, success, and error. She reacts to Codex sessions and shows only the actions available for her.
+- **Blue whale maid:** the original dsh-pet character and its full animation set.
+
+<img src="docs/assets/white-dragon-idle.webp" width="220" alt="White Dragon Girl idle animation">
+
 The default character is the original blue whale maid, with **106 transparent animations**. These previews are from [dsh-pet](https://github.com/PC2005-cloud/dsh-pet):
 
 <p>
@@ -82,6 +89,8 @@ Want to see more dragon-girl animations? You can help fund the video work throug
 Thanks to [PC2005-cloud/dsh-pet](https://github.com/PC2005-cloud/dsh-pet) for the desktop pet, animations, and interactions. This adaptation uses `dsh-pet@0.3.8`.
 
 The original “溟月” character is by [上善无形](https://space.bilibili.com/4456176); the DeepSeek whale-maid design is by [ZipZipPipe](https://space.bilibili.com/4168597).
+
+The white dragon girl is used with the creator's permission, credited as Xiaohongshu ID **233534463**. Her character assets have [separate terms](assets/white-dragon/NOTICE.md) from the code license.
 
 This project’s code and documentation use the [MIT license](LICENSE). The original animations retain dsh-pet’s noncommercial terms, and the whale character uses [CC BY-NC-SA 4.0](https://creativecommons.org/licenses/by-nc-sa/4.0/). Full credits and terms are in [third-party notices](THIRD_PARTY_NOTICES.md).
 

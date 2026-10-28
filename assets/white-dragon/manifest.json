@@ -1,0 +1,91 @@
+{
+  "schemaVersion": 1,
+  "profiles": {
+    "idle": {
+      "type": "video",
+      "file": "q-idle.webm"
+    },
+    "walk": {
+      "type": "video",
+      "file": "q-walk-left.webm"
+    },
+    "click": {
+      "type": "video",
+      "file": "q-click.webm"
+    },
+    "turn": {
+      "type": "video",
+      "file": "q-turn.webm"
+    },
+    "drag": {
+      "type": "video",
+      "file": "q-drag.webm"
+    },
+    "thinking": {
+      "type": "video",
+      "file": "q-thinking.webm"
+    },
+    "working": {
+      "type": "video",
+      "file": "q-working.webm"
+    },
+    "waiting": {
+      "type": "video",
+      "file": "q-waiting.webm"
+    },
+    "success": {
+      "type": "video",
+      "file": "q-success.webm"
+    },
+    "error": {
+      "type": "video",
+      "file": "q-error.webm"
+    }
+  },
+  "actions": {
+    "待机呼吸休闲": {
+      "profile": "idle",
+      "coverage": "dedicated"
+    },
+    "螃蟹走路": {
+      "profile": "walk",
+      "coverage": "dedicated"
+    },
+    "点击回应-开心跃动": {
+      "profile": "click",
+      "coverage": "dedicated"
+    },
+    "东张西望": {
+      "profile": "turn",
+      "coverage": "dedicated"
+    },
+    "被鼠标拖拽悬空反馈": {
+      "profile": "drag",
+      "coverage": "dedicated"
+    },
+    "工作状态-思考冒泡": {
+      "profile": "thinking",
+      "coverage": "dedicated"
+    },
+    "工作状态-忙碌点按": {
+      "profile": "working",
+      "coverage": "shared"
+    },
+    "工作状态-清点归档": {
+      "profile": "working",
+      "coverage": "shared"
+    },
+    "工作状态-原地踱步张望": {
+      "profile": "waiting",
+      "coverage": "dedicated"
+    },
+    "工作状态-雀跃庆祝": {
+      "profile": "success",
+      "coverage": "dedicated"
+    },
+    "工作状态-垂头叹气冒汗": {
+      "profile": "error",
+      "coverage": "dedicated"
+    }
+  }
+}

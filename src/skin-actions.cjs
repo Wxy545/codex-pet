@@ -7,6 +7,7 @@
   'use strict';
   const WORK_PROFILES = ['thinking', 'working', 'working', 'waiting', 'success', 'error'];
   const validFile = value => typeof value === 'string' && /^[a-z0-9][a-z0-9_-]{0,95}\.png$/.test(value);
+  const validVideo = value => typeof value === 'string' && /^[a-z0-9][a-z0-9_-]{0,95}\.webm$/.test(value);
   const validKey = value => typeof value === 'string' && /^[a-z][a-z0-9_-]{0,63}$/.test(value);
 
   function catalogFromAnimations(animations = {}) {
@@ -33,6 +34,11 @@
 
   function normalizeLayer(value) {
     const invalid = () => { throw new Error('invalid-skin-manifest'); };
+    if (value.type === 'video') {
+      if (!validVideo(value.file) || ['columns', 'rows', 'frames', 'fps', 'rects'].some(key => value[key] !== undefined)) invalid();
+      return { type: 'video', file: value.file };
+    }
+    if (value.type !== undefined) invalid();
     const profile = { file: value.file, columns: value.columns ?? 4, rows: value.rows ?? 4, frames: value.frames, fps: value.fps ?? 4 };
     if (!validFile(profile.file)) invalid();
     if (![profile.columns, profile.rows].every(number => Number.isInteger(number) && number >= 1 && number <= 64)) invalid();
@@ -53,7 +59,7 @@
     for (const [key, value] of Object.entries(input?.profiles ?? {})) {
       if (!validKey(key) || !value || typeof value !== 'object') invalid();
       const profile = normalizeLayer(value);
-      profile.sisterFile = value.sisterFile ?? value.file.replace(/\.png$/, '-sister.png');
+      profile.sisterFile = value.sisterFile ?? value.file.replace(/\.(?:png|webm)$/, '-sister.png');
       if (!validFile(profile.sisterFile)) invalid();
       if (value.forms !== undefined) {
         if (!value.forms || typeof value.forms !== 'object' || Array.isArray(value.forms) || Object.keys(value.forms).some(form => form !== 'sister')) invalid();
@@ -61,7 +67,7 @@
         if (!sister || typeof sister !== 'object' || Array.isArray(sister) || sister.forms !== undefined || sister.sisterFile !== undefined) invalid();
         if (sister.coverage !== undefined && !['shared', 'dedicated'].includes(sister.coverage)) invalid();
         // 新形态只继承格尺寸等默认值；Q版的像素矩形绝不能套到另一张姐姐图。
-        const layer = normalizeLayer({ file: profile.sisterFile, columns: profile.columns, rows: profile.rows, frames: profile.frames, fps: profile.fps, ...sister });
+        const layer = normalizeLayer(sister.type === 'video' ? sister : { file: profile.sisterFile, columns: profile.columns, rows: profile.rows, frames: profile.frames, fps: profile.fps, ...sister });
         layer.coverage = sister.coverage ?? 'shared';
         profile.forms = { sister: layer };
       }
@@ -78,8 +84,9 @@
     if (!profile) return null;
     const { forms, sisterFile, ...base } = profile;
     if (form !== 'sister') return base;
-    const { rects, ...common } = base;
-    if (!forms?.sister) return { ...common, file: sisterFile };
+    // 视频形态不向姐姐继承媒体类型；姐姐仍须提供自己的PNG或视频层。
+    const { rects, type, ...common } = base;
+    if (!forms?.sister) return type === 'video' ? { file: sisterFile, columns: 4, rows: 4, frames: [[0, 0]], fps: 1 } : { ...common, file: sisterFile };
     return { ...common, ...forms.sister };
   }
 
@@ -101,6 +108,7 @@
     profile = effectiveProfile(profile, form);
     if (assets === undefined) return true;
     const asset = assets[profile.file];
+    if (profile.type === 'video') return asset?.available === true && asset.type === 'video';
     if (profile.rects) return asset?.available === true && profile.rects.every(([x, y, width, height]) => x + width <= asset.width && y + height <= asset.height);
     // 允许小数格宽和竖长人体格；实际比例由PNG尺寸与有效网格共同确定。
     return asset?.available === true && asset.width >= profile.columns && asset.height >= profile.rows;
@@ -116,14 +124,14 @@
     if (!profileReady(profile, assets, form)) {
       profileId = fallback; profile = manifest.profiles[profileId]; reason = 'dedicated-atlas-unavailable';
     } else if (explicit?.coverage === 'dedicated') {
-      const signature = value => { const paint = effectiveProfile(value, form); return JSON.stringify([paint.file, paint.rects ? ['rects', paint.rects] : ['grid', paint.columns, paint.rows, paint.frames]]); };
+      const signature = value => { const paint = effectiveProfile(value, form); return JSON.stringify([paint.file, paint.type === 'video' ? 'video' : paint.rects ? ['rects', paint.rects] : ['grid', paint.columns, paint.rows, paint.frames]]); };
       const ownFrames = signature(profile);
       // 改profile名字不能把同一组帧重复申报成多个专属动作。
       const uses = Object.values(manifest.actions).filter(action => signature(manifest.profiles[action.profile]) === ownFrames).length;
       const paint = effectiveProfile(profile, form);
       if (paint.coverage === 'shared') reason = 'shared-form-profile';
-      else if (paint.frames.length > 1 && uses === 1) { coverage = 'dedicated'; reason = 'dedicated-profile'; }
-      else reason = paint.frames.length <= 1 ? 'single-pose' : 'shared-profile';
+      else if ((paint.type === 'video' || paint.frames.length > 1) && uses === 1) { coverage = 'dedicated'; reason = 'dedicated-profile'; }
+      else reason = paint.type !== 'video' && paint.frames.length <= 1 ? 'single-pose' : 'shared-profile';
     }
     if (!profileReady(profile, assets, form)) { coverage = 'missing'; reason = 'atlas-unavailable'; }
     return { id: entry?.id ?? '', profile: profileId, coverage, reason };

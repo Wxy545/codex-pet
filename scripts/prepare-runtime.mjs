@@ -4,6 +4,7 @@ import { fileURLToPath } from 'node:url';
 import { resolve, dirname } from 'node:path';
 import { localizeHost, localizeCore, localizeEvents, localizeIndexHtml } from './runtime-locale-patches.mjs';
 import { patchHostAssets, patchBridgeAssets, patchDesktopMotion } from './upstream-fixes.mjs';
+import { seedBundledWhiteDragon } from './bundled-skins.mjs';
 
 const root=resolve(dirname(fileURLToPath(import.meta.url)),'..');
 const pkg=resolve(root,'node_modules/dsh-pet');
@@ -94,4 +95,5 @@ for(const file of ['codex-notifications.cjs','foreground-codex.ps1','codex-api.c
   await copyFile(resolve(root,'src',file),resolve(pkg,'runtime/electron-helper',file));
 }
 await mkdir(resolve(root,'data'),{recursive:true});
+await seedBundledWhiteDragon({projectRoot:root});
 console.log('dsh-pet 0.3.8 runtime prepared: Codex Pet.');

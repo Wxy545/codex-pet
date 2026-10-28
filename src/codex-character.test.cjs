@@ -11,6 +11,27 @@ function fixture(t){
   const png=Buffer.alloc(24);Buffer.from('89504e470d0a1a0a','hex').copy(png);png.writeUInt32BE(1200,16);png.writeUInt32BE(1200,20);
   L.setLocale('zh-CN');return{root,write,png};
 }
+test('Q版透明WebM与身份识别一致，中英文聊天投影保持龙娘而非鱼',async t=>{
+ const f=fixture(t);f.write('skins/selection.json',{character:'white-dragon',mode:'q'});
+ f.write('skins/white-dragon/manifest.json',{schemaVersion:1,profiles:{idle:{type:'video',file:'q-idle.webm',sisterFile:'sister.png',forms:{sister:{file:'sister.png',columns:4,rows:2,frames:[[0,0],[1,0]],fps:2}}}}});
+ f.write('skins/white-dragon/q-idle.webm',Buffer.from('1a45dfa3934282847765626d000000000000','hex'));f.write('skins/white-dragon/sister.png',f.png);
+ const store=createSkinStore({dataRoot:f.root}),character=C.readCharacter(f.root);
+ assert.equal(character.id,'white-dragon');assert.equal(character.name,'白龙娘');assert.match(character.persona,/白角、龙翼和龙尾/);
+ assert.deepEqual((await store.readModel()).selection,character.selection);assert.deepEqual(character.availability['white-dragon'],{q:true,sister:true,occasional:true});
+ const input={main:{pets:[{id:'main',name:'大肥鱼'}]}};const zh=C.projectConfig(input,{dataRoot:f.root});assert.equal(zh.main.pets[0].name,'白龙娘');assert.match(zh.main.pets[0].whisperPrompt,/白龙娘/);assert.doesNotMatch(zh.main.pets[0].whisperPrompt,/鲸鱼娘/);
+ L.setLocale('en');const en=C.readCharacter(f.root);assert.equal(en.id,'white-dragon');assert.equal(en.name,'Dragon Girl');assert.match(en.persona,/dragon girl/);
+ const english=C.projectConfig(input,{dataRoot:f.root});assert.equal(english.main.pets[0].name,'Dragon Girl');assert.match(english.main.pets[0].whisperPrompt,/dragon girl/);assert.doesNotMatch(english.main.pets[0].whisperPrompt,/whale girl/);
+ f.write('skins/white-dragon/q-idle.webm',Buffer.from('1a45dfa3934282846d617472000000000000','hex'));
+ const broken=C.readCharacter(f.root);assert.equal(broken.id,'bluefish');assert.equal(broken.availability['white-dragon'].q,false);assert.equal(broken.availability['white-dragon'].sister,true);
+ f.write('skins/selection.json',{character:'white-dragon',mode:'sister'});assert.equal(C.readCharacter(f.root).id,'white-dragon');
+});
+
+test('普通走路仅在龙娘菜单显示散步，原鱼动作名保持原映射',()=>{
+ assert.equal(C.characterCopy('white-dragon','zh-CN').actionLabels['螃蟹走路'],'散步');
+ assert.equal(C.characterCopy('white-dragon','en').actionLabels['螃蟹走路'],'Walk');
+ assert.equal(C.characterCopy('bluefish','zh-CN').actionLabels['螃蟹走路'],undefined);
+ assert.equal(C.characterCopy('bluefish','en').actionLabels['螃蟹走路'],undefined);
+});
 test('无选择默认原鲸鱼，显式龙娘在素材有效时生效，缺图和无效清单回原鲸',async t=>{
  const f=fixture(t);f.write('skins/white-dragon/sprites.png',f.png);
  assert.equal(C.readCharacter(f.root).id,'bluefish');
