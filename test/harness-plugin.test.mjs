@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, readdirSync, rmSync, symlinkSync, realpathSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, readdirSync, rmSync, symlinkSync, statSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { createHash } from 'node:crypto';
@@ -172,8 +172,11 @@ test('Windows installer preserves Chinese spaced checkout paths and rejects the 
   assert.deepEqual(calls[0],['plugin','--profile','web','add','dsh-pet@0.3.8']);
   assert.deepEqual(calls[1].slice(0,4),['plugin','--profile','web','add']);
   assert.equal(calls[1].length,5);
-  // CI的临时目录可能含8.3短名；PowerShell展开为长名后仍须指向同一中文空格目录。
-  assert.equal(realpathSync(calls[1][4]),realpathSync(join(root,'data/harness-plugin')));
+  // Windows可能保留8.3短名拼写，用卷号和文件ID确认仍是同一中文空格目录。
+  const actualTarget=statSync(calls[1][4],{bigint:true}),expectedTarget=statSync(join(root,'data/harness-plugin'),{bigint:true});
+  assert.ok(actualTarget.isDirectory());
+  assert.equal(actualTarget.dev,expectedTarget.dev);
+  assert.equal(actualTarget.ino,expectedTarget.ino);
   rmSync(join(root,'built.txt'));writeFileSync(log,'');args[args.indexOf('web')]='desktop';
   const denied=spawnSync('powershell.exe',args,{encoding:'utf8',env,windowsHide:true,timeout:15000});
   assert.notEqual(denied.status,0);assert.match(denied.stderr,/official Desktop|npm CLI/);
