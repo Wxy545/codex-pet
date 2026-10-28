@@ -1,19 +1,29 @@
 {
   "name": "codex-pet",
-  "version": "0.3.1",
+  "version": "0.4.0",
   "private": true,
   "type": "module",
   "description": "Codex Pet: a Windows desktop companion for Codex, based on dsh-pet",
   "homepage": "https://github.com/Wxy545/codex-pet#readme",
-  "repository": { "type": "git", "url": "git+https://github.com/Wxy545/codex-pet.git" },
-  "bugs": { "url": "https://github.com/Wxy545/codex-pet/issues" },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Wxy545/codex-pet.git"
+  },
+  "bugs": {
+    "url": "https://github.com/Wxy545/codex-pet/issues"
+  },
   "license": "MIT",
   "scripts": {
     "prepare:runtime": "node scripts/prepare-runtime.mjs",
     "start": "node src/app.mjs",
     "stop": "node src/app.mjs --stop",
-    "test": "node --test --test-concurrency=1 test/*.test.mjs src/*.test.cjs"
+    "test": "node --test --test-concurrency=1 test/*.test.mjs src/*.test.cjs",
+    "build:harness": "node scripts/build-harness-plugin.mjs"
   },
-  "engines": { "node": ">=22.12.0" },
-  "dependencies": { "dsh-pet": "0.3.8" }
+  "engines": {
+    "node": ">=22.12.0"
+  },
+  "dependencies": {
+    "dsh-pet": "0.3.8"
+  }
 }

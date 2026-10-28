@@ -5,6 +5,7 @@ const PATHS = new Map([
   ['/dsh-pet-7340/codex-chat', new Set(['POST'])],
   ['/dsh-pet-7340/codex-tasks', new Set(['GET', 'POST'])],
   ['/dsh-pet-7340/codex-tasks/cancel', new Set(['POST'])],
+  ['/dsh-pet-7340/codex-startup/pending', new Set(['POST'])],
 ]);
 
 /** 新面板走带能力令牌的本机HTTP；上游stdin bridge只认识原版路由。 */

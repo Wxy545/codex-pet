@@ -1,0 +1,7 @@
+- insert:
+    - id: codex-pet-harness
+      name: codex-pet-harness
+
+# 原插件仍提供宿主和浏览器两半；只等待龙娘种类文件完整落盘。
+- id: dsh-pet
+  inject: [codexPetDragonPack]

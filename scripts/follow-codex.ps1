@@ -74,7 +74,7 @@ try {
         $taskRequested = $false
         if ($taskRisingEdge -and -not $NoStart) {
             try {
-                & (Join-Path $taskRoot 'start.ps1') -AppRoot $taskRoot | Out-Null
+                & (Join-Path $taskRoot 'start.ps1') -AppRoot $taskRoot -Reason codex | Out-Null
                 $taskRequested = $true
             } catch {
                 [Console]::Error.WriteLine((Get-CodexPetText '跟随启动失败，请运行 setup.ps1 并检查 Codex Pet 日志。' 'Follow-startup failed. Run setup.ps1 and check the Codex Pet logs.'))

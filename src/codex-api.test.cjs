@@ -12,6 +12,9 @@ test('面板请求固定到本机白名单接口，能力令牌只在主进程�
   assert.equal(received.options.redirect,'error');
   await request('GET','/dsh-pet-7340/codex-character');
   assert.equal(received.options.headers['x-dsh-pet-token'],settings.token);
+  await request('POST','/dsh-pet-7340/codex-startup/pending');
+  assert.equal(String(received.url),'http://127.0.0.1:3080/dsh-pet-7340/codex-startup/pending');
+  await assert.rejects(request('GET','/dsh-pet-7340/codex-startup/pending'));
   await assert.rejects(request('POST','/dsh-pet-7340/codex-character'));
   await assert.rejects(request('GET','/dsh-pet-7340/codex-chat'));
   await assert.rejects(request('POST','https://example.com/'));

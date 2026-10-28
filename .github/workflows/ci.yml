@@ -36,6 +36,8 @@ jobs:
         run: npm ci --legacy-peer-deps --ignore-scripts --no-audit --no-fund
       - name: Prepare runtime
         run: node scripts/prepare-runtime.mjs
+      - name: Build Harness bundle
+        run: node scripts/build-harness-plugin.mjs
       # 只运行本地回归测试，不启动桌面窗口，也不调用真实Codex模型。
       - name: Run tests
         run: npm test

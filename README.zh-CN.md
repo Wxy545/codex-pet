@@ -2,9 +2,11 @@
 
 [English](README.md) | [简体中文](README.zh-CN.md)
 
-陪你用 Codex 干活的 Windows 桌宠。Codex 思考、工作、等你确认时，她跟着换状态；闲下来就打个盹、玩魔方、吃白饭。
+陪你用 Codex 干活的 Windows 桌宠。Codex 思考、工作、等你确认时，她跟着换状态；闲下来就理理龙翼、吃块星形饼干，或者抱着尾巴打个盹。
 
 基于 [dsh-pet](https://github.com/PC2005-cloud/dsh-pet)，接入 Codex 会话、额度快照、对话、文件任务和 Windows 通知。
+
+<img src="docs/assets/white-dragon-idle.webp" width="260" alt="白龙娘待机动画">
 
 [![ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/wxy545)
 
@@ -33,7 +35,7 @@ $installer = Join-Path $env:TEMP 'codex-pet-install.ps1'; $file = Invoke-RestMet
 
 - **戳一下**：Q 弹回应、开心挥手，也可能害羞或鼓起脸。
 - **拎起来**：拖到桌面另一边，或者甩出去，看她落地反弹。
-- **随便逛逛**：自己走走、打盹、玩魔方、吃火锅。
+- **随便逛逛**：散步、整理翅膀、吃零食、抱尾打盹。切到大肥鱼，还能看她玩魔方、吃火锅。
 - **点播动作**：右键打开动作菜单，挑一段想看的。
 
 ## 跟着 Codex 开工
@@ -50,14 +52,12 @@ $installer = Join-Path $env:TEMP 'codex-pet-install.ps1'; $file = Invoke-RestMet
 
 右键打开「形象」切换 Q 版角色：
 
-- **白龙娘**：15 段 Q 版动画，包括待机、散步、点击、转向、拖拽、思考、打字、等待、完成和出错这 10 个核心动作，以及 5 个龙娘特色动作。会跟随 Codex 工作状态变化，菜单只显示已经做好的动作。
+- **白龙娘**：新安装的默认角色，提供 20 段 Q 版视频。除了散步、点击和工作状态，还会整理龙翼、吃星形饼干、招手眨眼、玩小魔法、抱尾小憩。
 - **大肥鱼**：保留原版角色及完整动作。
 
-整理龙翼、抱尾小憩和掌心微光会在闲逛时随机出现；害羞卷尾和叉腰得意加入点击回应。五个新动作都可以从右键菜单点播。
+龙娘有五种点击回应，散步之外还能振翼踏步。日常动作覆盖小动作、玩耍、吃东西、纳凉和招呼五类；额度与碎碎念会复用相应视频，菜单中标为「共用动作」。更新时保留已经保存的角色选择。
 
-<img src="docs/assets/white-dragon-idle.webp" width="220" alt="白龙娘待机动画">
-
-默认提供原版蓝色鲸鱼女仆，保留 **106 段透明动画**。下面的预览来自 [dsh-pet](https://github.com/PC2005-cloud/dsh-pet)：
+原版蓝色鲸鱼女仆保留 **106 段透明动画**。下面的预览来自 [dsh-pet](https://github.com/PC2005-cloud/dsh-pet)：
 
 <p>
   <img src="https://cdn.jsdelivr.net/gh/PC2005-cloud/dsh-pet@main/dsh-pet/assets/preview/dianji-huiying-yuanqi-huishou.gif" width="180" alt="原版鲸鱼女仆挥手">
@@ -67,6 +67,8 @@ $installer = Join-Path $env:TEMP 'codex-pet-install.ps1'; $file = Invoke-RestMet
 
 ## 启动与更新
 
+右键或托盘菜单打开「启动演出」，可选「仅桌宠」「仅启动演出」「桌宠与启动演出」，默认仅桌宠。后两种模式会在 Codex 启动时播放龙娘演出，点击或按 Esc 跳过，也可以用「预览演出」立即查看。
+
 关闭随 Codex 启动：
 
 ```powershell
@@ -75,7 +77,11 @@ powershell -File scripts/disable-follow.ps1
 
 Codex 和 dsh-pet 的更新检查、源码运行及故障排查见[维护文档](docs/maintenance.md)。需要定时检查时，可以让 Codex 为你的安装设置每日维护任务。
 
-更新源码后运行 `node scripts/prepare-runtime.mjs`，未改动的官方 0.3.0 龙娘包会补齐新动作；自定义皮肤和当前形象选择保留。
+更新源码后运行 `node scripts/prepare-runtime.mjs`，未改动的官方 0.3.0、0.3.1 龙娘包会补齐新动作；自定义皮肤和当前形象选择保留。
+
+## DeepSeek Harness
+
+龙娘也可以[安装为 DeepSeek Harness 插件](harness/README.md)，通过原生 dsh-pet 跟随 Harness 会话、余额和聊天。安装步骤与 profile 选择见插件说明。
 
 ## 请我喝杯咖啡
 
@@ -91,6 +97,8 @@ Codex 和 dsh-pet 的更新检查、源码运行及故障排查见[维护文档]
 ## 致谢与许可
 
 感谢 [PC2005-cloud/dsh-pet](https://github.com/PC2005-cloud/dsh-pet) 提供桌宠、动画与互动实现。本项目基于 `dsh-pet@0.3.8` 适配。
+
+启动演出参考了 [884048454/codex-startup-animation](https://github.com/884048454/codex-startup-animation)，感谢原作者。
 
 原型“溟月”出自 [上善无形](https://space.bilibili.com/4456176)，DeepSeek 版女仆鲸鱼娘设计出自 [ZipZipPipe](https://space.bilibili.com/4168597)。
 

@@ -57,9 +57,10 @@ test('龙娘五个特色动作使用独立中英文显示名，不改原鱼与�
   assert.equal(fish.actionLabels['鲸鱼吐泡泡特效'],index?'Whale bubbles':'鲸鱼吐泡泡特效');
  }
 });
-test('无选择默认原鲸鱼，显式龙娘在素材有效时生效，缺图和无效清单回原鲸',async t=>{
+test('无选择优先就绪Q龙娘，显式选择保留，缺图和无效清单回原鲸',async t=>{
  const f=fixture(t);f.write('skins/white-dragon/sprites.png',f.png);
- assert.equal(C.readCharacter(f.root).id,'bluefish');
+ assert.equal(C.readCharacter(f.root).id,'white-dragon');
+ f.write('skins/selection.json',{character:'bluefish',mode:'q'});assert.equal(C.readCharacter(f.root).id,'bluefish');
  f.write('skins/selection.json',{character:'white-dragon',mode:'q'});
  assert.equal(C.readCharacter(f.root).id,'white-dragon');
  const store=createSkinStore({dataRoot:f.root});assert.deepEqual((await store.readModel()).selection,C.readCharacter(f.root).selection);
@@ -100,12 +101,26 @@ test('两份精确旧默认不会残留进白龙人设，类似自定义追加�
    const projected=C.readCharacter(f.root);assert.ok(projected.persona.includes(JSON.stringify(custom)));assert.equal(projected.name,'小月');assert.equal(fs.readFileSync(path.join(f.root,file),'utf8'),customBefore);
  }
 });
-test('白龙停用鱼meme；英文还停用中文文字视频，原配置对象与技术ID不改',t=>{
+test('白龙停用鱼meme，英文投影保留完整动作供切角色运行期筛选，原配置与技术ID不改',t=>{
  const f=fixture(t);f.write('skins/white-dragon/sprites.png',f.png);f.write('skins/selection.json',{character:'white-dragon',mode:'q'});
  const config={main:{pets:[{id:'main',name:'蓝色大肥鱼'}],memes:{'哦鲸鲸':'原鱼梗图'},whisperImageEnabled:true,chatImageEnabled:true,animations:{categories:[{id:'文字',actions:['是啊，吃什么']},{id:'小动作',actions:['用鲸鱼尾巴拍打地面']}]}}};
  const next=C.projectConfig(config,{dataRoot:f.root});assert.equal(next.main.pets[0].name,'白龙娘');assert.deepEqual(next.main.memes,{});assert.equal(next.main.chatImageEnabled,false);assert.equal(config.main.chatImageEnabled,true);assert.equal(config.main.pets[0].name,'蓝色大肥鱼');
- L.setLocale('en');const en=C.projectConfig(config,{dataRoot:f.root});assert.equal(en.main.animations.categories.length,1);assert.equal(en.main.animations.categories[0].actions[0],'用鲸鱼尾巴拍打地面');assert.match(en.main.pets[0].whisperPrompt,/English/);
+ L.setLocale('en');const en=C.projectConfig(config,{dataRoot:f.root});assert.equal(en.main.animations,config.main.animations);assert.equal(en.main.animations.categories.length,2);assert.equal(en.main.animations.categories[0].actions[0],'是啊，吃什么');assert.match(en.main.pets[0].whisperPrompt,/English/);
  const copy=C.characterCopy('white-dragon','en');assert.equal(copy.actionLabels['蓝鲸现世'],'Summon a tiny whale');
+});
+test('新增Q版代表动作与事件显示名跟随龙娘身份，英语没有残留原鱼的中文动作名',()=>{
+ const pairs={
+  '大口吃零食':['吃星形饼干','Star-cookie snack'],'被落叶淹没':['扇翼纳凉','Wing fan'],
+  '深度思考碎碎念':['招手眨眼','A little wave'],'点击回应-元气挥手':['招手眨眼','A little wave'],
+  '点击回应-挠痒咯咯笑':['怕痒缩肩','Ticklish shrug'],'原地漂浮踏步':['振翼踏步','Wing-assisted steps'],
+ };
+ for(const [locale,index] of [['zh-CN',0],['en',1]]){
+  const dragon=C.characterCopy('white-dragon',locale),fish=C.characterCopy('bluefish',locale);
+  for(const [id,labels]of Object.entries(pairs)){assert.equal(dragon.actionLabels[id],labels[index]);assert.equal(fish.actionLabels[id],undefined);}
+  assert.equal(dragon.menuLabels['文字'],index?'Greetings':'招呼');assert.equal(fish.menuLabels['文字'],undefined);assert.equal(dragon.sharedAnimationHint,index?'Shared animation':'共用动作');
+  const eventIds=require('./skin-action-catalog.json').actions.filter(entry=>['event:balance','event:whisper'].includes(entry.group)).map(entry=>entry.id);
+  assert.equal(eventIds.length,9);for(const id of eventIds){assert.ok(dragon.actionLabels[id]);if(index)assert.doesNotMatch(dragon.actionLabels[id],/[\u3400-\u9fff]/);assert.equal(fish.actionLabels[id],undefined);}
+ }
 });
 test('身份桶只按角色和语言区分，角色变化可使在途回复失效',()=>{
  assert.equal(C.characterKey({id:'white-dragon',locale:'en'}),'white-dragon/en');
@@ -114,6 +129,7 @@ test('身份桶只按角色和语言区分，角色变化可使在途回复失�
 });
 test('跨角色选择清除旧气泡，同角色Q选择保留身份且IPC拒绝旧形态',async t=>{
  const f=fixture(t);f.write('skins/white-dragon/sprites.png',f.png);f.write('skins/white-dragon/sister.png',f.png);
+ f.write('skins/selection.json',{character:'bluefish',mode:'q'});
  const handlers=new Map(),requests=[],changed=[];
  const hostRequest=async(method,route)=>{requests.push([method,route]);return {status:200,body:JSON.stringify(method==='GET'?{main:{pets:[{id:'main'}],animations:{idle:['呼吸'],moves:{actions:[]}}}}:{ok:true})};};
  const electronApi={ipcMain:{handle:(name,fn)=>handlers.set(name,fn),removeHandler(){}},BrowserWindow:{getAllWindows:()=>[]},app:{once(){}}};

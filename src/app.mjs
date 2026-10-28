@@ -12,6 +12,7 @@ import { createCodexActivityGate, createCodexTaskHandler, MAX_TASK_BODY_BYTES } 
 import { codexQuotaResult } from './quota.mjs';
 import Character from './codex-character.cjs';
 import Locale from './codex-locale.cjs';
+import Startup from './codex-startup.cjs';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const home = join(root, 'data');
@@ -94,10 +95,23 @@ async function start() {
   const ai = host.createStandaloneAi(home, logger);
   const security = host.createRequestSecurity();
   const routes = [];
+  const startup = Startup.createLaunchQueue();
+  startup.push(process.argv.includes('--codex-startup') ? 'codex' : 'manual');
   const notices = [];
   let shutdown = async () => {};
   let snapshot = { state: 'idle', task: '', activeCount: 0 };
   let port = 0;
+  routes.push({ kind: 'exact', path: `${prefix}/codex-startup`, handler: async (req, res) => {
+    if (req.method !== 'POST') return json(res, 405, { error: 'method not allowed' });
+    try {
+      const body = await requestJson(req, 1024);
+      startup.request(body); json(res, 202, { ok: true });
+    } catch { if (!res.writableEnded) json(res, 400, { error: 'invalid startup request' }); }
+  } });
+  routes.push({ kind: 'exact', path: `${prefix}/codex-startup/pending`, handler: (req, res) => {
+    if (req.method !== 'POST') return json(res, 405, { error: 'method not allowed' });
+    json(res, 200, startup.take());
+  } });
   routes.push({ kind: 'exact', path: `${prefix}/codex-character`, handler: (req, res) => {
     if (req.method !== 'GET') return json(res, 405, { error: 'method not allowed' });
     if (req.headers['x-dsh-pet-token'] !== security.token || req.headers.origin) return json(res, 403, { error: 'unauthorized' });

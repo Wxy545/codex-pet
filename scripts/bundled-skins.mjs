@@ -4,6 +4,7 @@ import { createHash } from 'node:crypto';
 import { isAbsolute, join } from 'node:path';
 import Actions from '../src/skin-actions.cjs';
 import officialBaseline from './bundled-white-dragon-0.3.0.json' with { type: 'json' };
+import officialBaseline031 from './bundled-white-dragon-0.3.1.json' with { type: 'json' };
 
 const digest = data => createHash('sha256').update(data).digest('hex');
 const mediaName = name => /^[a-z0-9][a-z0-9_-]{0,95}\.webm$/.test(name);
@@ -16,7 +17,7 @@ async function fileHash(file) {
   catch (error) { if (error.code === 'ENOENT') return null; throw error; }
 }
 
-export async function seedBundledWhiteDragon({ projectRoot, dataRoot = join(projectRoot, 'data'), baseline = officialBaseline }) {
+export async function seedBundledWhiteDragon({ projectRoot, dataRoot = join(projectRoot, 'data'), baseline = [officialBaseline, officialBaseline031] }) {
   if (!isAbsolute(projectRoot) || !isAbsolute(dataRoot)) throw new Error('absolute-skin-root-required');
   const source = join(projectRoot, 'assets', 'white-dragon');
   const skinsRoot = join(dataRoot, 'skins');
@@ -34,31 +35,39 @@ export async function seedBundledWhiteDragon({ projectRoot, dataRoot = join(proj
     if (!(await lstat(join(source, name))).isFile()) throw new Error('bundled-skin-file-required');
     contents[name] = await readFile(join(source, name)); hashes[name] = digest(contents[name]);
   }
-  const old = baseline?.files;
-  if (!old?.['manifest.json'] || !old['NOTICE.md'] || Object.entries(old).some(([name, hash]) => (!mediaName(name) && !['manifest.json', 'NOTICE.md'].includes(name)) || !/^[a-f0-9]{64}$/.test(hash))) throw new Error('invalid-bundled-skin-baseline');
-  const oldMedia = Object.keys(old).filter(mediaName);
-  // 本次升级只添动作；上版核心素材的任何变化都必须停止，不能趁升级替换旧十条。
-  if (!oldMedia.length || oldMedia.some(name => hashes[name] !== old[name])) throw new Error('bundled-core-media-changed');
-  const additions = names.filter(name => mediaName(name) && !oldMedia.includes(name));
+  const versions = (Array.isArray(baseline) ? baseline : [baseline]).map(value => {
+    const files = value?.files;
+    if (!files?.['manifest.json'] || !files['NOTICE.md'] || Object.entries(files).some(([name, hash]) => (!mediaName(name) && !['manifest.json', 'NOTICE.md'].includes(name)) || !/^[a-f0-9]{64}$/.test(hash))) throw new Error('invalid-bundled-skin-baseline');
+    const media = Object.keys(files).filter(mediaName);
+    // 只增加新动作；任何已发布媒体变化都必须停下，不借升级覆盖旧片。
+    if (!media.length || media.some(name => hashes[name] !== files[name])) throw new Error('bundled-core-media-changed');
+    return { files, media };
+  });
+  if (!versions.length) throw new Error('invalid-bundled-skin-baseline');
   const current = async () => (await Promise.all(names.map(async name => await fileHash(join(target, name)) === hashes[name]))).every(Boolean);
-  const unchangedOld = async () => {
+  const matchesOld = async ({ files: old, media: oldMedia }) => {
     if (await fileHash(join(target, 'manifest.json')) !== old['manifest.json']) return false;
     if (!(await Promise.all(oldMedia.map(async name => await fileHash(join(target, name)) === old[name]))).every(Boolean)) return false;
     const notice = await fileHash(join(target, 'NOTICE.md'));
     // NOTICE可能已在上次中断前更新；只接受可验证的官方旧版或本次新版原文。
     return notice === old['NOTICE.md'] || notice === hashes['NOTICE.md'];
   };
-  const noConflict = async () => {
-    for (const name of additions) if (await exists(join(target, name)) && await fileHash(join(target, name)) !== hashes[name]) return false;
-    return true;
-  };
+  let previous = versions[0];
   if (targetExists) {
     const info = await lstat(target);
     if (!info.isDirectory() || info.isSymbolicLink()) return { status: 'preserved', reason: 'customized' };
     if (await current()) return { status: 'current' };
-    if (!await unchangedOld()) return { status: 'preserved', reason: 'customized' };
-    if (!await noConflict()) return { status: 'preserved', reason: 'conflict' };
+    previous = undefined;
+    for (const version of versions) if (await matchesOld(version)) { previous = version; break; }
+    if (!previous) return { status: 'preserved', reason: 'customized' };
   }
+  const unchangedOld = () => matchesOld(previous);
+  const additions = names.filter(name => mediaName(name) && !previous.media.includes(name));
+  const noConflict = async () => {
+    for (const name of additions) if (await exists(join(target, name)) && await fileHash(join(target, name)) !== hashes[name]) return false;
+    return true;
+  };
+  if (targetExists && !await noConflict()) return { status: 'preserved', reason: 'conflict' };
   await mkdir(skinsRoot, { recursive: true });
   const staging = await mkdtemp(join(skinsRoot, '.white-dragon-seed-'));
   try {

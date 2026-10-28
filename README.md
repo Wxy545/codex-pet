@@ -2,9 +2,11 @@
 
 [English](README.md) | [简体中文](README.zh-CN.md)
 
-A Windows desktop companion for Codex. It reacts while Codex is thinking, working, or waiting for you, then wanders off to play with a Rubik’s cube or eat a bowl of rice.
+A Windows desktop companion for Codex. She reacts while Codex is thinking, working, or waiting for you, then stretches her wings, snacks on a star-shaped cookie, or curls up around her tail for a nap.
 
 Built on [dsh-pet](https://github.com/PC2005-cloud/dsh-pet), with Codex session status, usage snapshots, chat, file tasks, and Windows notifications.
+
+<img src="docs/assets/white-dragon-idle.webp" width="260" alt="White Dragon Girl idle animation">
 
 [![ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/wxy545)
 
@@ -33,7 +35,7 @@ The pet starts with Codex after installation. You can also double-click `Start C
 
 - **Poke:** get a bouncy reaction, a wave, or a slightly embarrassed look.
 - **Pick her up:** drag her across the desktop, or give her a toss and watch her bounce.
-- **Let her wander:** she can stroll around, doze off, play with a Rubik’s cube, or enjoy some hot pot.
+- **Let her wander:** watch her stroll, tend to her wings, snack, or curl up for a nap. Switch to the whale maid for her Rubik’s cube and hot pot.
 - **Pick an animation:** open the right-click menu and choose what to play.
 
 ## While Codex works
@@ -50,14 +52,12 @@ Chat and idle chatter count toward your Codex usage. Chatter runs every ten minu
 
 Choose a chibi character from **Character** in the right-click menu:
 
-- **White Dragon Girl:** 15 chibi animations: the ten core actions for idle, walking, click response, turning, dragging, thinking, typing, waiting, success, and error, plus five more gestures. Her menu shows only the actions available for her.
+- **White Dragon Girl:** the default for new installations, with 20 chibi clips. She can tend to her wings, snack on a star-shaped cookie, wave, play with a little magic, or nap around her tail, alongside her walking, click and work reactions.
 - **Blue whale maid:** the original dsh-pet character and its full animation set.
 
-The dragon girl can now tend to her wings, curl up around her tail for a nap, and play with a little magic while she idles. A shy tail curl and a smug pose join her click reactions. All five are also in the right-click menu.
+The dragon girl has five click reactions and a second walking action with a flutter of her wings. Her idle pool covers small gestures, play, food, cooling off, and greetings. Balance and chatter events reuse suitable clips and are marked “Shared animation” in the menu. Your saved character choice is kept when updating.
 
-<img src="docs/assets/white-dragon-idle.webp" width="220" alt="White Dragon Girl idle animation">
-
-The default character is the original blue whale maid, with **106 transparent animations**. These previews are from [dsh-pet](https://github.com/PC2005-cloud/dsh-pet):
+The original blue whale maid retains her **106 transparent animations**. These previews are from [dsh-pet](https://github.com/PC2005-cloud/dsh-pet):
 
 <p>
   <img src="https://cdn.jsdelivr.net/gh/PC2005-cloud/dsh-pet@main/dsh-pet/assets/preview/dianji-huiying-yuanqi-huishou.gif" width="180" alt="Upstream whale maid waving">
@@ -67,6 +67,8 @@ The default character is the original blue whale maid, with **106 transparent an
 
 ## Startup and updates
 
+Open **Startup scene** in the right-click or tray menu to choose **Pet only**, **Startup scene only**, or **Pet and startup scene**. The default is Pet only. The other modes play a dragon-girl scene when Codex starts; click or press Esc to skip it, or choose **Preview scene** to watch it now.
+
 To stop the pet from launching with Codex:
 
 ```powershell
@@ -75,7 +77,11 @@ powershell -File scripts/disable-follow.ps1
 
 See [maintenance](docs/maintenance.md) for Codex and dsh-pet update checks, development setup, and troubleshooting. For a daily check, ask Codex to set up a maintenance task for your installation.
 
-After updating the source, run `node scripts/prepare-runtime.mjs` to add the new animations to an unchanged official 0.3.0 dragon pack. Custom skins and your character choice are kept.
+After updating the source, run `node scripts/prepare-runtime.mjs` to add the new animations to an unchanged official 0.3.0 or 0.3.1 dragon pack. Custom skins and your character choice are kept.
+
+## DeepSeek Harness
+
+The dragon girl is also available as a [DeepSeek Harness plugin](harness/README.md). It uses Harness sessions, balance and chat through dsh-pet. Follow that guide to install it in your Harness profile.
 
 ## Buy me a coffee
 
@@ -91,6 +97,8 @@ Want to see more dragon-girl animations? You can help fund the video work throug
 ## Credits and license
 
 Thanks to [PC2005-cloud/dsh-pet](https://github.com/PC2005-cloud/dsh-pet) for the desktop pet, animations, and interactions. This adaptation uses `dsh-pet@0.3.8`.
+
+Startup scenes are inspired by [884048454/codex-startup-animation](https://github.com/884048454/codex-startup-animation).
 
 The original “溟月” character is by [上善无形](https://space.bilibili.com/4456176); the DeepSeek whale-maid design is by [ZipZipPipe](https://space.bilibili.com/4168597).
 

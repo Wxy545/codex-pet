@@ -84,6 +84,22 @@ test('已知官方旧包只增加新媒体并更新清单，重复新版返回cu
   assert.equal((await seedBundledWhiteDragon({projectRoot:f.root,baseline:f.baseline})).status,'current');
 });
 
+test('已安装上一稳定版也能升级，不只识别最早的官方清单',async t=>{
+  const f=await upgradeFixture(t);
+  await seedBundledWhiteDragon({projectRoot:f.root,baseline:f.baseline});
+  const files=Object.fromEntries(await Promise.all((await readdir(f.target)).map(async name=>[name,createHash('sha256').update(await readFile(join(f.target,name))).digest('hex')])));
+  const previous={schemaVersion:1,version:'previous-fixture',files};
+  f.manifest.profiles.fan={type:'video',file:'q-fan.webm'};
+  f.manifest.actions.fan={profile:'fan',coverage:'dedicated'};
+  await writeFile(join(f.source,'manifest.json'),JSON.stringify(f.manifest));
+  await writeFile(join(f.source,'q-fan.webm'),'next fan media');
+  const result=await seedBundledWhiteDragon({projectRoot:f.root,baseline:[f.baseline,previous]});
+  assert.equal(result.status,'updated');
+  assert.deepEqual(result.files,['q-fan.webm']);
+  assert.equal(await readFile(join(f.target,'q-magic.webm'),'utf8'),'new magic media');
+  assert.deepEqual(await readFile(join(f.target,'manifest.json')),await readFile(join(f.source,'manifest.json')));
+});
+
 for(const changed of ['manifest.json','q-idle.webm','NOTICE.md'])test('用户改过'+changed+'时保留整套原皮肤，不添加新版文件',async t=>{
   const f=await upgradeFixture(t);await writeFile(join(f.target,changed),'user changed');
   assert.equal((await seedBundledWhiteDragon({projectRoot:f.root,baseline:f.baseline})).status,'preserved');

@@ -120,6 +120,36 @@
     const idle = character.manifest.profiles.idle;
     return idle?.type === 'video' && A.profileReady(idle, character.assets) && !failedAssets.has(character.assets[idle.file]?.url) ? character : null;
   }
+  function currentCharacter() {
+    return model?.characters.find(value => value.id === model.selection.character);
+  }
+  function actionEntry(id) {
+    const known = model?.catalog?.find(entry => entry.id === id);
+    if (known) return known;
+    for (const controller of controllers) {
+      const entry = controller.catalog.find(value => value.id === id);
+      if (entry) return entry;
+    }
+    return { id };
+  }
+  function textFreeGreeting(character, id) {
+    return character?.id === 'white-dragon' && character.manifest.actions[id]?.profile === 'greeting' && readyNativeAction(character, id);
+  }
+  function visibleCategories(categories, character) {
+    return (categories ?? []).filter(category => !(model?.locale === 'en' && character?.originalVideo && category.id === '文字'));
+  }
+  function readyEventAction(character, id) {
+    const entry = actionEntry(id);
+    if (!['event:balance', 'event:whisper', 'event:workStatus'].includes(entry.group)) return false;
+    const resolved = A.resolveAction(entry, character.manifest, character.assets);
+    const profile = character.manifest.profiles[resolved.profile];
+    return profile?.type === 'video' && A.profileReady(profile, character.assets) && !failedAssets.has(character.assets[profile.file]?.url);
+  }
+  const isNoMirrorAnimation = shared.isNoMirrorAnimation;
+  shared.isNoMirrorAnimation = function (categories, id) {
+    // 龙娘招手片没有烘焙文字，不继承原槽位的文字镜像限制；原鱼与自定义动作继续走上游判断。
+    return textFreeGreeting(currentCharacter(), id) ? false : isNoMirrorAnimation.apply(this, arguments);
+  };
   function preload(controller, request) {
     const value = visual(controller, request);
     if (!value?.original && value?.profile.type !== 'video' && value?.asset?.available && value.resolved.coverage !== 'missing') loadAsset(value.asset.url);
@@ -189,7 +219,44 @@
     return true;
   }
 
+  function finishNativeMove(controller, video) {
+    const layer = controller.layers.find(value => value.video === video);
+    const request = layer?.request, sprite = controller.sprite, plan = request?.movePlan;
+    // 低刷新时可能跳过最后的收尾帧；只替仍有效的本次自然结束补交原规划落点。
+    if (!video.ended || !request?.nativeMove || !plan || controller.active !== layer || controller.activeRequest !== request || controller.pendingRequest || sprite.pending || sprite.gen !== request.gen || sprite.frozen || sprite.moveRef == null) return;
+    sprite.stopMove();
+    sprite.sendBounds(plan.targetRatio * VIEW.w - sprite.halfW, plan.startYRatio * VIEW.h - sprite.halfH);
+    sprite.customPos = { rx: plan.targetRatio, ry: plan.startYRatio };
+  }
+
+  function paintMoveVideo(controller, layer, value) {
+    // 原生走路直接由上游video自己的解码帧绘制；位移、画面和结束只用这一只媒体时钟。
+    if (layer.media) releaseMedia(layer);
+    const source = layer.video;
+    if (source.readyState < 2 || !source.videoWidth || !source.videoHeight) return false;
+    const key = JSON.stringify(['move-source', layer.request.gen, value.asset.url]);
+    if (layer.paintKey !== key) {
+      stopLayer(layer); layer.paint = null; layer.paintKey = key;
+      const ratio = source.videoWidth / source.videoHeight;
+      layer.frame.style.aspectRatio = `${source.videoWidth} / ${source.videoHeight}`;
+      layer.canvas.width = Math.max(1, Math.round(512 * Math.min(1, ratio)));
+      layer.canvas.height = Math.max(1, Math.round(512 / Math.max(1, ratio)));
+    }
+    layer.canvas.style.display = 'block';
+    const context = layer.canvas.getContext('2d');
+    if (!context) return false;
+    const draw = () => {
+      if (controller.disposed || controller.active !== layer || controller.pendingRequest) return;
+      context.clearRect(0, 0, layer.canvas.width, layer.canvas.height);
+      context.drawImage(source, 0, 0, source.videoWidth, source.videoHeight, 0, 0, layer.canvas.width, layer.canvas.height);
+      if (!source.paused && !source.ended && layer.raf == null) layer.raf = window.requestAnimationFrame(() => { layer.raf = null; draw(); });
+    };
+    layer.draw = draw; draw();
+    return true;
+  }
+
   function paintVideoLayer(controller, layer, value) {
+    if (layer.request.nativeMove) return paintMoveVideo(controller, layer, value);
     const identity = JSON.stringify([assetRevision, model.selection.character, value.asset.url]);
     const key = JSON.stringify([assetRevision, layer.request.gen, model.selection.character, value.resolved.profile, value.asset.url]);
     if (layer.media?.key !== key) {
@@ -268,8 +335,7 @@
       const sourceStopped = (source.paused || source.ended) && !(heldDrag && source.ended);
       if (sourceStopped || !travel) {
         pauseMedia(media);
-        // 准备和收尾用已选定的完整落脚首帧；冻结保留当时的姿势。
-        if (moving && !source.paused && !source.ended && !travel && media.element.currentTime > 0) media.element.currentTime = 0;
+        // 没有实际走位的旧move请求保持当前帧，不把收尾硬倒回第一帧。
       } else if (media.element.paused && !media.element.ended && !media.ended && !media.playing) {
         media.playing = true;
         const attempt = media.playAttempt = (media.playAttempt || 0) + 1;
@@ -369,7 +435,7 @@
       controller.layers.push({ video, layer, frame, canvas, raf: null, paint: null });
       observer.observe(video, { attributes: true, attributeFilter: ['style', 'class'] });
       for (const name of ['loadeddata', 'play', 'playing', 'pause', 'ended', 'seeking', 'seeked', 'timeupdate', 'error']) {
-        const handler = () => { if (name === 'pause' || name === 'ended') hold(controller); schedule(); };
+        const handler = () => { if (name === 'ended') finishNativeMove(controller, video); if (name === 'pause' || name === 'ended') hold(controller); schedule(); };
         video.addEventListener(name, handler); controller.listeners.push([video, name, handler]);
       }
     }
@@ -385,14 +451,23 @@
   proto.playIdle = function () {
     const controller = ensure(this);
     const character = coreCharacter();
-    if (!character) return playIdle.apply(this, arguments);
     const original = this.animations, weights = this.weights;
+    const categoriesForLocale = visibleCategories(original.categories, currentCharacter());
+    if (!character) {
+      if (categoriesForLocale.length === (original.categories ?? []).length) return playIdle.apply(this, arguments);
+      this.animations = { ...original, categories: categoriesForLocale };
+      try { return playIdle.apply(this, arguments); }
+      finally { this.animations = original; }
+    }
     const ready = id => readyNativeAction(character, id);
     const idle = (original.idle ?? []).filter(ready);
     if (!idle.length) return;
     const turn = (original.turn ?? []).filter(ready);
     const moves = { ...original.moves, actions: (original.moves?.actions ?? []).filter(action => ready(action.name)) };
-    const categories = (original.categories ?? []).map(category => ({ ...category, actions: category.actions.filter(ready) })).filter(category => category.actions.length);
+    const categories = categoriesForLocale.map(category => {
+      const actions = category.actions.filter(ready);
+      return { ...category, actions, noMirror: category.noMirror === true && actions.some(id => !textFreeGreeting(character, id)) };
+    }).filter(category => category.actions.length);
     // 只在随机链同步取候选期间使用核心表；事件档位、拖拽、共享配置和原catalog保持完整。
     this.animations = { ...original, idle, turn, moves, categories };
     this.weights = { ...weights, turn: turn.length ? weights?.turn ?? 0 : 0, move: moves.actions.length ? weights?.move ?? 0 : 0 };
@@ -415,14 +490,23 @@
   const switchTo = proto.switchTo;
   proto.switchTo = function (next, once, playbackId, url) {
     const controller = ensure(this);
+    let sourceUrl = url;
     // 防重请求沿用原上游判断，不替它重播、改anim、改朝向或改物理状态。
     if (next && !(this.pending?.anim === next && this.pending.once === once)) {
       const layer = controller.layers[this.front === 0 ? 1 : 0];
       const request = { action: next, once, external: Boolean(url), gen: this.gen + 1 };
+      const value = !url && this.pendingMove ? visual(controller, request) : null;
+      if (value?.entry.group === 'moves' && !value.original && readyNativeAction(value.character, next)) {
+        // 新片没有原鱼首尾两秒的表演段；只留淡入淡出的短缓冲，且不改共享配置。
+        this.pendingMove = { ...this.pendingMove, leadSec: .12, tailSec: .12 };
+        request.nativeMove = true; request.movePlan = { ...this.pendingMove }; sourceUrl = value.asset.url;
+      }
       layer.request = request; controller.pendingRequest = request;
+      const old = controller.layers[this.front];
+      if (old.request?.nativeMove) old.video.pause();
       hold(controller); preload(controller, request);
     }
-    const result = switchTo.apply(this, arguments);
+    const result = switchTo.call(this, next, once, playbackId, sourceUrl);
     reconcile(controller);
     return result;
   };
@@ -443,7 +527,7 @@
   function disposeController(controller) {
     controller.disposed = true; hold(controller); controller.observer.disconnect();
     for (const [video, name, handler] of controller.listeners) video.removeEventListener(name, handler);
-    for (const layer of controller.layers) { releaseMedia(layer); layer.paint = null; layer.layer.remove?.(); }
+    for (const layer of controller.layers) { if (layer.request?.nativeMove) layer.video.pause(); releaseMedia(layer); layer.paint = null; layer.layer.remove?.(); }
     controllers.delete(controller);
   }
   const dispose = proto.dispose;
@@ -468,15 +552,17 @@
       const registeredChildren = preserveRegistered || (copy.label === shared.MORE_MENU_LABEL && hasRegisteredMenu(copy.children));
       if (copy.children) copy.children = decorateTree(copy.children, registeredChildren);
       if (preserveRegistered || copy.action === 'third-party') return [copy];
-      if (limited && copy.anim && !readyNativeAction(limited, copy.anim)) return [];
+      if (selected?.originalVideo && model.locale === 'en' && (copy.anim ? actionEntry(copy.anim).group === 'category:文字' : copy.label === '文字' && hasAnimationMenu(node.children))) return [];
+      if (limited && copy.anim && !readyNativeAction(limited, copy.anim) && !readyEventAction(limited, copy.anim)) return [];
       if (limited && copy.children?.length === 0 && hasAnimationMenu(node.children)) return [];
-      if (typeof copy.label === 'string') copy.label = copy.anim ? selected?.copy?.actionLabels?.[copy.anim] || t(copy.label) : t(copy.label);
+      if (typeof copy.label === 'string') copy.label = copy.anim ? selected?.copy?.actionLabels?.[copy.anim] || t(copy.label) : selected?.copy?.menuLabels?.[copy.label] || t(copy.label);
       if (copy.action === 'chat' && window.codexChatPanel?.open) copy.label = t('图文对话');
       if (copy.anim && selected && !selected.originalVideo) {
-        const entry = model.catalog?.find(item => item.id === copy.anim) || { id: copy.anim };
+        const entry = actionEntry(copy.anim);
         const resolved = A.resolveAction(entry, selected.manifest, selected.assets);
         const profile = selected.manifest.profiles[resolved.profile];
-        copy.hint = [profile?.type === 'video' ? '' : t('逐帧试作'), resolved.coverage !== 'dedicated' ? t(resolved.coverage === 'missing' ? '专属帧待制作' : '基础动画代用') : ''].filter(Boolean).join(' · ');
+        const sharedHint = resolved.coverage === 'missing' ? t('专属帧待制作') : selected.copy?.sharedAnimationHint || t('基础动画代用');
+        copy.hint = [profile?.type === 'video' ? '' : t('逐帧试作'), resolved.coverage !== 'dedicated' ? sharedHint : ''].filter(Boolean).join(' · ');
       }
       return [copy];
     });
@@ -514,8 +600,14 @@
     const assets = JSON.stringify(value.characters.map(({ id, assets, manifest }) => ({ id, assets, manifest })));
     if (assetSignature && assetSignature !== assets) { clearPendingAssets(); failedAssets.clear(); assetRevision++; }
     assetSignature = assets;
+    const previousCharacter = model?.selection.character;
     model = value; L?.setLocale(value.locale || 'zh-CN');
-    for (const controller of controllers) refresh(controller);
+    for (const controller of controllers) {
+      if (previousCharacter !== value.selection.character && (controller.activeRequest?.nativeMove || controller.pendingRequest?.nativeMove)) {
+        controller.sprite.stopMove();
+        if (!controller.sprite.resumeWorkStatusAnim()) controller.sprite.playIdle();
+      } else refresh(controller);
+    }
   }
   const unsubscribe = bridge.onChanged(applyModel);
   const initialRevision = modelRevision;

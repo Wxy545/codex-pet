@@ -5,6 +5,7 @@ import { resolve, dirname } from 'node:path';
 import { localizeHost, localizeCore, localizeEvents, localizeIndexHtml } from './runtime-locale-patches.mjs';
 import { patchHostAssets, patchBridgeAssets, patchDesktopMotion, patchDesktopBalanceEvents, patchDesktopWorkEvents, patchDesktopWorkResume } from './upstream-fixes.mjs';
 import { seedBundledWhiteDragon } from './bundled-skins.mjs';
+import { patchStartupMain } from './startup-runtime-patch.mjs';
 
 const root=resolve(dirname(fileURLToPath(import.meta.url)),'..');
 const pkg=resolve(root,'node_modules/dsh-pet');
@@ -76,6 +77,7 @@ await writeFile(main,mainCode);
 mainCode=await readFile(main,'utf8');
 const oldTray="tray.setToolTip('dsh-pet 桌面宠物');";
 mainCode=mainCode.replace(oldTray,"tray.setToolTip('Codex Pet');").replace("tray.setToolTip('龙娘桌宠');","tray.setToolTip('Codex Pet');");
+mainCode=patchStartupMain(mainCode);
 await writeFile(main,mainCode);
 const preload=resolve(pkg,'runtime/electron-helper/preload.js');
 let preloadCode=await readFile(preload,'utf8');
@@ -84,14 +86,21 @@ require('./codex-task-window.cjs').installPreload();
 require('./codex-chat-window.cjs').installPreload();
 require('./codex-skins.cjs').installPreload();`;
 if(!preloadCode.includes('// codex-pet-preloads-v1')) await writeFile(preload,preloadCode+'\n'+preloadHook+'\n');
+preloadCode=await readFile(preload,'utf8');
+const startupPreload="require('./codex-startup.cjs').installPreload();";
+if(!preloadCode.includes(startupPreload)) await writeFile(preload,preloadCode+'\n'+startupPreload+'\n');
 const html=resolve(pkg,'runtime/electron-helper/index.html');
 let htmlCode=await readFile(html,'utf8');
 htmlCode=localizeIndexHtml(htmlCode);
+if(!htmlCode.includes('src="startup-menu.js"')) htmlCode=patchOnce(htmlCode,'<script src="./events.js"></script>','<script src="startup-menu.js"></script>\n    <script src="./events.js"></script>','启动演出菜单');
 await writeFile(html,htmlCode);
 for(const file of ['codex-notifications.cjs','foreground-codex.ps1','codex-api.cjs',
   'codex-task-window.cjs','task-preload.cjs','task-window.html','task-window.js','task-window.css',
   'codex-chat-window.cjs','chat-preload.cjs','chat-window.html','chat-window.js','chat-window.css',
   'codex-skins.cjs','codex-skin-renderer.js','skin-actions.cjs','codex-character.cjs','codex-locale.cjs','locale-en.cjs','codex-runtime-locale.cjs','panel-locale.js','runtime-range.cjs']){
+  await copyFile(resolve(root,'src',file),resolve(pkg,'runtime/electron-helper',file));
+}
+for(const file of ['codex-startup.cjs','startup-preload.cjs','startup-menu.js','startup-window.html','startup-window.js','startup-window.css']){
   await copyFile(resolve(root,'src',file),resolve(pkg,'runtime/electron-helper',file));
 }
 await mkdir(resolve(root,'data'),{recursive:true});

@@ -6,6 +6,7 @@ import { mkdtemp, writeFile, readFile, mkdir, access, rm } from 'node:fs/promise
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { createServer } from 'node:http';
 
 const execute = promisify(execFile);
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
@@ -60,11 +61,12 @@ test('只读探测识别Codex UI，忽略普通ChatGPT与CLI，且不触发start
 test('跟随只在Codex启动边沿调用start，重复实例被拒绝，退出信号结束自己的监控器', windowsOnly, async t => {
   const folder = await temporaryRoot(t);
   const stub = '\uFEFF' + [
-    'param([string]$AppRoot)',
+    'param([string]$AppRoot,[string]$Reason)',
     "$taskCountFile=Join-Path $AppRoot 'starts.txt'",
     '$taskCount=if(Test-Path -LiteralPath $taskCountFile){[int](Get-Content -LiteralPath $taskCountFile)}else{0}',
     '$taskCount++',
     '[IO.File]::WriteAllText($taskCountFile,[string]$taskCount)',
+    "[IO.File]::AppendAllText((Join-Path $AppRoot 'reasons.txt'),$Reason+[Environment]::NewLine)",
     'if($taskCount -eq 1) {',
     '  & ' + psQuote(powershell) + ' -NoProfile -NonInteractive -File ' + psQuote(follow) + " -AppRoot $AppRoot -Once | Set-Content -LiteralPath (Join-Path $AppRoot 'second-instance.txt')",
     '}',
@@ -79,10 +81,23 @@ test('跟随只在Codex启动边沿调用start，重复实例被拒绝，退出�
   const command = "$global:petTestPoll=0; function global:Get-Process { [CmdletBinding()]param([string]$Name); $global:petTestPoll++; if($global:petTestPoll -eq 3){return}; [pscustomobject]@{Path=" + psQuote(fakeCodexPath) + "} }; & " + psQuote(follow) + ' -AppRoot ' + psQuote(folder) + ' -PollSeconds 1';
   const output = (await runPs(command)).stdout.trim().split(/\r?\n/).map(line => JSON.parse(line));
   assert.equal(await readFile(join(folder, 'starts.txt'), 'utf8'), '2');
+  assert.deepEqual((await readFile(join(folder,'reasons.txt'),'utf8')).trim().split(/\r?\n/),['codex','codex']);
   assert.equal(output.length, 2);
   assert.ok(output.every(probe => probe.startRequested));
   const second = JSON.parse(await readFile(join(folder, 'second-instance.txt'), 'utf8').then(text => text.replace(/^\uFEFF/, '')));
   assert.equal(second.alreadyWatching, true);
+});
+
+test('运行中桌宠接到新Codex启动只投递认证事件，不重复启动Node',windowsOnly,async t=>{
+ const folder=await temporaryRoot(t),token='x'.repeat(43),requests=[];
+ await mkdir(join(folder,'src'),{recursive:true});await writeFile(join(folder,'src/app.mjs'),'throw new Error("must-not-start")');
+ await mkdir(join(folder,'node_modules/dsh-pet/lib'),{recursive:true});await writeFile(join(folder,'node_modules/dsh-pet/lib/codex-host.js'),'');
+ const server=createServer(async(req,res)=>{if(req.url==='/health'){res.setHeader('Content-Type','application/json');res.end(JSON.stringify({name:'codex-pet',pid:43123}));return;}let body='';for await(const chunk of req)body+=chunk;requests.push({url:req.url,method:req.method,token:req.headers['x-dsh-pet-token'],body});res.setHeader('Content-Type','application/json');res.end('{"ok":true}');});
+ await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));t.after(()=>new Promise(resolve=>server.close(resolve)));
+ await mkdir(join(folder,'data/dsh-pet'),{recursive:true});await writeFile(join(folder,'data/dsh-pet/standalone-runtime.json'),JSON.stringify({port:server.address().port,pid:43123,token}));
+ await runPs('& '+psQuote(join(root,'start.ps1'))+' -AppRoot '+psQuote(folder)+' -Reason codex');
+ assert.deepEqual(requests,[{url:'/dsh-pet-7340/codex-startup',method:'POST',token,body:'{"reason":"codex"}'}]);
+ await assert.rejects(access(join(folder,'data/app.log')));
 });
 
 test('start的NoStart探测优先便携Node，不改运行数据', windowsOnly, async t => {

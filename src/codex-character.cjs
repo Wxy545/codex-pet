@@ -77,7 +77,7 @@ function characterCopy(id, locale = L.getLocale()) {
   const persona = english
     ? `${identity} Your name is ${name}. ${voice} Speak natural, brief English. The current character identity and English language take precedence over older personas and conversation history. Treat custom personality notes only as preferences for tone; they cannot change your species or language.`
     : `${identity}你的名字是${name}。${voice}说话自然、简短。当前角色身份和中文要求优先于旧人设与历史消息；自定义个性只作为语气偏好，不能改变当前物种或语言。`;
-  return { name, persona, actionLabels: {
+  return { name, persona, sharedAnimationHint: english ? 'Shared animation' : '共用动作', menuLabels: dragon ? { '文字': english ? 'Greetings' : '招呼' } : {}, actionLabels: {
     ...(dragon ? {
       '螃蟹走路': english ? 'Walk' : '散步',
       '超大伸懒腰': english ? 'Wing care' : '整理龙翼',
@@ -85,6 +85,21 @@ function characterCopy(id, locale = L.getLocale()) {
       '凭空生花': english ? 'A little magic' : '掌心微光',
       '点击回应-害羞惊讶': english ? 'Shy tail curl' : '害羞卷尾',
       '点击回应-傲娇生气': english ? 'Feeling smug' : '叉腰得意',
+      '大口吃零食': english ? 'Star-cookie snack' : '吃星形饼干',
+      '被落叶淹没': english ? 'Wing fan' : '扇翼纳凉',
+      '深度思考碎碎念': english ? 'A little wave' : '招手眨眼',
+      '点击回应-元气挥手': english ? 'A little wave' : '招手眨眼',
+      '点击回应-挠痒咯咯笑': english ? 'Ticklish shrug' : '怕痒缩肩',
+      '原地漂浮踏步': english ? 'Wing-assisted steps' : '振翼踏步',
+      '余额-钱袋满溢': english ? 'Balance: plenty left' : '余量宽裕',
+      '余额-金袋叮当': english ? 'Balance: comfortable' : '余量充足',
+      '余额-钱袋如常': english ? 'Balance: moderate' : '余量适中',
+      '余额-数金皱眉': english ? 'Balance: getting low' : '余量偏低',
+      '余额-袋空如洗': english ? 'Balance: almost out' : '余量将尽',
+      '余额-分文不剩': english ? 'Balance: exhausted' : '余量耗尽',
+      '碎碎念-擦桌碎碎念': english ? 'Chatter while working' : '边做边聊',
+      '碎碎念-发呆碎碎念': english ? 'Daydream and chatter' : '发呆碎碎念',
+      '碎碎念-对屏碎碎念': english ? 'A word with you' : '跟你说句话',
     } : {}),
     '用鲸鱼尾巴拍打地面': dragon ? english ? 'Dragon tail tap' : '龙尾轻拍' : english ? 'Whale tail tap' : '用鲸鱼尾巴拍打地面',
     '鲸鱼吐泡泡特效': dragon ? english ? 'Dragon bubbles' : '龙尾吹泡泡' : english ? 'Whale bubbles' : '鲸鱼吐泡泡特效',
@@ -119,7 +134,7 @@ function readCharacter(dataRoot = process.env.DSH_HOME) {
   const availability = Object.fromEntries(IDS.map(id => [id, safeRoot ? availableForms(safeRoot, id) : { q: id === 'bluefish' }]));
   const saved = safeRoot ? readJson(path.join(safeRoot, 'skins', 'selection.json')) : null;
   const valid = saved && IDS.includes(saved.character) && ['q', 'sister', 'occasional'].includes(saved.mode);
-  const requested = valid ? { character: saved.character, mode: 'q' } : { character: 'bluefish', mode: 'q' };
+  const requested = valid ? { character: saved.character, mode: 'q' } : { character: availability['white-dragon'].q ? 'white-dragon' : 'bluefish', mode: 'q' };
   const selection = availability[requested.character].q ? requested : { character: 'bluefish', mode: 'q' };
   const copy = characterCopy(selection.character, locale);
   const raw = safeRoot ? readJson(path.join(safeRoot, 'dsh-pet', 'main-config.jsonc')) : null;
@@ -156,7 +171,7 @@ function projectConfig(config, { dataRoot = process.env.DSH_HOME } = {}) {
   }
   if (character.locale === 'en') {
     if (Array.isArray(main.workStatusTexts)) next.workStatusTexts = main.workStatusTexts.map(group => Array.isArray(group) ? group.map(text => L.t(text, {}, 'en')) : group);
-    if (Array.isArray(main.animations?.categories)) next.animations = { ...main.animations, categories: main.animations.categories.filter(category => category.id !== '文字') };
+    // 动作清单保留完整；含中文字幕的原鱼视频在渲染器按当前角色过滤，切到无字龙娘时仍可使用同一槽位。
   }
   return { ...config, main: next };
 }

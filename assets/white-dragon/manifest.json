@@ -60,6 +60,26 @@
     "proud": {
       "type": "video",
       "file": "q-proud.webm"
+    },
+    "dragon-snack": {
+      "type": "video",
+      "file": "q-dragon-snack.webm"
+    },
+    "wing-fan": {
+      "type": "video",
+      "file": "q-wing-fan.webm"
+    },
+    "greeting": {
+      "type": "video",
+      "file": "q-greeting.webm"
+    },
+    "tickle": {
+      "type": "video",
+      "file": "q-tickle.webm"
+    },
+    "wing-hover": {
+      "type": "video",
+      "file": "q-wing-hover.webm"
     }
   },
   "actions": {
@@ -125,6 +145,30 @@
     },
     "点击回应-傲娇生气": {
       "profile": "proud",
+      "coverage": "dedicated"
+    },
+    "大口吃零食": {
+      "profile": "dragon-snack",
+      "coverage": "dedicated"
+    },
+    "被落叶淹没": {
+      "profile": "wing-fan",
+      "coverage": "dedicated"
+    },
+    "深度思考碎碎念": {
+      "profile": "greeting",
+      "coverage": "shared"
+    },
+    "点击回应-元气挥手": {
+      "profile": "greeting",
+      "coverage": "shared"
+    },
+    "点击回应-挠痒咯咯笑": {
+      "profile": "tickle",
+      "coverage": "dedicated"
+    },
+    "原地漂浮踏步": {
+      "profile": "wing-hover",
       "coverage": "dedicated"
     }
   }

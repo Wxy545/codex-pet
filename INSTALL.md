@@ -41,9 +41,11 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File $installer
 
 确认安装进程成功退出，目录里存在 `node_modules/dsh-pet/lib/codex-host.js`。默认安装后检查桌宠是否出现，以及 `data/app-error.log` 是否报错。在 Codex 主聊天完成一次回复，观察工作状态是否变化，再从桌宠右键菜单查看额度或打开对话。
 
-安装包提供原版蓝色鲸鱼女仆的 106 段动画，以及白龙娘的 15 段 Q 版动画：10 个核心动作，加上整理龙翼、抱尾小憩、掌心微光、害羞卷尾和叉腰得意。默认显示原版角色，右键「形象」可切换白龙娘。前三个特色动作会在闲逛时随机出现，后两个加入点击回应，均可右键点播。
+新安装默认显示白龙娘，提供 20 段 Q 版视频，覆盖待机、两种走位、五种点击回应、工作状态及龙娘日常动作。右键「形象」可切换到保留 106 段动画的大肥鱼；已有角色选择不变。
 
-新安装会复制内置龙娘包。已有安装更新源码后运行 `node scripts/prepare-runtime.mjs`，未改动的官方 0.3.0 包会补齐新动作；自定义角色目录和形象选择保留。每日维护任务按需另行设置。
+新安装会复制内置龙娘包。已有安装更新源码后运行 `node scripts/prepare-runtime.mjs`，未改动的官方 0.3.0、0.3.1 包会补齐新动作；自定义角色目录和形象选择保留。每日维护任务按需另行设置。
+
+右键或托盘菜单的「启动演出」可选择仅桌宠、仅启动演出或两者同时开启，默认仅桌宠。预览与自动演出均可点击或按 Esc 跳过。
 
 跟随启动在当前用户的 Windows 启动文件夹注册隐藏监控。它在 Codex 桌面程序出现时启动桌宠；手动停止桌宠后，本次 Codex 运行期间不会反复拉起，也不修改 Codex 安装文件。关闭跟随启动：
 
@@ -54,3 +56,13 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File "安装目录\scripts\di
 只检查安装、不启动窗口时，同时使用 `-NoStart -NoFollow`，不调用真实模型。安装不需要读取、复制或输出 Codex 登录凭据。
 
 手动源码安装、配置与更新见[维护文档](docs/maintenance.md)。
+
+## 安装到 DeepSeek Harness
+
+在 Codex 中发送：
+
+```text
+帮我把 https://github.com/Wxy545/codex-pet 的白龙娘插件装到 DeepSeek Harness，按 harness/README.md 操作，保留已有宠物和配置。
+```
+
+这一入口使用 Harness 的原生 dsh-pet 插件。所需 CLI、profile 选择和安装命令见 [Harness 插件说明](harness/README.md)。

@@ -63,6 +63,62 @@ function clickVideoHarness(){
  const h=harness();const c=h.model.characters[0];c.manifest.profiles.jump={type:'video',file:'click.webm'};c.assets['click.webm']={available:true,type:'video',url:'file:///click.webm'};return h;
 }
 
+function representativeHarness(locale='zh-CN') {
+ const h=harness({videoProfile:true,moveVideo:true,locale});
+ const animations=vm.runInNewContext('('+readFileSync(join(__dirname,'../node_modules/dsh-pet/assets/config.jsonc'),'utf8')+')').animations;
+ const character=h.model.characters[0];
+ const bindings={
+  '待机呼吸休闲':'idle','东张西望':'turn','被鼠标拖拽悬空反馈':'drag','螃蟹走路':'walk','原地漂浮踏步':'wing-hover',
+  '点击回应-开心跃动':'click','点击回应-害羞惊讶':'shy','点击回应-傲娇生气':'proud','点击回应-挠痒咯咯笑':'tickle','点击回应-元气挥手':'greeting',
+  '超大伸懒腰':'wing-care','原地小憩沉眠':'tail-nap','凭空生花':'magic','大口吃零食':'dragon-snack','被落叶淹没':'wing-fan','深度思考碎碎念':'greeting',
+  '工作状态-思考冒泡':'thinking','工作状态-忙碌点按':'working','工作状态-清点归档':'working','工作状态-原地踱步张望':'waiting','工作状态-雀跃庆祝':'success','工作状态-垂头叹气冒汗':'error',
+ };
+ character.manifest=A.normalizeManifest({schemaVersion:1,profiles:Object.fromEntries([...new Set(Object.values(bindings))].map(id=>[id,{type:'video',file:id+'.webm'}])),actions:Object.fromEntries(Object.entries(bindings).map(([id,profile])=>[id,{profile,coverage:['greeting','working'].includes(profile)?'shared':'dedicated'}]))});
+ character.assets=Object.fromEntries(Object.values(character.manifest.profiles).filter(profile=>profile.type==='video').map(profile=>[profile.file,{type:'video',available:true,url:'file:///'+profile.file}]));
+ character.copy=require('./codex-character.cjs').characterCopy('white-dragon',locale);
+ h.model.characters[1].copy=require('./codex-character.cjs').characterCopy('bluefish',locale);
+ h.model.catalog=A.catalogFromAnimations(animations);
+ h.animations=animations;
+ return h;
+}
+
+test('五类龙娘代表动作均能进入真实随机链，招呼朝右可选且五种点击完整',async()=>{
+ const h=representativeHarness('en');await h.flush();const p=h.sprite();p.animations=h.animations;p.weights={idle:10,turn:5,move:5};p._facing='right';
+ const original=p.animations,weights=p.weights;let selection=0,seen;
+ h.win.PetShared.rollKind=()=> 'action';
+ h.win.PetShared.pickCategoryAction=categories=>{seen=categories;return{name:categories[selection].actions[0]};};
+ const expected=[['小动作',['超大伸懒腰','原地小憩沉眠']],['玩耍',['凭空生花']],['吃什么',['大口吃零食']],['时节',['被落叶淹没']],['文字',['深度思考碎碎念']]];
+ for(selection=0;selection<expected.length;selection++){
+  p.playIdle();assert.equal(p.pending.anim,expected[selection][1][0]);assert.equal(p.animations,original);assert.equal(p.weights,weights);await h.ready(p);
+ }
+ assert.deepEqual(JSON.parse(JSON.stringify(seen.map(category=>[category.id,category.actions]))),expected);assert.equal(seen.at(-1).noMirror,false);assert.equal(original.categories.at(-1).noMirror,true);
+ let choices;h.win.PetShared.pick=pool=>{choices=[...pool];return pool.at(-1);};p.onClick({});assert.deepEqual(choices,[...original.clicks]);assert.equal(choices.length,5);assert.equal(p.pending.anim,'点击回应-元气挥手');p.dispose();
+});
+
+test('完整原表跨中英文切角色，英文鱼仅屏蔽烘焙文字，龙娘招手点播不强制转左',async()=>{
+ const h=representativeHarness('en');await h.flush();const p=h.sprite();p.animations=h.animations;p.weights={idle:10,turn:5,move:5};p._facing='right';
+ h.win.PetShared.rollKind=()=> 'action';let seen;h.win.PetShared.pickCategoryAction=categories=>{seen=categories;return{name:categories[0].actions[0]};};
+ const S=h.win.PetShared,menuTree=()=>[{label:'打开网站',action:'open-site'},...S.buildMenuTree(p.animations)];
+ p.onMenuAction({anim:'深度思考碎碎念'});assert.equal(p.facing,'right');await h.ready(p);
+ S.mountContextMenu({tree:menuTree()});assert.ok(h.menu().tree[1].children.some(node=>node.label==='Greetings'));assert.equal(h.model.catalog.length,106);
+ const fish=structuredClone(h.model);fish.selection.character='bluefish';h.change(fish);await h.flush();p.playIdle();assert.equal(seen.some(category=>category.id==='文字'),false);assert.equal(p.animations.categories.length,5);await h.ready(p);
+ S.mountContextMenu({tree:menuTree()});assert.equal(h.menu().tree[1].children.some(node=>node.label==='文字'),false);
+ p._facing='right';p.onMenuAction({anim:'深度思考碎碎念'});assert.equal(p.facing,'left');await h.ready(p);
+ const chinese=structuredClone(fish);chinese.locale='zh-CN';h.change(chinese);await h.flush();S.mountContextMenu({tree:menuTree()});
+ const leaves=nodes=>nodes.flatMap(node=>node.anim?[node]:leaves(node.children??[]));assert.equal(leaves(h.menu().tree).length,106);
+ p.playIdle();assert.equal(seen.length,5);assert.equal(seen.at(-1).noMirror,true);assert.equal(h.model.catalog.length,106);p.dispose();
+});
+
+test('龙娘余额六档碎碎念三档及工作六档可点播，共用动作如实标注且缺视频不冒充就绪',async()=>{
+ const h=representativeHarness('en');await h.flush();const p=h.sprite();p.animations=h.animations;p.playOnce('待机呼吸休闲');await h.ready(p);const S=h.win.PetShared;
+ const mount=()=>{S.mountContextMenu({tree:[{label:'打开网站',action:'open-site'},...S.buildMenuTree(p.animations)]});return h.menu().tree[1].children;};
+ const groups=mount(),eventGroups=groups.filter(node=>['余额档位','碎碎念','工作状态'].includes(node.label));assert.equal(eventGroups.length,3);
+ const expected=[6,3,6];for(let i=0;i<eventGroups.length;i++)assert.equal(eventGroups[i].children.length,expected[i]);
+ for(const node of eventGroups.slice(0,2))for(const leaf of node.children){assert.equal(leaf.hint,'Shared animation');assert.doesNotMatch(leaf.label,/[\u3400-\u9fff]/);p.onMenuAction(leaf);assert.equal(p.pending.anim,leaf.anim);await h.ready(p);}
+ const unavailable=structuredClone(h.model);unavailable.characters[0].assets['success.webm'].available=false;h.change(unavailable);await h.flush();
+ const next=mount();assert.equal(next.find(node=>node.label==='余额档位').children.length,4);assert.equal(next.find(node=>node.label==='工作状态').children.length,5);assert.equal(p.animations.events.balance.length,6);p.dispose();
+});
+
 test('形象菜单直接两角色且旧mode不能激活非Q，轮询不再自动变身或加载姐姐图',async()=>{
  const h=harness({videoProfile:true,mode:'occasional',random:()=>0});await h.flush();const p=h.sprite();p.playOnce('呼吸');await h.ready(p);h.media[0].ready();await h.flush();
  h.win.PetShared.mountContextMenu({tree:[{label:'对话',action:'chat'}]});const shape=h.menu().tree.find(node=>node.label==='形象');
@@ -154,26 +210,60 @@ test('旧点击视频迟到结束不能覆盖新请求或切换后的角色，�
  ended.ended=true;ended.paused=true;ended.emit('ended');await frozen.flush();assert.equal(locked.pending,null);assert.equal(locked.anim,'点击跳跃');assert.ok(reports.some(([,s])=>s==='cancelled'));assert.ok(!reports.some(([,s])=>s==='ended'));locked.dispose();
 });
 
-test('真实startMoveDrive只在位移窗口循环原生步态，lead和tail保持落脚首帧',async()=>{
+test('原生走路使用同一真实视频时钟起步收步，无两秒冻结或收尾归零',async()=>{
  const h=harness({moveVideo:true});await h.flush();const p=h.sprite();p._facing='right';
  p.pendingMove={startRatio:.3,startYRatio:.5,targetRatio:.6,leadSec:2,tailSec:2};p.playOnce('移动');await h.ready(p);
- const v=h.media[0];v.ready();await h.flush();assert.equal(v.paused,true);assert.equal(v.currentTime,0);assert.equal(p.__codexSkinController.layers[p.front].layer.style.transform,'scaleX(-1)');
- await h.frame(p,1);assert.deepEqual(h.positions.at(-1),[280,360]);assert.equal(v.paused,true);
- await h.frame(p,2.5);assert.ok(h.positions.at(-1)[0]>280);assert.equal(v.paused,false);assert.equal(v.loop,true);
- v.currentTime=.75;await h.frame(p,8.1);assert.deepEqual(h.positions.at(-1),[580,360]);assert.equal(v.paused,true);assert.equal(v.currentTime,0);assert.equal(p.moveRef,null);p.dispose();
+ const v=p.front===0?p.videoA:p.videoB;assert.equal(v.src,'file:///walk.webm');assert.equal(h.media.length,0);assert.equal(v.paused,false);assert.equal(p.__codexSkinController.layers[p.front].layer.style.transform,'scaleX(-1)');
+ await h.frame(p,.05);assert.deepEqual(h.positions.at(-1),[280,360]);assert.equal(v.paused,false);
+ await h.frame(p,.25);assert.ok(h.positions.at(-1)[0]>280);assert.equal(v.paused,false);assert.equal(v.loop,false);
+ await h.frame(p,9.9);assert.deepEqual(h.positions.at(-1),[580,360]);assert.equal(v.paused,false);assert.equal(v.currentTime,9.9);assert.equal(p.moveRef,null);assert.ok(h.draws.some(d=>d.args[0]===v));p.dispose();
 });
 
 test('原生走路冻结停在当前姿势并停止物理，未移动窗口不会继续踏步',async()=>{
  const h=harness({moveVideo:true});await h.flush();const p=h.sprite();p.pendingMove={startRatio:.3,startYRatio:.5,targetRatio:.6,leadSec:2,tailSec:2};p.playOnce('移动');await h.ready(p);
- const v=h.media[0];v.ready();await h.flush();await h.frame(p,3);assert.equal(v.paused,false);v.currentTime=.5;
+ const v=p.front===0?p.videoA:p.videoB;await h.flush();await h.frame(p,3);assert.equal(v.paused,false);v.currentTime=.5;
  p.applyFreeze(true);await h.flush();const count=h.positions.length;assert.equal(v.paused,true);assert.equal(v.currentTime,.5);assert.equal(p.moveRef,null);await h.frame(p,3.5);assert.equal(h.positions.length,count);p.dispose();
 });
 
 test('窗口未发车的move纯播放不踏步，真实点击打断后旧步态不复播',async()=>{
  const h=harness({moveVideo:true});await h.flush();const p=h.sprite();p.playOnce('移动');await h.ready(p);const v=h.media[0];v.ready();await h.flush();
  await h.frame(p,3);assert.equal(v.paused,true);assert.equal(h.positions.length,0);
- p.pendingMove={startRatio:.3,startYRatio:.5,targetRatio:.6,leadSec:2,tailSec:2};p.playOnce('移动');await h.ready(p);const moving=h.media.at(-1);moving.ready();await h.flush();await h.frame(p,3);assert.equal(moving.paused,false);
+ p.pendingMove={startRatio:.3,startYRatio:.5,targetRatio:.6,leadSec:2,tailSec:2};p.playOnce('移动');await h.ready(p);const moving=p.front===0?p.videoA:p.videoB;await h.flush();await h.frame(p,3);assert.equal(moving.paused,false);
  p.onClick({});assert.equal(moving.paused,true);assert.equal(p.moveRef,null);await h.ready(p);await h.frame(p,4);assert.equal(h.win.__codexSkinDebug.action,'点击跳跃');assert.equal(moving.paused,true);p.dispose();
+});
+
+test('原生走路解码前窗口不发车，切换原鱼会结束旧走位并加载鱼视频',async()=>{
+ const h=harness({moveVideo:true});await h.flush();const p=h.sprite();
+ p.weights={idle:100,turn:0,move:0};
+ p.pendingMove={startRatio:.3,startYRatio:.5,targetRatio:.6,leadSec:2,tailSec:2};p.playOnce('移动');
+ assert.equal(p.moveRef,null);assert.equal(h.positions.length,0);await h.ready(p);await h.frame(p,.5);assert.ok(h.positions.length>0);
+ const next=structuredClone(h.model);next.selection.character='bluefish';h.change(next);await h.flush();
+ assert.equal(p.moveRef,null);assert.equal(p.pending.anim,'呼吸');await h.ready(p);assert.match((p.front===0?p.videoA:p.videoB).src,/original/);assert.equal(h.win.__codexSkinDebug.playback,'original-video');p.dispose();
+});
+
+test('原生走路仍在解码时切回原鱼，取消pending走位并阻止龙娘源发车',async()=>{
+ const h=harness({moveVideo:true});await h.flush();const p=h.sprite();p.weights={idle:100,turn:0,move:0};
+ p.playOnce('呼吸');await h.ready(p);
+ p.pendingMove={startRatio:.3,startYRatio:.5,targetRatio:.6,leadSec:2,tailSec:2};p.playOnce('移动');
+ const waiting=p.front===0?p.videoB:p.videoA;
+ assert.equal(p.__codexSkinController.activeRequest.action,'呼吸');assert.equal(p.__codexSkinController.pendingRequest.nativeMove,true);assert.equal(waiting.readyState,0);
+ const next=structuredClone(h.model);next.selection.character='bluefish';h.change(next);await h.flush();
+ assert.equal(p.moveRef,null);assert.equal(p.pendingMove,null);assert.equal(p.pending.anim,'呼吸');
+ await h.ready(p);await h.frame(p,.5);
+ assert.match((p.front===0?p.videoA:p.videoB).src,/original/);assert.equal(h.win.__codexSkinDebug.character,'bluefish');assert.equal(h.win.__codexSkinDebug.playback,'original-video');assert.equal(p.moveRef,null);assert.equal(h.positions.length,0);p.dispose();
+});
+
+test('原生走路漏过末端rAF时在ended补交目标，仅当前未打断的走位可提交',async()=>{
+ const h=harness({moveVideo:true});await h.flush();const p=h.sprite();p.weights={idle:100,turn:0,move:0};
+ p.pendingMove={startRatio:.3,startYRatio:.5,targetRatio:.6,leadSec:2,tailSec:2};p.playOnce('移动');
+ const v=p.front===0?p.videoB:p.videoA;v.duration=4.209;await h.ready(p);await h.frame(p,3.95);
+ assert.ok(h.positions.at(-1)[0]<580);assert.notEqual(p.moveRef,null);
+ v.currentTime=v.duration;v.ended=true;v.paused=true;v.emit('ended');await h.flush();
+ assert.deepEqual(h.positions.at(-1),[580,360]);assert.equal(p.moveRef,null);assert.equal(p.customPos.rx,.6);assert.equal(p.customPos.ry,.5);
+ const count=h.positions.length;v.onended();await h.flush();assert.equal(p.pending.anim,'呼吸');v.emit('ended');await h.flush();assert.equal(h.positions.length,count);p.dispose();
+ const stopped=harness({moveVideo:true});await stopped.flush();const role=stopped.sprite();role.pendingMove={startRatio:.3,startYRatio:.5,targetRatio:.6,leadSec:2,tailSec:2};role.playOnce('移动');await stopped.ready(role);await stopped.frame(role,.5);
+ const old=role.front===0?role.videoA:role.videoB;role.onClick({});const positions=stopped.positions.length;
+ old.ended=true;old.paused=true;old.emit('ended');await stopped.flush();assert.equal(stopped.positions.length,positions);assert.equal(role.pending.anim,'点击跳跃');role.dispose();
 });
 
 test('透明待机视频用原生时钟连续循环，原视频回绕不重置，冻结和换动作停止',async()=>{

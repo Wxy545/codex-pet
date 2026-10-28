@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; media-src file:; img-src 'self' data:; connect-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'">
+  <title>Codex Pet</title>
+  <link rel="stylesheet" href="startup-window.css">
+</head>
+<body>
+  <main id="scene" class="scene" aria-label="Codex Pet">
+    <canvas id="particles" aria-hidden="true"></canvas>
+    <div class="grid" aria-hidden="true"></div>
+    <div class="orbital orbital-a" aria-hidden="true"></div><div class="orbital orbital-b" aria-hidden="true"></div>
+    <div class="topline"><span>CODEX PET</span><span class="file-id">WD / 001</span></div>
+    <section class="archive">
+      <div class="file-label">CHARACTER / ARCHIVE</div>
+      <h1 id="subject"></h1>
+      <p id="detail" class="detail"></p>
+      <div class="ruler" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+      <div id="status" class="status" role="status"></div>
+      <div class="phase-track" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
+    </section>
+    <div class="specimen"><div class="halo" aria-hidden="true"></div><video id="dragon" muted loop playsinline></video><div class="scanner" aria-hidden="true"></div></div>
+    <div class="crosshair crosshair-a" aria-hidden="true">+</div><div class="crosshair crosshair-b" aria-hidden="true">+</div>
+    <div class="bottomline"><span id="ready-label"></span><button id="skip" type="button"></button></div>
+    <div class="curtain curtain-left" aria-hidden="true"></div><div class="curtain curtain-right" aria-hidden="true"></div>
+  </main>
+  <script src="startup-window.js"></script>
+</body>
+</html>

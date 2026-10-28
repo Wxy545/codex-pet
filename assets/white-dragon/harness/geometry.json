@@ -1,0 +1,110 @@
+{
+  "schemaVersion": 1,
+  "width": 640,
+  "height": 360,
+  "frameHeight": 285,
+  "top": 50,
+  "centerX": 320,
+  "files": {
+    "q-idle.webm": {
+      "sourceSha256": "8b5913ac8edc9795ac90e49e16669babd8ae33f3176abd1a61fdf22139fcaa3e",
+      "sha256": "115e4d92e2867211936cc7cdd40d908f10394338fa24675ea69b21c64a2c03ed",
+      "bytes": 1140503
+    },
+    "q-walk-left.webm": {
+      "sourceSha256": "276ea56a74c51019d966d8f3a46dbaa0b5ac76750a408873eddeb48e02b704e8",
+      "sha256": "336599f42da3d52a0b9fb3bacacb852e147b2d0634caac8cf0367d389f33b34d",
+      "bytes": 999801
+    },
+    "q-click.webm": {
+      "sourceSha256": "63b1df517352de5c350ac09460e55a72a2682588491026b3636d6d3a60bef079",
+      "sha256": "c71b2f93c3e8d6cfa5e4add63223d776f5dc5d33f27b307e164f96491d9b3faa",
+      "bytes": 765754
+    },
+    "q-turn.webm": {
+      "sourceSha256": "5a881294f863cbb3503915c902e67c8eb927b3107b44192d8eb140501d9e50dd",
+      "sha256": "f2dac0b2bbec97f9d522ec69717c0f7839c00a883ce62465bb262cee3c2c8ad1",
+      "bytes": 912423
+    },
+    "q-drag.webm": {
+      "sourceSha256": "020cfa559f20deb97d5c83d67d0270f5fc25e6b329df068efafbf3a85e2f86d6",
+      "sha256": "0c46f26abbfe0d605102260dab945d4f76af3b5eb65f757dc602ded769ff6270",
+      "bytes": 242967
+    },
+    "q-thinking.webm": {
+      "sourceSha256": "ac9b758f8bd91d6cc648900c69db4269e77347af9bdda3dcd8a3101c77fbc99b",
+      "sha256": "efe737a5cb648759c5a498ad5bbd39f98d9aa1f96322bdd03e50633c81a46659",
+      "bytes": 741391
+    },
+    "q-working.webm": {
+      "sourceSha256": "27a1ccade00739f29c367535b3fbfd2d50e35607db6d9d0b46174dfbe2a806bf",
+      "sha256": "c31bcf7c83631d755b55d60f1630f7ee6c853d0deb450ec1584a3a7dfc656c44",
+      "bytes": 689061
+    },
+    "q-waiting.webm": {
+      "sourceSha256": "965e65918ac0f45daa2473fd0889a9ecfec8a19e5d8ce9893cd2095ddbef92f1",
+      "sha256": "f0d42a901f77e3986b8a4a1865f38c0c8ff3ff5ebb9cecfc486f24e04a6739b1",
+      "bytes": 727249
+    },
+    "q-success.webm": {
+      "sourceSha256": "7b264df56cf3a0fba2ff384b2b36d31ab5be38b22ded0800fdbccdbe1f8c361f",
+      "sha256": "17af3dbaf0f1124742b893539a93c0490b4caa983486d4676eeefd49c0843610",
+      "bytes": 850792
+    },
+    "q-error.webm": {
+      "sourceSha256": "6494fa30756faa61b153aa9acab3617ae0ab11e588a9ccd0274787568bb43401",
+      "sha256": "fe55c860b0a4532e43a6ead1b6f543a8de4294c7b5bb40f1ac3503ef87436d8c",
+      "bytes": 666940
+    },
+    "q-wing-care.webm": {
+      "sourceSha256": "c90ecb8fcc1e8a06f277ac73f85f2dcad1bbe766a753b05915b2882fd3e5ef17",
+      "sha256": "00efabe395b7ee1bfe5771d68aa6798606d76e57055c38efc693a259894987bc",
+      "bytes": 857115
+    },
+    "q-tail-nap.webm": {
+      "sourceSha256": "a3063b2126d1862e73969a66d47c9540aadeff32bf22ed111feb416095e0ca84",
+      "sha256": "410590e75c221dd05f2dd04a7e6aeed271c9e58fc19ae656de028cead24f8f75",
+      "bytes": 836708
+    },
+    "q-magic.webm": {
+      "sourceSha256": "631842136b18d345a0d43da44beb893cc9d3ba430889835e2967afe2589c4fec",
+      "sha256": "5293f68e6cff1ea7163155d69eb39e0ee2a7e4e5962134e5972618c2d30a599b",
+      "bytes": 688312
+    },
+    "q-shy.webm": {
+      "sourceSha256": "31c73c5cb7fee4bf48247ef377953e176a20320facdfdc1fd103de0c7cc95441",
+      "sha256": "8ceb41c40b33793542abde7efaf229506745c092b477c66e0c6b58cd8312e83f",
+      "bytes": 603640
+    },
+    "q-proud.webm": {
+      "sourceSha256": "a16522c5a2fd4e34534a8f133b0d86ed2e230999041a8230c085e7a033dfbba6",
+      "sha256": "98f8ae65d027ee383b37039f662797cdba9fd751047d8f838813f1f7df4b99a7",
+      "bytes": 831651
+    },
+    "q-dragon-snack.webm": {
+      "sourceSha256": "690a47e77715e6c532d317039cc959a1e08d6099bead11f86c4c6da81eb9a9b5",
+      "sha256": "225096f6021532f0e5192f267b41008a9e3a1ea0f83f1d4e2e97366fb5f1234c",
+      "bytes": 641912
+    },
+    "q-wing-fan.webm": {
+      "sourceSha256": "38eb508ff92483a2bfc0a751266517f24bf9e51f415d868092f7bc1c771193de",
+      "sha256": "e4692dcbf70344fd3fe41ae736eddd87141ec9ee1e51d5bc9d38314ef19c7d15",
+      "bytes": 732307
+    },
+    "q-greeting.webm": {
+      "sourceSha256": "f1b805542d21fe41c454fa818460c51877a3f87fab8e65741c8225e0cf5e0e16",
+      "sha256": "bb859de071274f22c0af579b9107c9b33fcb730c9428faa4c642ddd6a578eb98",
+      "bytes": 660147
+    },
+    "q-tickle.webm": {
+      "sourceSha256": "adb83ad01bba77f9d56c4a6727a71edf6894326d16bd57fc8a369f4ed73b2616",
+      "sha256": "a9b89e15feaecd7d0424e7fb9e11007ff19d0c6bd0babe98f2180c63ac962489",
+      "bytes": 663447
+    },
+    "q-wing-hover.webm": {
+      "sourceSha256": "bfd1c92eba6328e3f2793ccef72a60da26971f29aabb3a9caef79e9f6af56de6",
+      "sha256": "50688df53f73fe962a767c2e954a892a5fdfc5bc2a15e0bdcbeab34e8252ec53",
+      "bytes": 914519
+    }
+  }
+}

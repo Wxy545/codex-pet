@@ -105,7 +105,7 @@ function createSkinStore({ dataRoot, hostRequest, logger = console } = {}) {
           if (saved.mode !== 'q') await saveJson(selectionFile, { ...saved, mode: 'q' });
         }
       } catch (error) { if (error.code !== 'ENOENT') logger.warn('[Codex Pet] '+L.t('形象选择无法读取。')); }
-      selection ??= { character: 'bluefish', mode: 'q' };
+      selection ??= { character: characters.find(character => character.id === 'white-dragon')?.available.q ? 'white-dragon' : 'bluefish', mode: 'q' };
     }
     const selected = characters.find(character => character.id === selection.character);
     // 已选素材被移走时明确回原视频，不写掉用户保存的选择，恢复文件后仍能切回。

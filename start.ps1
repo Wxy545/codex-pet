@@ -1,5 +1,5 @@
 ﻿[CmdletBinding()]
-param([string]$AppRoot, [switch]$NoStart)
+param([string]$AppRoot, [switch]$NoStart, [ValidateSet('manual', 'codex')][string]$Reason = 'manual')
 
 $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot 'scripts/locale.ps1')
@@ -40,6 +40,17 @@ function Test-TaskPetRunning {
     return $false
 }
 
+function Send-TaskStartupSignal {
+    $taskRuntimeFile = Join-Path $taskRoot 'data/dsh-pet/standalone-runtime.json'
+    $taskRuntimeState = Get-Content -LiteralPath $taskRuntimeFile -Raw | ConvertFrom-Json
+    $taskRuntimePort = [int]$taskRuntimeState.port
+    if ($taskRuntimePort -lt 1 -or $taskRuntimePort -gt 65535 -or [string]$taskRuntimeState.token -notmatch '^[A-Za-z0-9_-]{43}$') {
+        throw (Get-CodexPetText '桌宠运行信息无效，请重新启动 Codex Pet。' 'Codex Pet runtime information is invalid. Restart Codex Pet.')
+    }
+    # 使用现有本机能力令牌投递原因，不启动第二个宿主或输出令牌。
+    Invoke-RestMethod -UseBasicParsing -Method Post -Uri ("http://127.0.0.1:{0}/dsh-pet-7340/codex-startup" -f $taskRuntimePort) -Headers @{'x-dsh-pet-token'=[string]$taskRuntimeState.token} -ContentType 'application/json' -Body '{"reason":"codex"}' -TimeoutSec 3 | Out-Null
+}
+
 if ($NoStart) {
     $taskRunning = Test-TaskPetRunning
     [ordered]@{ alreadyRunning = $taskRunning; nodeAvailable = [bool]$taskNode; portableNode = ($taskNode -eq $taskPortableNode); runtimeReady = [bool]$taskReady; wouldStart = (-not $taskRunning -and [bool]$taskNode -and [bool]$taskReady) } | ConvertTo-Json -Compress
@@ -57,10 +68,15 @@ try {
     try { $taskOwnsMutex = $taskMutex.WaitOne(10000) }
     catch [System.Threading.AbandonedMutexException] { $taskOwnsMutex = $true }
     if (-not $taskOwnsMutex) { throw (Get-CodexPetText 'Codex Pet 正在启动，请稍后重试。' 'Codex Pet is starting. Please try again shortly.') }
-    if (Test-TaskPetRunning) { Write-Output (Get-CodexPetText 'Codex Pet 已在运行。' 'Codex Pet is already running.'); return }
+    if (Test-TaskPetRunning) {
+        if ($Reason -eq 'codex') { Send-TaskStartupSignal }
+        Write-Output (Get-CodexPetText 'Codex Pet 已在运行。' 'Codex Pet is already running.'); return
+    }
     $taskData = Join-Path $taskRoot 'data'
     New-Item -ItemType Directory -Path $taskData -Force | Out-Null
-    Start-Process -FilePath $taskNode -ArgumentList @('"' + $taskApp + '"') -WorkingDirectory $taskRoot -WindowStyle Hidden -RedirectStandardOutput (Join-Path $taskData 'app.log') -RedirectStandardError (Join-Path $taskData 'app-error.log')
+    $taskArguments = @('"' + $taskApp + '"')
+    if ($Reason -eq 'codex') { $taskArguments += '--codex-startup' }
+    Start-Process -FilePath $taskNode -ArgumentList $taskArguments -WorkingDirectory $taskRoot -WindowStyle Hidden -RedirectStandardOutput (Join-Path $taskData 'app.log') -RedirectStandardError (Join-Path $taskData 'app-error.log')
 } finally {
     if ($taskOwnsMutex) { $taskMutex.ReleaseMutex() }
     $taskMutex.Dispose()

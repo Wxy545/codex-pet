@@ -133,7 +133,7 @@ async function fixture(t) {
 
 test('仅Q版形象选择落盘并重启恢复，旧形态请求始终拒绝', async t => {
   const options = await fixture(t), store = createSkinStore(options);
-  assert.deepEqual((await store.readModel()).selection, { character: 'bluefish', mode: 'q' });
+  assert.deepEqual((await store.readModel()).selection, { character: 'white-dragon', mode: 'q' });
   for(const mode of ['sister','occasional']) await assert.rejects(store.select({ character: 'white-dragon', mode }), /invalid-skin-selection/);
   await store.select({ character: 'white-dragon', mode: 'q' });
   const saved = JSON.parse(await readFile(join(options.dataRoot, 'skins', 'selection.json'), 'utf8'));
@@ -141,6 +141,8 @@ test('仅Q版形象选择落盘并重启恢复，旧形态请求始终拒绝', a
   const model = await createSkinStore(options).readModel();
   assert.deepEqual(model.selection,{character:'white-dragon',mode:'q'});
   assert.equal(model.characters.find(character => character.id === 'white-dragon').assets['sprites.png'].width, 1254);
+  await store.select({character:'bluefish',mode:'q'});
+  assert.deepEqual((await createSkinStore(options).readModel()).selection,{character:'bluefish',mode:'q'});
 });
 
 test('主进程忽略旧manifest的forms资源，仅加载Q层并保留本地文件', async t => {

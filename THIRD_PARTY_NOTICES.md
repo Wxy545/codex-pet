@@ -1,6 +1,6 @@
 # 第三方来源与许可
 
-本文记录 codex-pet 使用的主要第三方来源与许可边界，由项目维护者随依赖和分发方式更新。适用范围为本仓库及其运行时准备流程；核对日期为 2026-10-28。
+本文记录 codex-pet 使用的主要第三方来源与许可边界，由项目维护者随依赖和分发方式更新。适用范围为本仓库及其运行时准备流程；核对日期为 2026-10-29。
 
 根目录 [LICENSE](LICENSE) 只适用于本项目自有代码与文档，不替代第三方软件、角色或素材的许可。安装依赖、公开源代码与分发成品时，都应保留所用第三方内容要求的版权和许可说明。
 
@@ -58,9 +58,19 @@ SOFTWARE.
 
 ## 白龙娘角色与动画
 
-角色参考图署名为小红书号 **233534463**。原作者已同意本项目使用白龙娘形象并公开发布。内置的 15 段 Q 版视频由本项目使用 MiniMax H3 生成，再完成剪辑、循环处理和透明抠像；其中 10 段覆盖核心动作，另有整理龙翼、抱尾小憩、掌心微光、害羞卷尾和叉腰得意。工作与结果状态共用打字视频。
+角色参考图署名为小红书号 **233534463**。原作者已同意本项目使用白龙娘形象并公开发布。内置的 20 段 Q 版视频由本项目使用 MiniMax H3 生成，再完成剪辑、循环处理和透明抠像；其中 10 段覆盖核心动作，另有整理龙翼、抱尾小憩、掌心微光、害羞卷尾、叉腰得意、吃星形饼干、扇翼纳凉、招手眨眼、怕痒缩肩和振翼踏步。工作与结果状态共用打字视频。
 
-角色及素材许可与项目代码的 MIT 许可分开，详见 [assets/white-dragon/NOTICE.md](assets/white-dragon/NOTICE.md)。本次公开包包含 Q 版核心动作及上述特色动作。
+角色及素材许可与项目代码的 MIT 许可分开，详见 [assets/white-dragon/NOTICE.md](assets/white-dragon/NOTICE.md)。本项目的 Codex 桌宠和 DeepSeek Harness 角色插件使用同一套 Q 版素材，并保留该说明。
+
+## 启动动画实现参考
+
+启动动画方案参考 [884048454/codex-startup-animation](https://github.com/884048454/codex-startup-animation) 的 Windows 进程监听、独立覆盖窗口和演出结束后交还应用窗口的做法。
+
+该项目自有代码采用 [MIT](https://github.com/884048454/codex-startup-animation/blob/main/LICENSE)，版权声明为 `Copyright (c) 2026 Codex Startup Animation contributors`。纳入或修改其代码时须保留该版权声明与完整许可证；参考实现不代表原作者为本项目背书。
+
+该项目的动画页面另基于沈宏宏的 [dsh-startup-screen](https://github.com/6shenhonghong9/dsh-startup-screen)，来源与许可见其 [NOTICE.md](https://github.com/884048454/codex-startup-animation/blob/main/NOTICE.md) 和 [DSH-LICENSE.txt](https://github.com/884048454/codex-startup-animation/blob/main/DSH-LICENSE.txt)。采用相关页面或样式时，也须保留这层上游署名与许可。
+
+其安装器下载的第三方配音和音效不属于代码的 MIT 授权范围。本项目不会将这些声音视为已获授权的素材，新增演出使用自制或取得明确授权的声音。
 
 ## 其他依赖
 
