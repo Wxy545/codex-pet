@@ -6,7 +6,7 @@ A Windows desktop companion for Codex. It reacts while Codex is thinking, workin
 
 Built on [dsh-pet](https://github.com/PC2005-cloud/dsh-pet), with Codex session status, usage snapshots, chat, file tasks, and Windows notifications.
 
-[![Support development on Ko-fi](https://img.shields.io/badge/Ko--fi-Support%20development-FF5E5B?logo=ko-fi&logoColor=white)](https://ko-fi.com/wxy545)
+[![ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/wxy545)
 
 ## Install
 
@@ -16,7 +16,7 @@ Windows only. Install and sign in to Codex CLI first, then send this to Codex:
 Install and start https://github.com/Wxy545/codex-pet on Windows. Follow the repository’s INSTALL.md.
 ```
 
-The installer prepares Node.js and the desktop runtime; Git is optional. When it downloads portable Node.js, it checks the official SHA256. New installations use `%LOCALAPPDATA%\codex-pet`. Existing installations can keep their current directory.
+The installer prepares Node.js and the desktop runtime; Git is optional. The default folder is `%LOCALAPPDATA%\codex-pet`. The interface follows your Windows display language: Chinese for Chinese-language systems, English for all others.
 
 <details>
 <summary>Install from PowerShell</summary>
@@ -27,26 +27,28 @@ $installer = Join-Path $env:TEMP 'codex-pet-install.ps1'; $file = Invoke-RestMet
 
 </details>
 
-Double-click `Start Codex Pet.vbs` to start it again, or `Stop Codex Pet.vbs` to stop it. The existing `start.ps1`, `stop.ps1`, and Chinese launchers remain usable. See [INSTALL.md](INSTALL.md) for custom paths and manual setup.
+The pet starts with Codex after installation. You can also double-click `Start Codex Pet.vbs` or `Stop Codex Pet.vbs` in the installation folder. After a manual stop, it stays stopped until you launch Codex again. See [INSTALL.md](INSTALL.md) for custom paths and manual setup.
 
-## What it does
+## Give her a poke
 
-- **Desktop interactions:** click, drag, throw, bounce, roam, or pick an animation from the right-click menu.
-- **Codex status:** follow multiple local sessions and show when work is running or needs your attention.
-- **Usage:** show the usage and reset-time snapshots recorded in local Codex logs.
-- **Chat and images:** ask a question with text, PNG, JPEG, or WebP through your signed-in Codex CLI.
-- **File tasks:** choose a working directory, write a task, and confirm its permission before running it.
-- **Notifications:** let Windows tell you about completion, errors, or a request for confirmation while Codex is in the background.
+- **Poke:** get a bouncy reaction, a wave, or a slightly embarrassed look.
+- **Pick her up:** drag her across the desktop, or give her a toss and watch her bounce.
+- **Let her wander:** she can stroll around, doze off, play with a Rubik’s cube, or enjoy some hot pot.
+- **Pick an animation:** open the right-click menu and choose what to play.
 
-Chat and idle chatter use Codex usage. Idle chatter starts at a ten-minute interval and can be changed or disabled in AI settings. File tasks are a separate, explicit action; ordinary chat and idle chatter do not run them.
+## While Codex works
 
-File tasks default to read-only. If you allow changes, the selected directory becomes the Codex working directory and the CLI uses its workspace-write sandbox. This is a CLI task panel; it does not control your desktop mouse.
+- **Session status:** react to thinking, working, waiting for confirmation, completion, and errors, including across multiple local sessions.
+- **Usage bubbles:** check Codex usage and reset times from the right-click menu. If no data is available after installation, finish a reply in the main Codex chat and check again.
+- **Chat and images:** open Chat from the right-click menu and send text, PNG, JPEG, or WebP images. Replies use your signed-in Codex CLI.
+- **Project tasks:** open Tasks, choose a folder, describe the job, and confirm it. Tasks start in read-only mode; choose “Allow edits in this folder” when you want files changed.
+- **Notifications:** switch to another app and let Windows tell you when Codex finishes, hits an error, or needs your attention.
 
-Usage is a local log snapshot. If no snapshot is available yet, finish a reply in the main Codex chat and check again. Windows notification settings and Focus/Do not disturb can affect delivery; opening a chat from a notification also depends on the registered Codex protocol.
+Chat and idle chatter count toward your Codex usage. Chatter runs every ten minutes by default; change the interval or turn it off in AI settings.
 
 ## Characters and animations
 
-The included blue whale maid is the original dsh-pet character, with **106 upstream transparent video animations**. The previews below are from that project:
+The default character is the original blue whale maid, with **106 transparent animations**. These previews are from [dsh-pet](https://github.com/PC2005-cloud/dsh-pet):
 
 <p>
   <img src="https://cdn.jsdelivr.net/gh/PC2005-cloud/dsh-pet@main/dsh-pet/assets/preview/dianji-huiying-yuanqi-huishou.gif" width="180" alt="Upstream whale maid waving">
@@ -54,36 +56,24 @@ The included blue whale maid is the original dsh-pet character, with **106 upstr
   <img src="https://cdn.jsdelivr.net/gh/PC2005-cloud/dsh-pet@main/dsh-pet/assets/preview/chi-baifan.gif" width="180" alt="Upstream whale maid eating rice">
 </p>
 
-Dragon-girl artwork is a local experiment awaiting permission from the original artist. Its four-frame studies are prototypes, not finished replacements for the whale’s 106 video clips. The next animation target is a small set of original core actions. Adult-proportioned forms need their own artwork and motion.
+## Startup and updates
 
-New dragon artwork is not distributed in the public repository. If you have made an animation you can authorize us to use, open an Issue with its source, permission, and a preview. See [animation contributions](docs/animation-contributions.md) for the proposed specs and review process.
-
-## Start with Codex, keep up with updates
-
-Follow-start is enabled by the installer. After you stop the pet manually, it stays stopped for the rest of that Codex run. To disable follow-start:
+To stop the pet from launching with Codex:
 
 ```powershell
 powershell -File scripts/disable-follow.ps1
 ```
 
-The repository includes Codex and upstream compatibility checks. Installation does not create a scheduled maintenance task. To set up a daily check, ask Codex:
+See [maintenance](docs/maintenance.md) for Codex and dsh-pet update checks, development setup, and troubleshooting. For a daily check, ask Codex to set up a maintenance task for your installation.
 
-```text
-Set up a daily 9 AM maintenance task for my local Codex Pet installation. Check Codex and upstream dsh-pet updates. Investigate and validate compatibility changes within the repository I authorize, and only publish to a repository I authorize. Stay quiet when nothing changes; notify me when a check fails or needs my input.
-```
+## Buy me a coffee
 
-See [maintenance](docs/maintenance.md) for manual checks, development setup, and troubleshooting.
-
-## Support development
-
-You can [support the project on Ko-fi](https://ko-fi.com/wxy545) or use the WeChat code below. Contributions help with development and more dragon-girl animations. You can also help by testing, reporting bugs, or offering videos with clear reuse permission.
-
-Support is voluntary; it does not unlock paid features or guarantee a particular animation or delivery date.
+Want to see more dragon-girl animations? You can help fund the video work through [Ko-fi](https://ko-fi.com/wxy545) or the WeChat code below. If you have already made an animation, share it in an [Issue](https://github.com/Wxy545/codex-pet/issues) and I’ll adapt it for the pet. See the [animation guide](docs/animation-contributions.md) for specs.
 
 <details>
 <summary>WeChat support</summary>
 
-<img src="docs/assets/wechat-support.jpg" width="220" alt="WeChat support code shared by the maintainer">
+<img src="docs/assets/wechat-support.jpg" width="220" alt="WeChat support QR code">
 
 </details>
 
@@ -91,12 +81,10 @@ Support is voluntary; it does not unlock paid features or guarantee a particular
 
 Thanks to [PC2005-cloud/dsh-pet](https://github.com/PC2005-cloud/dsh-pet) for the desktop pet, animations, and interactions. This adaptation uses `dsh-pet@0.3.8`.
 
-The original “溟月” character is by [上善无形](https://space.bilibili.com/4456176); the DeepSeek whale-maid design is by [ZipZipPipe](https://space.bilibili.com/4168597). Codex Pet is a community project, unaffiliated with OpenAI or DeepSeek.
+The original “溟月” character is by [上善无形](https://space.bilibili.com/4456176); the DeepSeek whale-maid design is by [ZipZipPipe](https://space.bilibili.com/4168597).
 
-Our code and documentation are [MIT licensed](LICENSE). This does not relicense third-party artwork: upstream animations retain their noncommercial terms, and the whale character is subject to **CC BY-NC-SA 4.0**. New dragon artwork remains unpublished pending the artist’s permission. See [third-party notices](THIRD_PARTY_NOTICES.md).
-
-<a id="验证范围"></a>
+This project’s code and documentation use the [MIT license](LICENSE). The original animations retain dsh-pet’s noncommercial terms, and the whale character uses [CC BY-NC-SA 4.0](https://creativecommons.org/licenses/by-nc-sa/4.0/). Full credits and terms are in [third-party notices](THIRD_PARTY_NOTICES.md).
 
 ## Contribute
 
-See [CONTRIBUTING.md](CONTRIBUTING.md), [SECURITY.md](SECURITY.md), and [CHANGELOG.md](CHANGELOG.md). Click, drag, and menu interactions have been checked by the user on Windows; notification submission was checked separately. Changes to desktop behavior still need testing on a real Windows session.
+Found a bug? Open an [Issue](https://github.com/Wxy545/codex-pet/issues) with your Windows and Codex versions and the steps to reproduce it. For code contributions, security reports, and release notes, see [CONTRIBUTING.md](CONTRIBUTING.md), [SECURITY.md](SECURITY.md), and [CHANGELOG.md](CHANGELOG.md).
