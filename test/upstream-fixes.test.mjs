@@ -9,19 +9,60 @@ import { once } from 'node:events';
 import { EventEmitter } from 'node:events';
 import vm from 'node:vm';
 import Range from '../src/runtime-range.cjs';
-import { patchHostAssets, patchBridgeAssets, patchDesktopMotion } from '../scripts/upstream-fixes.mjs';
+import { patchHostAssets, patchBridgeAssets, patchDesktopMotion, patchDesktopBalanceEvents, patchDesktopWorkEvents, patchDesktopWorkResume } from '../scripts/upstream-fixes.mjs';
 
 const host = readFileSync(new URL('../node_modules/dsh-pet/lib/standalone.js', import.meta.url), 'utf8');
 const bridge = readFileSync(new URL('../node_modules/dsh-pet/runtime/electron-helper/main.js', import.meta.url), 'utf8');
 const sprite = readFileSync(new URL('../node_modules/dsh-pet/runtime/electron-helper/sprite.js', import.meta.url), 'utf8');
+const events = readFileSync(new URL('../node_modules/dsh-pet/runtime/electron-helper/events.js', import.meta.url), 'utf8');
 
 test('上游修复在原0.3.8及已准备代码上幂等，锚点缺失或重复时停止', () => {
-  for (const [patch, source] of [[patchHostAssets, host], [patchBridgeAssets, bridge], [patchDesktopMotion, sprite]]) {
+  for (const [patch, source] of [[patchHostAssets, host], [patchBridgeAssets, bridge], [patchDesktopMotion, sprite], [patchDesktopBalanceEvents, events], [patchDesktopWorkEvents, events], [patchDesktopWorkResume, sprite]]) {
     const result = patch(source);
     assert.equal(patch(result), result);
     assert.throws(() => patch(''), /锚点/);
     assert.throws(() => patch(source + source), /锚点/);
   }
+});
+
+test('冻结只保留最新工作快照，解冻同步当前档位和文字，终态不补播',()=>{
+ const shared={};vm.runInNewContext(readFileSync(new URL('../node_modules/dsh-pet/runtime/electron-helper/shared-core.js',import.meta.url),'utf8'),shared);
+ const work=patchDesktopWorkEvents(events).match(/PetSprite\.prototype\.onWorkTick = function onWorkTick\([\s\S]*?\n\};/)?.[0];
+ const freeze=patchDesktopWorkResume(sprite).match(/  applyFreeze\(next\) \{[\s\S]*?\n  \}\n\n  \/\*\*/)?.[0].replace(/\n\n  \/\*\*$/,'');
+ const scope={S:shared.PetShared,PetSprite:function(){},window:{clearTimeout(){},setTimeout(){return 1;}},BUBBLE_DURATION_MS:10000,console:{log(){},error(){}}};
+ vm.runInNewContext(work,scope);const applyFreeze=vm.runInNewContext('({'+freeze+'}).applyFreeze',scope);
+ const make=()=>{
+  const calls=[];const pet={pet:{id:'fixture',workStatusEnabled:true},animations:{idle:['idle'],events:{workStatus:['thinking','working','result','waiting','success','error']}},prevWorkTick:0,prevWorkState:null,frozen:false,front:0,videoA:{pause(){},loop:true},workTimer:null,renderBubble(){calls.push('bubble:'+this.workText);},stopMove(){},playOnce(name){calls.push('once:'+name);this.anim=name;},switchTo(name){calls.push('loop:'+name);this.anim=name;},resumeWorkStatusAnim(){if(!this.workState||['success','error'].includes(this.workState))return false;this.switchTo(this.workState);return true;},onWorkTick:scope.PetSprite.prototype.onWorkTick,applyFreeze};return {pet,calls};
+ };
+ for(const finalState of ['waiting','working',null,'success','error']){
+  const {pet,calls}=make();pet.onWorkTick({state:'working',task:'old task'},1);pet.applyFreeze(true);const before=calls.length;
+  pet.onWorkTick({state:'thinking',task:'intermediate task'},2);pet.applyFreeze(true);pet.onWorkTick({state:finalState,task:'latest task'},3);
+  assert.equal(calls.length,before);assert.equal(pet.workText,'old task');assert.equal(pet.prevWorkTick,1);
+  pet.applyFreeze(false);
+  if(['waiting','working'].includes(finalState)){assert.equal(pet.workState,finalState);assert.equal(pet.workText,'latest task');assert.equal(pet.anim,finalState);assert.equal(pet.workOn,true);}
+  else{assert.equal(pet.workState,null);assert.equal(pet.workText,null);assert.equal(pet.workOn,false);assert.equal(pet.anim,'idle');assert.ok(!calls.includes('once:success')&&!calls.includes('once:error'));}
+  assert.equal(pet.prevWorkTick,3);assert.equal(pet.codexPendingWorkSnapshot,null);
+ }
+ const {pet}=make();pet.onWorkTick({state:'working',task:'unchanged'},1);pet.applyFreeze(true);pet.applyFreeze(false);assert.equal(pet.workState,'working');assert.equal(pet.workText,'unchanged');assert.equal(pet.anim,'working');
+});
+
+test('余额失败恢复后再次同样失败会通知，连续同失败仍去重且手动查询始终答复',()=>{
+ const context={};
+ vm.runInNewContext(readFileSync(new URL('../node_modules/dsh-pet/runtime/electron-helper/shared-core.js',import.meta.url),'utf8'),context);
+ const fixed=patchDesktopBalanceEvents(events);
+ const declarations=['applyBalanceNotice','applyBalanceLeaf'].map(name=>fixed.match(new RegExp('function '+name+'\\([^)]*\\) \\{[\\s\\S]*?\\n\\}'))?.[0]).join('\n');
+ const trace=[];
+ const receiver={showBalanceNotice:state=>trace.push('notice:'+state.reason),onBalanceTick:state=>trace.push('success:'+state.rolling)};
+ const env={S:context.PetShared,sprites:[receiver],window:{__dshPetDebug:{}},console:{error(){}},codexFixedText:x=>x};
+ vm.runInNewContext('let balance,balanceTick=0,balanceNoticeKey=null;\n'+declarations+'\nglobalThis.apply=applyBalanceLeaf;',env);
+ const failure={data:{ok:false,provider:'standalone',reason:'fetch-error'}};
+ env.apply(failure);env.apply(failure);
+ assert.deepEqual(trace,['notice:fetch-error']);
+ env.apply({data:{ok:true,provider:'standalone',shape:'windows',data:{rolling:72}}});
+ env.apply(failure);env.apply(failure);
+ assert.deepEqual(trace,['notice:fetch-error','success:72','notice:fetch-error']);
+ env.apply({data:{...failure.data,manual:true}});
+ assert.deepEqual(trace,['notice:fetch-error','success:72','notice:fetch-error','notice:fetch-error']);
 });
 
 test('Range只接受单段字节区间，非法、多段、过大数字不误作文件偏移', () => {

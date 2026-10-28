@@ -62,3 +62,44 @@ export function patchDesktopMotion(source) {
     "label: OPEN_TARGET === 'desktop' ? '打开软件' : '打开网站',",
     "label: OPEN_TARGET === 'desktop' ? '打开软件' : '打开 AI 设置',", '独立模式设置菜单');
 }
+
+export function patchDesktopBalanceEvents(source) {
+  // 成功恢复会结束一轮故障；下次同类失败仍应告知，连续失败继续沿用shared去重。
+  return replaceOne(source,
+    'if (hit.state.ok) {\n    balanceTick++;',
+    'if (hit.state.ok) {\n    balanceNoticeKey = S.decideBalanceNotice(hit.state, balanceNoticeKey, hit.manual).key;\n    balanceTick++;',
+    '额度恢复后故障通知');
+}
+
+const frozenWorkBefore = `  this.prevWorkTick = tick;
+  // 占用锁（issue #122 第 4 项）：锁生效时不响应工作状态——它是**自动**来源（任务事件驱动），
+  // 没有"用户手动要"这条路。判在 tick 消费**之后**：占用期间的变化当过去了，解冻时由
+  // applyFreeze 的 resumeWorkStatusAnim() 重新对齐**当前**状态，所以不会停在旧档位上。
+  // 宿主侧不挡这个全局段：sections.workStatus 是所有宠物共用一份，宿主"跳过写入"会连带静音
+  // 别的宠物（issue #122 要的是"只控制指定 main"），所以按宠物在渲染端忽略。
+  if (this.frozen) return;`;
+const frozenWorkAfter = `  // 冻结只保留最新未应用快照，不切动画或气泡；真实tick留给解冻时应用。
+  if (this.frozen) {
+    this.codexPendingWorkSnapshot = { snapshot: { state: snapshot?.state || null, task: snapshot?.task || null }, tick };
+    return;
+  }
+  this.prevWorkTick = tick;`;
+export function patchDesktopWorkEvents(source) {
+  return replaceOne(source, frozenWorkBefore, frozenWorkAfter, '冻结工作快照');
+}
+export function patchDesktopWorkResume(source) {
+  return replaceOne(source,
+    '    // 播完由 handleEnded 接回随机链（与浏览器同一语义）。\n    if (this.resumeWorkStatusAnim()) return;\n    if (this.animations.idle.length) this.playOnce(S.pick(this.animations.idle, this.anim));\n  }',
+    `    // 播完由 handleEnded 接回随机链（与浏览器同一语义）。
+    const pendingWork = this.codexPendingWorkSnapshot;
+    this.codexPendingWorkSnapshot = null;
+    if (pendingWork && this.pet.workStatusEnabled) {
+      const ongoing = ['thinking', 'working', 'result', 'waiting'].includes(pendingWork.snapshot.state);
+      // 只恢复最新进行中状态；冻结期间的完成/出错不补播，清旧气泡后走原待机链。
+      this.onWorkTick(ongoing ? pendingWork.snapshot : { state: null, task: null }, pendingWork.tick);
+      if (ongoing) return;
+    }
+    if (this.resumeWorkStatusAnim()) return;
+    if (this.animations.idle.length) this.playOnce(S.pick(this.animations.idle, this.anim));
+  }`, '解冻工作状态恢复');
+}

@@ -37,3 +37,25 @@ test('原额度气泡使用英文窗口/已用/重置模板，已过期不重复
  const expired=S.balanceBubbleView({...state,weeklyResetsAt:new Date(Date.now()-1).toISOString()});
  assert.doesNotMatch(expired.map(row=>row.text).join(' '),/Reset.*Reset|已重置重置/);
 });
+
+test('额度缺少或无效重置时间显示未知，已知过期与未来重置仍分别展示',async()=>{
+ const {localizeCore}=await import('../scripts/runtime-locale-patches.mjs');
+ const source=fs.readFileSync(path.join(__dirname,'../node_modules/dsh-pet/runtime/electron-helper/shared-core.js'),'utf8');
+ const patched=localizeCore(source);
+ assert.equal(localizeCore(patched),patched);
+ for(const [locale,unknown,passed] of [['zh-CN','重置时间未知','已重置'],['en','Reset time unavailable','Reset time passed']]){
+  L.setLocale(locale);
+  const context={CodexLocale:L};vm.runInNewContext(patched,context);const S=context.PetShared;
+  for(const reset of [undefined,'not-a-date']){
+   const state={ok:true,shape:'windows',weekly:37,weeklyResetsAt:reset};
+   for(const view of [S.balanceBubbleView,S.balanceDetailView]){
+    const text=view(state).map(row=>row.text).join(' ');
+    assert.match(text,new RegExp(unknown));assert.doesNotMatch(text,new RegExp(passed));
+    assert.match(text,/37%/);
+   }
+  }
+  const known={ok:true,shape:'windows',weekly:37,weeklyResetsAt:new Date(Date.now()-1000).toISOString()};
+  assert.match(S.balanceBubbleView(known).map(row=>row.text).join(' '),new RegExp(passed));
+  assert.doesNotMatch(S.balanceDetailView({...known,weeklyResetsAt:new Date(Date.now()+7200000).toISOString()}).map(row=>row.text).join(' '),new RegExp(unknown+'|'+passed));
+ }
+});

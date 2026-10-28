@@ -31,15 +31,23 @@ export function localizeHost(source){
 }
 
 export function localizeCore(source){
-  if(source.includes('// codex-runtime-locale-v1'))return source;
+  if(source.includes('// codex-runtime-locale-v2'))return source;
+  // 已安装的v1 helper也须修正；缺少时间与已过重置点不能混成同一结果。
+  const resetTemplate='reset ? reset !== codexFixedText("已重置") ? codexFixedText("{time}后重置",{time:reset}) : codexFixedText("已重置") : codexFixedText("重置时间未知")';
+  if(source.includes('// codex-runtime-locale-v1')){
+    const previous='reset && reset !== codexFixedText("已重置") ? codexFixedText("{time}后重置",{time:reset}) : codexFixedText("已重置")';
+    source=one(source,'text: '+previous,'text: '+resetTemplate,'旧额度重置主行升级');
+    source=one(source,'const resetText = '+previous+';','const resetText = '+resetTemplate+';','旧额度重置详情升级');
+    return source.replace('// codex-runtime-locale-v1','// codex-runtime-locale-v2');
+  }
   // helper在调用时读locale：shared-core早于locale脚本加载，不能在常量初始化时锁定中文。
-  source='// codex-runtime-locale-v1\nfunction codexFixedText(value,values){const locale=globalThis.CodexLocale||(typeof require==="function"?require("./codex-locale.cjs"):null);return locale?locale.t(value,values):value;}\n'+source;
+  source='// codex-runtime-locale-v2\nfunction codexFixedText(value,values){const locale=globalThis.CodexLocale||(typeof require==="function"?require("./codex-locale.cjs"):null);return locale?locale.t(value,values):value;}\n'+source;
   source=one(source,'return WINDOW_LABELS[w];','return codexFixedText(WINDOW_LABELS[w]);','额度窗口名');
   const start='function resetInText(iso)',end='const windowsHandler =';
   source=region(source,start,end,code=>{
     code=one(code,'text: w.label + "额度已用 " + Math.round(w.percent) + "%"','text: codexFixedText("{label}额度已用 {percent}%",{label:w.label,percent:Math.round(w.percent)})','额度主行');
-    code=one(code,'text: reset ? reset + "重置" : "已重置"','text: reset && reset !== codexFixedText("已重置") ? codexFixedText("{time}后重置",{time:reset}) : codexFixedText("已重置")','额度重置主行');
-    code=one(code,'const resetText = reset === "" ? "已重置" : reset + "重置";','const resetText = reset && reset !== codexFixedText("已重置") ? codexFixedText("{time}后重置",{time:reset}) : codexFixedText("已重置");','额度重置详情');
+    code=one(code,'text: reset ? reset + "重置" : "已重置"','text: '+resetTemplate,'额度重置主行');
+    code=one(code,'const resetText = reset === "" ? "已重置" : reset + "重置";','const resetText = '+resetTemplate+';','额度重置详情');
     // 新模板已经包裹；只处理尚未包裹的固定单位和空数据提示。
     for(const value of ['已重置',' 天',' 小时','额度数据不可用'])code=code.replaceAll('"'+value+'"',(token,index,whole)=>whole.slice(Math.max(0,index-15),index).endsWith('codexFixedText(')?token:'codexFixedText('+token+')');
     return code;

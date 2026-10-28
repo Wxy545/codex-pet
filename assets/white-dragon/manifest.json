@@ -40,6 +40,26 @@
     "error": {
       "type": "video",
       "file": "q-error.webm"
+    },
+    "wing-care": {
+      "type": "video",
+      "file": "q-wing-care.webm"
+    },
+    "tail-nap": {
+      "type": "video",
+      "file": "q-tail-nap.webm"
+    },
+    "magic": {
+      "type": "video",
+      "file": "q-magic.webm"
+    },
+    "shy": {
+      "type": "video",
+      "file": "q-shy.webm"
+    },
+    "proud": {
+      "type": "video",
+      "file": "q-proud.webm"
     }
   },
   "actions": {
@@ -85,6 +105,26 @@
     },
     "工作状态-垂头叹气冒汗": {
       "profile": "error",
+      "coverage": "dedicated"
+    },
+    "超大伸懒腰": {
+      "profile": "wing-care",
+      "coverage": "dedicated"
+    },
+    "原地小憩沉眠": {
+      "profile": "tail-nap",
+      "coverage": "dedicated"
+    },
+    "凭空生花": {
+      "profile": "magic",
+      "coverage": "dedicated"
+    },
+    "点击回应-害羞惊讶": {
+      "profile": "shy",
+      "coverage": "dedicated"
+    },
+    "点击回应-傲娇生气": {
+      "profile": "proud",
       "coverage": "dedicated"
     }
   }

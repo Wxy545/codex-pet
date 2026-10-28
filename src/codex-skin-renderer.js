@@ -42,7 +42,7 @@
         failedAssets.add(url);
         console.warn('[龙娘桌宠] 形象图片未能解码，保留原版显示。');
       }
-      if (!closed) for (const controller of controllers) refresh(controller, false);
+      if (!closed) for (const controller of controllers) refresh(controller);
     };
     pendingAssets.set(url, { image, timeout });
     image.onload = () => finish(true); image.onerror = () => finish(false); image.src = url;
@@ -97,35 +97,31 @@
     if (controller.sprite.tip) controller.sprite.tip.textContent = name;
   }
 
-  function visual(controller, request, form) {
+  function visual(controller, request) {
     const character = model?.characters.find(value => value.id === model.selection.character);
     if (!character || !request || request.external) return null;
     const entry = controller.catalog.find(value => value.id === request.action) || { id: request.action, group: 'unknown' };
-    if (character.originalVideo && form === 'q') return { character, entry, original: true };
-    const resolved = A.resolveAction(entry, character.manifest, character.assets, form);
-    const profile = A.effectiveProfile(character.manifest.profiles[resolved.profile], form);
+    if (character.originalVideo) return { character, entry, original: true };
+    const resolved = A.resolveAction(entry, character.manifest, character.assets);
+    const profile = character.manifest.profiles[resolved.profile];
     const asset = profile && character.assets[profile.file];
     return { character, entry, resolved, profile, asset };
   }
-  function selectedForm(controller) {
-    return model?.selection.mode === 'sister' ? 'sister' : controller?.transformation.form || 'q';
-  }
-  function readyNativeAction(character, id, form = 'q') {
+  function readyNativeAction(character, id) {
     const explicit = character?.manifest.actions[id];
     if (!explicit) return false;
-    const profile = A.effectiveProfile(character.manifest.profiles[explicit.profile], form);
+    const profile = character.manifest.profiles[explicit.profile];
     const asset = profile && character.assets[profile.file];
-    return profile?.type === 'video' && A.profileReady(character.manifest.profiles[explicit.profile], character.assets, form) && !failedAssets.has(asset?.url);
+    return profile?.type === 'video' && A.profileReady(profile, character.assets) && !failedAssets.has(asset?.url);
   }
-  function coreCharacter(controller) {
+  function coreCharacter() {
     const character = model?.characters.find(value => value.id === model.selection.character);
-    if (character?.id !== 'white-dragon' || selectedForm(controller) !== 'q') return null;
-    const idle = A.effectiveProfile(character.manifest.profiles.idle, 'q');
-    return idle?.type === 'video' && A.profileReady(character.manifest.profiles.idle, character.assets, 'q') && !failedAssets.has(character.assets[idle.file]?.url) ? character : null;
+    if (character?.id !== 'white-dragon') return null;
+    const idle = character.manifest.profiles.idle;
+    return idle?.type === 'video' && A.profileReady(idle, character.assets) && !failedAssets.has(character.assets[idle.file]?.url) ? character : null;
   }
   function preload(controller, request) {
-    const form = model?.selection.mode === 'sister' ? 'sister' : controller.transformation.form || 'q';
-    const value = visual(controller, request, form);
+    const value = visual(controller, request);
     if (!value?.original && value?.profile.type !== 'video' && value?.asset?.available && value.resolved.coverage !== 'missing') loadAsset(value.asset.url);
   }
 
@@ -147,10 +143,10 @@
     return video.loop ? index % count : Math.min(count - 1, index);
   }
 
-  function paintLayer(controller, layer, value, form) {
+  function paintLayer(controller, layer, value) {
     if (layer.media) { releaseMedia(layer); layer.paintKey = null; }
     const { profile, asset, entry } = value;
-    const key = JSON.stringify([assetRevision, layer.request.gen, model.selection.character, form, value.resolved.profile, asset.url, profile]);
+    const key = JSON.stringify([assetRevision, layer.request.gen, model.selection.character, value.resolved.profile, asset.url, profile]);
     if (layer.paintKey !== key) {
       stopLayer(layer);
       const image = decodedImages.get(asset.url);
@@ -193,9 +189,9 @@
     return true;
   }
 
-  function paintVideoLayer(controller, layer, value, form) {
-    const identity = JSON.stringify([assetRevision, model.selection.character, form, value.asset.url]);
-    const key = JSON.stringify([assetRevision, layer.request.gen, model.selection.character, form, value.resolved.profile, value.asset.url]);
+  function paintVideoLayer(controller, layer, value) {
+    const identity = JSON.stringify([assetRevision, model.selection.character, value.asset.url]);
+    const key = JSON.stringify([assetRevision, layer.request.gen, model.selection.character, value.resolved.profile, value.asset.url]);
     if (layer.media?.key !== key) {
       // 重复同一待机仍由原状态机发新请求；先快照可见相位，释放旧缓冲不能把它清零。
       const previous = value.entry.group === 'idle' && controller.layers.find(item => item.layer.style.opacity === '1' && item.media?.identity === identity && item.media.group === 'idle')?.media;
@@ -210,13 +206,13 @@
       const failed = () => {
         if (controller.disposed || layer.media !== media) return;
         window.clearTimeout(media.timeout); failedAssets.add(value.asset.url);
-        refresh(controller, false);
+        refresh(controller);
       };
       const ready = () => {
         if (controller.disposed || layer.media !== media || element.readyState < 2) return;
         window.clearTimeout(media.timeout); media.ready = true;
         layer.frame.style.aspectRatio = `${element.videoWidth} / ${element.videoHeight}`;
-        refresh(controller, false);
+        refresh(controller);
       };
       listen('loadeddata', () => {
         if (controller.disposed || layer.media !== media || element.readyState < 2 || media.seekRequested) return;
@@ -242,9 +238,8 @@
         // 单候选工作回空闲时上游只解除loop，不重发once请求；沿它已安装的onended收尾。
         const workReturnedIdle = value.entry.group === 'event:workStatus' && sprite.workState == null && !layer.video.loop && typeof layer.video.onended === 'function';
         if (!element.ended || media.completed || value.entry.group === 'idle' || value.entry.group === 'moves' || (!layer.request.once && !workReturnedIdle) || controller.active !== layer || controller.activeRequest !== layer.request || controller.pendingRequest || sprite.pending || sprite.gen !== layer.request.gen || sprite.frozen) return;
-        const currentForm = model?.selection.mode === 'sister' ? 'sister' : controller.transformation.form || 'q';
-        const current = visual(controller, layer.request, currentForm);
-        if (current?.original || current?.profile.type !== 'video' || current?.asset.url !== value.asset.url || current.character.id !== value.character.id || currentForm !== form) return;
+        const current = visual(controller, layer.request);
+        if (current?.original || current?.profile.type !== 'video' || current?.asset.url !== value.asset.url || current.character.id !== value.character.id) return;
         const ended = layer.video.onended;
         if (typeof ended !== 'function') return;
         // 以新单次素材的真实结束推进原动画链与回执，先拆隐藏视频回调以防十秒后二次结束。
@@ -279,13 +274,13 @@
         media.playing = true;
         const attempt = media.playAttempt = (media.playAttempt || 0) + 1;
         void Promise.resolve(media.element.play()).catch(() => {
-          if (!controller.disposed && layer.media === media && media.playAttempt === attempt) { failedAssets.add(value.asset.url); refresh(controller, false); }
+          if (!controller.disposed && layer.media === media && media.playAttempt === attempt) { failedAssets.add(value.asset.url); refresh(controller); }
         }).finally(() => {
           if (layer.media !== media || media.playAttempt !== attempt) return;
           media.playing = false;
           // 真实EOS的pause/ended可能早于play兑现；兑现后补一次事件协调，不依赖1500ms轮询。
           if (!controller.disposed && !failedAssets.has(value.asset.url)) defer(() => {
-            if (!controller.disposed && layer.media === media && media.playAttempt === attempt) refresh(controller, false);
+            if (!controller.disposed && layer.media === media && media.playAttempt === attempt) refresh(controller);
           });
         });
       }
@@ -297,7 +292,7 @@
     return true;
   }
 
-  function refresh(controller, allowRandom) {
+  function refresh(controller) {
     if (!model || controller.disposed) return;
     abandonFailedRequest(controller);
     const sprite = controller.sprite, selection = model.selection;
@@ -308,24 +303,13 @@
     if (!layer || controller.pendingRequest) return;
     const request = layer.request;
     if (request.external || !character) { originalVisual(controller); return; }
-    const selectionKey = `${selection.character}/${selection.mode}`;
+    const selectionKey = selection.character;
     if (controller.selectionKey !== selectionKey) {
       controller.selectionKey = selectionKey;
-      controller.transformation = { form: 'q', until: 0, nextEligibleAt: controller.transformation.nextEligibleAt || 0 };
       hold(controller);
     }
-    const entry = controller.catalog.find(value => value.id === request.action) || { id: request.action, group: 'unknown' };
-    const now = Date.now();
-    controller.transformation = A.advanceTransformation({ mode: selection.mode, state: controller.transformation, now, safe: A.isCalmMoment(sprite, A.fallbackProfile(entry)), random: allowRandom ? Math.random : () => 1 });
-    const until = controller.transformation.until;
-    if (controller.expiryAt !== until) {
-      if (controller.expiryTimer != null) window.clearTimeout(controller.expiryTimer);
-      controller.expiryTimer = null; controller.expiryAt = until;
-      if (until > now) controller.expiryTimer = window.setTimeout(() => { controller.expiryTimer = null; controller.expiryAt = 0; refresh(controller, false); }, until - now);
-    }
-    const form = controller.transformation.form;
-    const value = visual(controller, request, form);
-    const debug = { character: character.id, mode: selection.mode, form, action: request.action };
+    const value = visual(controller, request);
+    const debug = { character: character.id, mode: 'q', form: 'q', action: request.action };
     if (value?.original) {
       originalVisual(controller);
       window.__codexSkinDebug = { ...debug, profile: 'original-video', playback: 'original-video', coverage: 'dedicated' };
@@ -336,9 +320,9 @@
       hold(controller); loadAsset(value.asset.url); return;
     }
     if (value.profile.type === 'video') {
-      if (!paintVideoLayer(controller, layer, value, form)) return;
+      if (!paintVideoLayer(controller, layer, value)) return;
     } else {
-      if (!paintLayer(controller, layer, value, form)) { originalVisual(controller); return; }
+      if (!paintLayer(controller, layer, value)) { originalVisual(controller); return; }
       layer.canvas.style.display = 'block';
     }
     for (const other of controller.layers) {
@@ -366,11 +350,11 @@
         controller.sprite.once = !layer.video.loop;
       }
     }
-    refresh(controller, false);
+    refresh(controller);
   }
   function ensure(sprite) {
     if (sprite.__codexSkinController) return sprite.__codexSkinController;
-    const controller = { sprite, layers: [], baseAnimations: sprite.animations, catalog: A.catalogFromAnimations(sprite.animations), transformation: {}, disposed: false, listeners: [] };
+    const controller = { sprite, layers: [], baseAnimations: sprite.animations, catalog: A.catalogFromAnimations(sprite.animations), disposed: false, listeners: [] };
     const schedule = () => {
       if (controller.queued || controller.disposed) return;
       controller.queued = true;
@@ -392,7 +376,7 @@
     controller.observer = observer;
     sprite.__codexSkinController = controller;
     controllers.add(controller);
-    if (timer === null) timer = window.setInterval(() => { for (const item of controllers) refresh(item, true); }, 1500);
+    if (timer === null) timer = window.setInterval(() => { for (const item of controllers) refresh(item); }, 1500);
     return controller;
   }
 
@@ -400,7 +384,7 @@
   const playIdle = proto.playIdle;
   proto.playIdle = function () {
     const controller = ensure(this);
-    const character = coreCharacter(controller);
+    const character = coreCharacter();
     if (!character) return playIdle.apply(this, arguments);
     const original = this.animations, weights = this.weights;
     const ready = id => readyNativeAction(character, id);
@@ -419,10 +403,9 @@
   proto.onClick = function () {
     const controller = ensure(this);
     const character = model?.characters.find(value => value.id === model.selection.character);
-    const form = selectedForm(controller);
     const animations = this.animations;
-    if (!character || character.originalVideo || form !== 'q' || !Array.isArray(animations?.clicks)) return onClick.apply(this, arguments);
-    const candidates = animations.clicks.filter(id => readyNativeAction(character, id, form));
+    if (!character || character.originalVideo || !Array.isArray(animations?.clicks)) return onClick.apply(this, arguments);
+    const candidates = animations.clicks.filter(id => readyNativeAction(character, id));
     if (!candidates.length) return onClick.apply(this, arguments);
     // 仅普通点击同步取候选时替换；菜单、结束回调和共享配置始终保留完整原动作表。
     this.animations = { ...animations, clicks: candidates };
@@ -459,7 +442,6 @@
   }
   function disposeController(controller) {
     controller.disposed = true; hold(controller); controller.observer.disconnect();
-    if (controller.expiryTimer != null) window.clearTimeout(controller.expiryTimer);
     for (const [video, name, handler] of controller.listeners) video.removeEventListener(name, handler);
     for (const layer of controller.layers) { releaseMedia(layer); layer.paint = null; layer.layer.remove?.(); }
     controllers.delete(controller);
@@ -479,7 +461,6 @@
   }
   function decorateTree(nodes, preserveRegistered = false) {
     const selected = model?.characters.find(character => character.id === model.selection.character);
-    const form = model?.selection.mode === 'sister' ? 'sister' : 'q';
     const limited = coreCharacter();
     return nodes.flatMap(node => {
       const copy = { ...node };
@@ -491,10 +472,10 @@
       if (limited && copy.children?.length === 0 && hasAnimationMenu(node.children)) return [];
       if (typeof copy.label === 'string') copy.label = copy.anim ? selected?.copy?.actionLabels?.[copy.anim] || t(copy.label) : t(copy.label);
       if (copy.action === 'chat' && window.codexChatPanel?.open) copy.label = t('图文对话');
-      if (copy.anim && selected && !(selected.originalVideo && form === 'q')) {
+      if (copy.anim && selected && !selected.originalVideo) {
         const entry = model.catalog?.find(item => item.id === copy.anim) || { id: copy.anim };
-        const resolved = A.resolveAction(entry, selected.manifest, selected.assets, form);
-        const profile = A.effectiveProfile(selected.manifest.profiles[resolved.profile], form);
+        const resolved = A.resolveAction(entry, selected.manifest, selected.assets);
+        const profile = selected.manifest.profiles[resolved.profile];
         copy.hint = [profile?.type === 'video' ? '' : t('逐帧试作'), resolved.coverage !== 'dedicated' ? t(resolved.coverage === 'missing' ? '专属帧待制作' : '基础动画代用') : ''].filter(Boolean).join(' · ');
       }
       return [copy];
@@ -505,9 +486,7 @@
     if (!options.tree.some(item => ['chat', 'open-site'].includes(item.action))) return mountContextMenu.apply(this, arguments);
     const tree = decorateTree(options.tree);
     if (window.codexTaskPanel?.open) tree.push({ label: t('操作任务'), action: 'codex-task-panel' });
-    if (model) tree.push({ label: t('形象'), children: model.characters.map(character => ({ label: character.copy?.name || t(character.label), children: [
-      ['q', 'Q版'], ['sister', '姐姐版'], ['occasional', '偶尔变身'],
-    ].map(([mode, label]) => ({ label: `${model.selection.character === character.id && model.selection.mode === mode ? '✓ ' : ''}${t(label)}`, action: 'codex-select-skin', character: character.id, mode, hint: character.available[mode] ? '' : t('素材未就绪') })) })) });
+    if (model) tree.push({ label: t('形象'), children: model.characters.map(character => ({ label: `${model.selection.character === character.id ? '✓ ' : ''}${character.copy?.name || t(character.label)}`, action: 'codex-select-skin', character: character.id, hint: character.available.q ? '' : t('素材未就绪') })) });
     return mountContextMenu.call(this, { ...options, tree });
   };
   const menuAction = proto.onMenuAction;
@@ -518,7 +497,7 @@
   proto.onMenuAction = function (leaf) {
     if (leaf?.action === 'codex-select-skin') {
       this.closeMenu();
-      void bridge.select({ character: leaf.character, mode: leaf.mode }).then(applyModel).catch(() => console.warn('[龙娘桌宠] 形象未能切换，请确认本地素材已就绪。'));
+      void bridge.select({ character: leaf.character, mode: 'q' }).then(applyModel).catch(() => console.warn('[龙娘桌宠] 形象未能切换，请确认本地素材已就绪。'));
       return;
     }
     if (leaf?.action === 'codex-task-panel' && window.codexTaskPanel?.open) { this.closeMenu(); openPanel(() => window.codexTaskPanel.open()); return; }
@@ -536,7 +515,7 @@
     if (assetSignature && assetSignature !== assets) { clearPendingAssets(); failedAssets.clear(); assetRevision++; }
     assetSignature = assets;
     model = value; L?.setLocale(value.locale || 'zh-CN');
-    for (const controller of controllers) refresh(controller, false);
+    for (const controller of controllers) refresh(controller);
   }
   const unsubscribe = bridge.onChanged(applyModel);
   const initialRevision = modelRevision;

@@ -1,0 +1,19 @@
+{
+  "schemaVersion": 1,
+  "version": "0.3.0",
+  "commit": "55e76611794b7a9cbbeadea687a80ba4953ac5b6",
+  "files": {
+    "manifest.json": "3ac3e5a21fbc47dbfdc4d3db3279a4b3fc13f9ddf8d7dd3f6807a78848aca347",
+    "NOTICE.md": "a3f37db29168a8c86ee1b58a799279413c503cf7b165e72242bb14a7f52fbcaa",
+    "q-idle.webm": "8b5913ac8edc9795ac90e49e16669babd8ae33f3176abd1a61fdf22139fcaa3e",
+    "q-walk-left.webm": "276ea56a74c51019d966d8f3a46dbaa0b5ac76750a408873eddeb48e02b704e8",
+    "q-click.webm": "63b1df517352de5c350ac09460e55a72a2682588491026b3636d6d3a60bef079",
+    "q-turn.webm": "5a881294f863cbb3503915c902e67c8eb927b3107b44192d8eb140501d9e50dd",
+    "q-drag.webm": "020cfa559f20deb97d5c83d67d0270f5fc25e6b329df068efafbf3a85e2f86d6",
+    "q-thinking.webm": "ac9b758f8bd91d6cc648900c69db4269e77347af9bdda3dcd8a3101c77fbc99b",
+    "q-working.webm": "27a1ccade00739f29c367535b3fbfd2d50e35607db6d9d0b46174dfbe2a806bf",
+    "q-waiting.webm": "965e65918ac0f45daa2473fd0889a9ecfec8a19e5d8ce9893cd2095ddbef92f1",
+    "q-success.webm": "7b264df56cf3a0fba2ff384b2b36d31ab5be38b22ded0800fdbccdbe1f8c361f",
+    "q-error.webm": "6494fa30756faa61b153aa9acab3617ae0ab11e588a9ccd0274787568bb43401"
+  }
+}

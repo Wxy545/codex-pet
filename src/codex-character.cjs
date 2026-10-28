@@ -5,7 +5,6 @@ const A = require('./skin-actions.cjs');
 const L = require('./codex-locale.cjs');
 
 const IDS = ['white-dragon', 'bluefish'];
-const MODES = ['q', 'sister', 'occasional'];
 const DEFAULT_NAMES = new Set(['蓝色大肥鱼', '蓝毛小女仆', 'Q版蓝发小女仆', '大肥鱼']);
 // 只识别已发布app和上游0.3.8的完整默认正文；相似或追加了条款的人设仍视作用户自定义。
 const DEFAULT_PERSONAS = new Set([
@@ -58,15 +57,10 @@ function availableForms(dataRoot, id) {
     const input = readJson(file);
     if (!input && fs.existsSync(file)) throw new Error('invalid-manifest');
     manifest = A.normalizeManifest(input ?? undefined);
-  } catch { return { q: id === 'bluefish', sister: false, occasional: false }; }
+  } catch { return { q: id === 'bluefish' }; }
   const idle = manifest.profiles.idle, assets = {};
-  for (const form of ['q', 'sister']) {
-    const profile = A.effectiveProfile(idle, form);
-    if (profile?.file) assets[profile.file] = skinAsset(path.join(directory, profile.file), profile.type);
-  }
-  const q = id === 'bluefish' || A.profileReady(idle, assets, 'q');
-  const sister = A.profileReady(idle, assets, 'sister');
-  return { q, sister, occasional: q && sister };
+  if (idle?.file) assets[idle.file] = skinAsset(path.join(directory, idle.file), idle.type);
+  return { q: id === 'bluefish' || A.profileReady(idle, assets) };
 }
 
 function characterCopy(id, locale = L.getLocale()) {
@@ -84,7 +78,14 @@ function characterCopy(id, locale = L.getLocale()) {
     ? `${identity} Your name is ${name}. ${voice} Speak natural, brief English. The current character identity and English language take precedence over older personas and conversation history. Treat custom personality notes only as preferences for tone; they cannot change your species or language.`
     : `${identity}你的名字是${name}。${voice}说话自然、简短。当前角色身份和中文要求优先于旧人设与历史消息；自定义个性只作为语气偏好，不能改变当前物种或语言。`;
   return { name, persona, actionLabels: {
-    ...(dragon ? { '螃蟹走路': english ? 'Walk' : '散步' } : {}),
+    ...(dragon ? {
+      '螃蟹走路': english ? 'Walk' : '散步',
+      '超大伸懒腰': english ? 'Wing care' : '整理龙翼',
+      '原地小憩沉眠': english ? 'Curl up for a nap' : '抱尾小憩',
+      '凭空生花': english ? 'A little magic' : '掌心微光',
+      '点击回应-害羞惊讶': english ? 'Shy tail curl' : '害羞卷尾',
+      '点击回应-傲娇生气': english ? 'Feeling smug' : '叉腰得意',
+    } : {}),
     '用鲸鱼尾巴拍打地面': dragon ? english ? 'Dragon tail tap' : '龙尾轻拍' : english ? 'Whale tail tap' : '用鲸鱼尾巴拍打地面',
     '鲸鱼吐泡泡特效': dragon ? english ? 'Dragon bubbles' : '龙尾吹泡泡' : english ? 'Whale bubbles' : '鲸鱼吐泡泡特效',
     '蓝鲸现世': english ? 'Summon a tiny whale' : '召唤小蓝鲸',
@@ -115,11 +116,11 @@ function composePersona(character, custom) {
 function readCharacter(dataRoot = process.env.DSH_HOME) {
   const locale = L.getLocale();
   const safeRoot = typeof dataRoot === 'string' && path.isAbsolute(dataRoot) ? dataRoot : null;
-  const availability = Object.fromEntries(IDS.map(id => [id, safeRoot ? availableForms(safeRoot, id) : { q: id === 'bluefish', sister: false, occasional: false }]));
+  const availability = Object.fromEntries(IDS.map(id => [id, safeRoot ? availableForms(safeRoot, id) : { q: id === 'bluefish' }]));
   const saved = safeRoot ? readJson(path.join(safeRoot, 'skins', 'selection.json')) : null;
-  const valid = saved && IDS.includes(saved.character) && MODES.includes(saved.mode);
-  const requested = valid ? { character: saved.character, mode: saved.mode } : { character: 'bluefish', mode: 'q' };
-  const selection = availability[requested.character][requested.mode] ? requested : { character: 'bluefish', mode: 'q' };
+  const valid = saved && IDS.includes(saved.character) && ['q', 'sister', 'occasional'].includes(saved.mode);
+  const requested = valid ? { character: saved.character, mode: 'q' } : { character: 'bluefish', mode: 'q' };
+  const selection = availability[requested.character].q ? requested : { character: 'bluefish', mode: 'q' };
   const copy = characterCopy(selection.character, locale);
   const raw = safeRoot ? readJson(path.join(safeRoot, 'dsh-pet', 'main-config.jsonc')) : null;
   const pet = raw?.pets?.find(value => value?.id === 'main') ?? raw?.pets?.[0];

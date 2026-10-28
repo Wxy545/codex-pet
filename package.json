@@ -1,6 +1,6 @@
 {
   "name": "codex-pet",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "private": true,
   "type": "module",
   "description": "Codex Pet: a Windows desktop companion for Codex, based on dsh-pet",

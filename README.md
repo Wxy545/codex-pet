@@ -39,7 +39,7 @@ The pet starts with Codex after installation. You can also double-click `Start C
 ## While Codex works
 
 - **Session status:** react to thinking, working, waiting for confirmation, completion, and errors, including across multiple local sessions.
-- **Usage bubbles:** check Codex usage and reset times from the right-click menu. If no data is available after installation, finish a reply in the main Codex chat and check again.
+- **Usage bubbles:** check Codex usage and reset times from the right-click menu. A missing reset time shows as unknown. If no data is available after installation, finish a reply in the main Codex chat and check again.
 - **Chat and images:** open Chat from the right-click menu and send text, PNG, JPEG, or WebP images. Replies use your signed-in Codex CLI.
 - **Project tasks:** open Tasks, choose a folder, describe the job, and confirm it. Tasks start in read-only mode; choose “Allow edits in this folder” when you want files changed.
 - **Notifications:** switch to another app and let Windows tell you when Codex finishes, hits an error, or needs your attention.
@@ -48,10 +48,12 @@ Chat and idle chatter count toward your Codex usage. Chatter runs every ten minu
 
 ## Characters and animations
 
-Choose a character from **Appearance** in the right-click menu:
+Choose a chibi character from **Character** in the right-click menu:
 
-- **White Dragon Girl:** 10 chibi animations covering idle, walking, click response, turning, dragging, thinking, typing, waiting, success, and error. She reacts to Codex sessions and shows only the actions available for her.
+- **White Dragon Girl:** 15 chibi animations: the ten core actions for idle, walking, click response, turning, dragging, thinking, typing, waiting, success, and error, plus five more gestures. Her menu shows only the actions available for her.
 - **Blue whale maid:** the original dsh-pet character and its full animation set.
+
+The dragon girl can now tend to her wings, curl up around her tail for a nap, and play with a little magic while she idles. A shy tail curl and a smug pose join her click reactions. All five are also in the right-click menu.
 
 <img src="docs/assets/white-dragon-idle.webp" width="220" alt="White Dragon Girl idle animation">
 
@@ -72,6 +74,8 @@ powershell -File scripts/disable-follow.ps1
 ```
 
 See [maintenance](docs/maintenance.md) for Codex and dsh-pet update checks, development setup, and troubleshooting. For a daily check, ask Codex to set up a maintenance task for your installation.
+
+After updating the source, run `node scripts/prepare-runtime.mjs` to add the new animations to an unchanged official 0.3.0 dragon pack. Custom skins and your character choice are kept.
 
 ## Buy me a coffee
 

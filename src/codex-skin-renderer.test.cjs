@@ -20,13 +20,13 @@ function harness({deferredImages=false,deferredState=false,failImages=false,defe
  class Observer{constructor(fn){this.fn=fn;this.targets=new Set();observers.push(this);}observe(v){this.targets.add(v);}disconnect(){this.closed=true;this.targets.clear();}}
  class Image{set src(url){this.url=url;images.push(this);if(!deferredImages)failImages?this.onerror?.():this.onload?.();}}
  const profile=(file,rects)=>({file,columns:4,rows:1,fps:4,frames:[[0,0],[1,0],[2,0],[3,0]],...(rects?{rects}:{})});
- const manifest=A.normalizeManifest({schemaVersion:1,profiles:{idle:videoProfile?{type:'video',file:'idle.webm',sisterFile:'idle-sister.png',forms:{sister:profile('idle-sister.png')}}:profile('idle.png'),work:profile('work.png'),jump:profile('jump.png',[[10,30,80,70],[110,2,80,70],[210,30,80,70],[310,30,80,70]]),walk:moveVideo?{type:'video',file:'walk.webm',sisterFile:'walk-sister.png',forms:{sister:profile('walk-sister.png')}}:profile('walk.png')},actions:{'呼吸':{profile:'idle',coverage:'dedicated'},'工作':{profile:'work',coverage:'dedicated'},'点击跳跃':{profile:'jump',coverage:'dedicated'},'移动':{profile:'walk',coverage:'dedicated'}}});
- const assets=Object.fromEntries(['idle','work','jump','walk'].flatMap(id=>[id+'.png',id+'-sister.png'].map(file=>[file,{available:true,width:400,height:100,url:'file:///'+file}])));
+ const manifest=A.normalizeManifest({schemaVersion:1,profiles:{idle:videoProfile?{type:'video',file:'idle.webm'}:profile('idle.png'),work:profile('work.png'),jump:profile('jump.png',[[10,30,80,70],[110,2,80,70],[210,30,80,70],[310,30,80,70]]),walk:moveVideo?{type:'video',file:'walk.webm'}:profile('walk.png')},actions:{'呼吸':{profile:'idle',coverage:'dedicated'},'工作':{profile:'work',coverage:'dedicated'},'点击跳跃':{profile:'jump',coverage:'dedicated'},'移动':{profile:'walk',coverage:'dedicated'}}});
+ const assets=Object.fromEntries(['idle','work','jump','walk'].map(id=>[id+'.png',{available:true,width:400,height:100,url:'file:///'+id+'.png'}]));
  if(videoProfile)assets['idle.webm']={available:true,type:'video',url:'file:///idle.webm'};
  if(moveVideo)assets['walk.webm']={available:true,type:'video',url:'file:///walk.webm'};
- const character={id:'white-dragon',label:'白龙娘',copy:{name:'白龙娘',actionLabels:{'鲸鱼吐泡泡特效':'龙尾吹泡泡'}},originalVideo:false,available:{q:true,sister:true,occasional:true},manifest,assets};
+ const character={id:'white-dragon',label:'白龙娘',copy:{name:'白龙娘',actionLabels:{'鲸鱼吐泡泡特效':'龙尾吹泡泡'}},originalVideo:false,available:{q:true},manifest,assets};
  const model={locale,selection:{character:'white-dragon',mode},characters:[character,{...character,id:'bluefish',label:'大肥鱼',originalVideo:true}],catalog:[]};
- const words={'图文对话':'Chat with images','操作任务':'Tasks','形象':'Appearance','Q版':'Chibi','姐姐版':'Adult','偶尔变身':'Occasional transformation','逐帧试作':'Frame prototype','素材未就绪':'Assets not ready','基础动画代用':'Base animation substitute','专属帧待制作':'Dedicated frames pending'};
+ const words={'图文对话':'Chat with images','操作任务':'Tasks','形象':'Appearance','逐帧试作':'Frame prototype','素材未就绪':'Assets not ready','基础动画代用':'Base animation substitute','专属帧待制作':'Dedicated frames pending'};
  const L={setLocale(value){this.locale=value;},t(key){return this.locale==='en'?words[key]||key:key;}};
  const pure={};vm.runInNewContext(readFileSync(join(__dirname,'../node_modules/dsh-pet/runtime/electron-helper/shared-core.js'),'utf8'),pure);
  const shared={...pure.PetShared,mountContextMenu:options=>{menu=options;return options;}};
@@ -63,6 +63,15 @@ function clickVideoHarness(){
  const h=harness();const c=h.model.characters[0];c.manifest.profiles.jump={type:'video',file:'click.webm'};c.assets['click.webm']={available:true,type:'video',url:'file:///click.webm'};return h;
 }
 
+test('形象菜单直接两角色且旧mode不能激活非Q，轮询不再自动变身或加载姐姐图',async()=>{
+ const h=harness({videoProfile:true,mode:'occasional',random:()=>0});await h.flush();const p=h.sprite();p.playOnce('呼吸');await h.ready(p);h.media[0].ready();await h.flush();
+ h.win.PetShared.mountContextMenu({tree:[{label:'对话',action:'chat'}]});const shape=h.menu().tree.find(node=>node.label==='形象');
+ assert.equal(shape.children.length,2);assert.ok(shape.children.every(node=>node.action==='codex-select-skin'&&!node.children));
+ let requested;h.win.codexSkins.select=async value=>{requested=value;return {...h.model,selection:value};};p.onMenuAction({action:'codex-select-skin',character:'white-dragon',mode:'sister'});await h.flush();assert.equal(requested.mode,'q');
+ const interval=[...h.timers.values()].find(value=>value.kind==='interval');for(let i=0;i<5;i++){h.now(100000+i*100000);interval.fn();await h.flush();}
+ assert.equal(p.__codexSkinController.transformation,undefined);assert.equal(p.__codexSkinController.expiryTimer,undefined);assert.equal(h.images.some(image=>image.url.includes('sister')),false);assert.equal(h.media.length,1);p.dispose();
+});
+
 test('核心Q版真实playIdle只抽显式视频分类，原鱼切回完整原表且不污染catalog',async()=>{
  const h=harness({videoProfile:true});const c=h.model.characters[0];c.manifest.profiles.category={type:'video',file:'category.webm'};c.manifest.actions['已支持']={profile:'category',coverage:'dedicated'};c.assets['category.webm']={available:true,type:'video',url:'file:///category.webm'};
  await h.flush();const p=h.sprite();p.weights={idle:0,turn:0,move:0};p.animations.categories=[{id:'动作',weight:1,actions:['已支持','玩魔方']},{id:'缺失分类',weight:1,actions:['吃火锅']}];const original=p.animations,weights=p.weights;
@@ -81,7 +90,7 @@ test('核心Q版菜单剪掉缺失动作与空分类，保留基础工具和注�
  const h=harness({videoProfile:true});await h.flush();h.win.codexTaskPanel={open(){}};const S=h.win.PetShared;
  const tree=[{label:'打开网站',action:'open-site'},{label:'对话',action:'chat'},{label:'动作',children:[{label:'呼吸',anim:'呼吸'},{label:'玩魔方',anim:'玩魔方'}]},{label:'吃饭',children:[{label:'吃火锅',anim:'吃火锅'}]},S.buildMoreBranch([{owner:'动作',label:'外部动作'}])];
  S.mountContextMenu({tree});const next=h.menu().tree;assert.deepEqual(next.find(node=>node.label==='动作').children.map(node=>node.anim),['呼吸']);assert.equal(next.some(node=>node.label==='吃饭'),false);
- assert.ok(next.some(node=>node.action==='open-site'));assert.ok(next.some(node=>node.action==='chat'));assert.ok(next.some(node=>node.action==='codex-task-panel'));assert.ok(next.some(node=>node.children?.some(child=>child.children?.some(leaf=>leaf.action==='codex-select-skin'))));
+ assert.ok(next.some(node=>node.action==='open-site'));assert.ok(next.some(node=>node.action==='chat'));assert.ok(next.some(node=>node.action==='codex-task-panel'));assert.ok(next.some(node=>node.children?.some(child=>child.action==='codex-select-skin')));
  assert.equal(JSON.stringify(next.find(node=>node.label===S.MORE_MENU_LABEL).children),JSON.stringify(tree.at(-1).children));assert.equal(tree[2].children.length,2);
  const atlas=harness();await atlas.flush();atlas.win.PetShared.mountContextMenu({tree:[{label:'对话',action:'chat'},{label:'玩魔方',anim:'玩魔方'}]});assert.ok(atlas.menu().tree.some(node=>node.anim==='玩魔方'));
 });
@@ -117,12 +126,12 @@ test('普通Q版鼠标点击优先已就绪专属视频，原候选对象和手�
  await h.ready(p);p.onMenuAction({anim:'旧点击三'});assert.equal(p.pending.anim,'旧点击三');p.dispose();
 });
 
-test('切回原鱼或姐姐及无视频时普通点击恢复全部原候选',async()=>{
+test('切回原鱼及无视频时普通点击恢复全部原候选',async()=>{
  const h=clickVideoHarness();await h.flush();const p=h.sprite();p.animations.clicks.push('旧点击二');const original=p.animations,choices=[];
  h.win.PetShared.pick=values=>{choices.push([...values]);return values.at(-1);};p.onClick({});await h.ready(p);
  const model=structuredClone(h.model);model.selection.character='bluefish';h.change(model);await h.flush();p.onClick({});
  assert.deepEqual(choices.at(-1),['点击跳跃','旧点击二']);assert.equal(p.pending.anim,'旧点击二');assert.equal(p.animations,original);await h.ready(p);
- model.selection.character='white-dragon';model.selection.mode='sister';h.change(structuredClone(model));await h.flush();p.onClick({});assert.deepEqual(choices.at(-1),['点击跳跃','旧点击二']);p.dispose();
+ p.dispose();
  const none=harness();await none.flush();const q=none.sprite();q.animations.clicks.push('旧点击二');let list;none.win.PetShared.pick=values=>{list=[...values];return values.at(-1);};q.onClick({});assert.deepEqual(list,['点击跳跃','旧点击二']);q.dispose();
 });
 
@@ -190,13 +199,11 @@ test('真实switchTo重复同待机先续接相位，seeked后交接，不因新
  const reset=h.media.at(-1);reset.ready();await h.flush();assert.equal(reset.currentTime,0);assert.equal(reset.paused,false);p.dispose();
 });
 
-test('迟到视频加载不得覆盖已切换角色或姐姐PNG，once结束保持最后画面',async()=>{
- const h=harness({videoProfile:true});await h.flush();const p=h.sprite();p.animations.idle=[];p.animations.clicks.push('呼吸');p.playOnce('呼吸');await h.ready(p);const v=h.media[0];
- const next=structuredClone(h.model);next.selection.mode='sister';h.change(next);await h.flush();v.ready();await h.flush();
- assert.equal(h.win.__codexSkinDebug.form,'sister');assert.equal(h.win.__codexSkinDebug.playback,'frame-prototype');assert.equal(v.paused,true);
- next.selection.mode='q';h.change(structuredClone(next));await h.flush();const latest=h.media.at(-1);latest.ready();await h.flush();
- assert.equal(latest.loop,false);latest.ended=true;latest.paused=true;latest.emit('ended');await h.flush();
- assert.equal(latest.paused,true);assert.equal(latest.ended,true);p.dispose();
+test('迟到视频加载不得覆盖已切换的原鱼，切回白龙只恢复Q视频',async()=>{
+ const h=harness({videoProfile:true});await h.flush();const p=h.sprite();p.playOnce('呼吸');await h.ready(p);const v=h.media[0];
+ const next=structuredClone(h.model);next.selection.character='bluefish';h.change(next);await h.flush();v.ready();await h.flush();
+ assert.equal(h.win.__codexSkinDebug.character,'bluefish');assert.equal(h.win.__codexSkinDebug.playback,'original-video');assert.equal(v.paused,true);
+ next.selection.character='white-dragon';h.change(structuredClone(next));await h.flush();assert.equal(h.win.__codexSkinDebug.character,'white-dragon');assert.equal(h.win.__codexSkinDebug.form,'q');assert.equal(v.paused,false);p.dispose();
 });
 
 test('视频错误和加载超时只回退一次，迟到事件不能恢复旧角色视频',async()=>{
@@ -286,12 +293,6 @@ test('上游将进行中循环改为播完即停后，覆盖层以真实loop值�
  p.videoB.loop=false;await h.frame(p,1.25);assert.equal(h.draws.at(-1).args[1],300);p.dispose();
 });
 
-test('偶尔变身只切覆盖形态且到期恢复，不重启当前原视频或动作',async()=>{
- const h=harness({mode:'occasional',random:()=>0});await h.flush();const p=h.sprite();p.playOnce('呼吸');await h.ready(p);
- const originalGen=p.gen;const interval=[...h.timers.values()].find(value=>value.kind==='interval');interval.fn();await h.flush();
- assert.equal(h.win.__codexSkinDebug.form,'sister');const expiry=[...h.timers].find(([,value])=>value.kind==='timeout'&&value.delay===7000);assert.ok(expiry);
- h.now(107000);h.timers.delete(expiry[0]);expiry[1].fn();await h.flush();assert.equal(h.win.__codexSkinDebug.form,'q');assert.equal(p.gen,originalGen);p.dispose();
-});
 
 test('原悬浮提示使用可信显示名定位但不改用户配置昵称，图文窗口失败不影响动作链',async()=>{
  const h=harness();await h.flush();const p=h.sprite();p.playOnce('呼吸');await h.ready(p);p.renderTip();assert.equal(p.tip.textContent,'白龙娘');assert.equal(p.pet.name,'旧名字');

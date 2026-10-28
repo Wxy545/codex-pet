@@ -11,19 +11,26 @@ function fixture(t){
   const png=Buffer.alloc(24);Buffer.from('89504e470d0a1a0a','hex').copy(png);png.writeUInt32BE(1200,16);png.writeUInt32BE(1200,20);
   L.setLocale('zh-CN');return{root,write,png};
 }
+test('旧姐姐和偶尔选择在身份读取时归同角色Q，不依赖旧形态文件',t=>{
+ const f=fixture(t);f.write('skins/white-dragon/sprites.png',f.png);
+ for(const mode of ['sister','occasional']){
+  f.write('skins/selection.json',{character:'white-dragon',mode});
+  const character=C.readCharacter(f.root);assert.equal(character.id,'white-dragon');assert.equal(character.mode,'q');assert.deepEqual(character.availability['white-dragon'],{q:true});
+ }
+});
 test('Q版透明WebM与身份识别一致，中英文聊天投影保持龙娘而非鱼',async t=>{
  const f=fixture(t);f.write('skins/selection.json',{character:'white-dragon',mode:'q'});
  f.write('skins/white-dragon/manifest.json',{schemaVersion:1,profiles:{idle:{type:'video',file:'q-idle.webm',sisterFile:'sister.png',forms:{sister:{file:'sister.png',columns:4,rows:2,frames:[[0,0],[1,0]],fps:2}}}}});
  f.write('skins/white-dragon/q-idle.webm',Buffer.from('1a45dfa3934282847765626d000000000000','hex'));f.write('skins/white-dragon/sister.png',f.png);
  const store=createSkinStore({dataRoot:f.root}),character=C.readCharacter(f.root);
  assert.equal(character.id,'white-dragon');assert.equal(character.name,'白龙娘');assert.match(character.persona,/白角、龙翼和龙尾/);
- assert.deepEqual((await store.readModel()).selection,character.selection);assert.deepEqual(character.availability['white-dragon'],{q:true,sister:true,occasional:true});
+ assert.deepEqual((await store.readModel()).selection,character.selection);assert.deepEqual(character.availability['white-dragon'],{q:true});
  const input={main:{pets:[{id:'main',name:'大肥鱼'}]}};const zh=C.projectConfig(input,{dataRoot:f.root});assert.equal(zh.main.pets[0].name,'白龙娘');assert.match(zh.main.pets[0].whisperPrompt,/白龙娘/);assert.doesNotMatch(zh.main.pets[0].whisperPrompt,/鲸鱼娘/);
  L.setLocale('en');const en=C.readCharacter(f.root);assert.equal(en.id,'white-dragon');assert.equal(en.name,'Dragon Girl');assert.match(en.persona,/dragon girl/);
  const english=C.projectConfig(input,{dataRoot:f.root});assert.equal(english.main.pets[0].name,'Dragon Girl');assert.match(english.main.pets[0].whisperPrompt,/dragon girl/);assert.doesNotMatch(english.main.pets[0].whisperPrompt,/whale girl/);
  f.write('skins/white-dragon/q-idle.webm',Buffer.from('1a45dfa3934282846d617472000000000000','hex'));
- const broken=C.readCharacter(f.root);assert.equal(broken.id,'bluefish');assert.equal(broken.availability['white-dragon'].q,false);assert.equal(broken.availability['white-dragon'].sister,true);
- f.write('skins/selection.json',{character:'white-dragon',mode:'sister'});assert.equal(C.readCharacter(f.root).id,'white-dragon');
+ const broken=C.readCharacter(f.root);assert.equal(broken.id,'bluefish');assert.equal(broken.availability['white-dragon'].q,false);assert.equal(broken.availability['white-dragon'].sister,undefined);
+ f.write('skins/selection.json',{character:'white-dragon',mode:'sister'});assert.equal(C.readCharacter(f.root).id,'bluefish');
 });
 
 test('普通走路仅在龙娘菜单显示散步，原鱼动作名保持原映射',()=>{
@@ -31,6 +38,24 @@ test('普通走路仅在龙娘菜单显示散步，原鱼动作名保持原映�
  assert.equal(C.characterCopy('white-dragon','en').actionLabels['螃蟹走路'],'Walk');
  assert.equal(C.characterCopy('bluefish','zh-CN').actionLabels['螃蟹走路'],undefined);
  assert.equal(C.characterCopy('bluefish','en').actionLabels['螃蟹走路'],undefined);
+});
+
+test('龙娘五个特色动作使用独立中英文显示名，不改原鱼与核心动作标签',()=>{
+ const expected={
+  '超大伸懒腰':['整理龙翼','Wing care'],
+  '原地小憩沉眠':['抱尾小憩','Curl up for a nap'],
+  '凭空生花':['掌心微光','A little magic'],
+  '点击回应-害羞惊讶':['害羞卷尾','Shy tail curl'],
+  '点击回应-傲娇生气':['叉腰得意','Feeling smug'],
+ };
+ for(const [locale,index] of [['zh-CN',0],['en',1]]){
+  const dragon=C.characterCopy('white-dragon',locale),fish=C.characterCopy('bluefish',locale);
+  for(const [id,labels] of Object.entries(expected)){assert.equal(dragon.actionLabels[id],labels[index]);assert.equal(fish.actionLabels[id],undefined);}
+  assert.equal(dragon.actionLabels['螃蟹走路'],index?'Walk':'散步');
+  assert.equal(dragon.actionLabels['点击回应-开心跃动'],undefined);assert.equal(dragon.actionLabels['东张西望'],undefined);
+  assert.equal(fish.actionLabels['用鲸鱼尾巴拍打地面'],index?'Whale tail tap':'用鲸鱼尾巴拍打地面');
+  assert.equal(fish.actionLabels['鲸鱼吐泡泡特效'],index?'Whale bubbles':'鲸鱼吐泡泡特效');
+ }
 });
 test('无选择默认原鲸鱼，显式龙娘在素材有效时生效，缺图和无效清单回原鲸',async t=>{
  const f=fixture(t);f.write('skins/white-dragon/sprites.png',f.png);
@@ -43,11 +68,13 @@ test('无选择默认原鲸鱼，显式龙娘在素材有效时生效，缺图�
  assert.equal(C.readCharacter(f.root).id,'bluefish');
  assert.deepEqual((await store.readModel()).selection,C.readCharacter(f.root).selection);
 });
-test('姐姐和偶尔变身仅在有效对应素材存在时生效，不借用Q版rects',t=>{
- const f=fixture(t);f.write('skins/white-dragon/sprites.png',f.png);f.write('skins/selection.json',{character:'white-dragon',mode:'sister'});
- assert.equal(C.readCharacter(f.root).id,'bluefish');
- f.write('skins/white-dragon/sister.png',f.png);assert.equal(C.readCharacter(f.root).id,'white-dragon');
- f.write('skins/selection.json',{character:'white-dragon',mode:'occasional'});assert.equal(C.readCharacter(f.root).id,'white-dragon');
+test('旧选择缺少Q素材时回原鱼且保留请求角色，旧形态图片不能代替Q',t=>{
+ const f=fixture(t);f.write('skins/white-dragon/sister.png',f.png);
+ for(const mode of ['sister','occasional']){
+  f.write('skins/selection.json',{character:'white-dragon',mode});const character=C.readCharacter(f.root);
+  assert.equal(character.id,'bluefish');assert.deepEqual(character.requestedSelection,{character:'white-dragon',mode:'q'});
+ }
+ f.write('skins/white-dragon/sprites.png',f.png);assert.equal(C.readCharacter(f.root).id,'white-dragon');
 });
 test('已知鱼默认只投影显示，不改自定义昵称、人设或磁盘文件',t=>{
  const f=fixture(t);f.write('skins/white-dragon/sprites.png',f.png);f.write('skins/selection.json',{character:'white-dragon',mode:'q'});
@@ -80,12 +107,12 @@ test('白龙停用鱼meme；英文还停用中文文字视频，原配置对象�
  L.setLocale('en');const en=C.projectConfig(config,{dataRoot:f.root});assert.equal(en.main.animations.categories.length,1);assert.equal(en.main.animations.categories[0].actions[0],'用鲸鱼尾巴拍打地面');assert.match(en.main.pets[0].whisperPrompt,/English/);
  const copy=C.characterCopy('white-dragon','en');assert.equal(copy.actionLabels['蓝鲸现世'],'Summon a tiny whale');
 });
-test('Q和姐姐使用同一身份桶，语言和角色变化可使在途回复失效',()=>{
- assert.equal(C.characterKey({id:'white-dragon',locale:'en',mode:'q'}),C.characterKey({id:'white-dragon',locale:'en',mode:'sister'}));
+test('身份桶只按角色和语言区分，角色变化可使在途回复失效',()=>{
+ assert.equal(C.characterKey({id:'white-dragon',locale:'en'}),'white-dragon/en');
  assert.notEqual(C.characterKey({id:'white-dragon',locale:'en'}),C.characterKey({id:'bluefish',locale:'en'}));
  assert.equal(C.changedResult('en').reason,'character-changed');
 });
-test('跨角色选择清除旧气泡，Q与姐姐切换保留同身份气泡并通知native回调',async t=>{
+test('跨角色选择清除旧气泡，同角色Q选择保留身份且IPC拒绝旧形态',async t=>{
  const f=fixture(t);f.write('skins/white-dragon/sprites.png',f.png);f.write('skins/white-dragon/sister.png',f.png);
  const handlers=new Map(),requests=[],changed=[];
  const hostRequest=async(method,route)=>{requests.push([method,route]);return {status:200,body:JSON.stringify(method==='GET'?{main:{pets:[{id:'main'}],animations:{idle:['呼吸'],moves:{actions:[]}}}}:{ok:true})};};
@@ -93,7 +120,8 @@ test('跨角色选择清除旧气泡，Q与姐姐切换保留同身份气泡并�
  require('./codex-skins.cjs').install({dataRoot:f.root,hostRequest,electronApi,onSelectionChanged:model=>changed.push(model.selection.character)});
  const frame={},sender={mainFrame:frame,getURL:()=>pathToFileURL(path.join(__dirname,'index.html')).href},event={sender,senderFrame:frame};
  await handlers.get('codex-skin:select')(event,{character:'white-dragon',mode:'q'});
- await handlers.get('codex-skin:select')(event,{character:'white-dragon',mode:'sister'});
+ await assert.rejects(handlers.get('codex-skin:select')(event,{character:'white-dragon',mode:'sister'}),/invalid-skin-selection/);
+ await handlers.get('codex-skin:select')(event,{character:'white-dragon',mode:'q'});
  assert.deepEqual(requests.filter(([method])=>method==='POST'),[['POST','/dsh-pet-7340/bubble/clear?pet=main']]);assert.deepEqual(changed,['white-dragon','white-dragon']);
 });
 test('系统语言用Windows UI Culture一次查询，中文归一，其他语言使用英文且隐藏PowerShell窗口',()=>{

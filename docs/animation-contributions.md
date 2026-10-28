@@ -2,7 +2,9 @@
 
 [Project home](../README.md) · [项目中文介绍](../README.zh-CN.md)
 
-We welcome original video clips for a small core animation set: idle, turn, walk, drag response, click response, thinking, working, waiting, success, and error. Start with idle, walk, or click response.
+White Dragon Girl has 15 chibi animations: ten core actions for idle, turn, walk, drag response, click response, thinking, working, waiting, success, and error, plus wing care, a nap curled around her tail, a little magic, a shy tail curl, and a smug pose. The first three extras can play while she idles; the last two join her click reactions. All five can be picked from the right-click menu.
+
+We welcome new gestures and improvements to existing clips. A small action that suits the character is a good place to start.
 
 Open an [Issue](https://github.com/Wxy545/codex-pet/issues) with a preview before spending time on a full set. Offering a clip does not import it into the pet automatically; the maintainer still needs to review its rights, adapt it, and test it on Windows.
 
@@ -43,4 +45,4 @@ Code and documentation use MIT. Third-party assets keep their own licenses; do n
 
 ## 中文投稿要点
 
-先开 Issue 附小预览、动作名称、时长和来源许可，再决定是否做整套。最终素材需要实际透明通道，并验证循环、动作衔接和 Windows 播放。绿底源视频可以先保留，后期另做抠像。白龙娘已有 10 段 Q 版核心视频，后续动作可在此基础上扩充，角色素材许可见[说明](../assets/white-dragon/NOTICE.md)。投稿由维护者逐项适配。
+先开 Issue 附小预览、动作名称、时长和来源许可，再决定是否做整套。最终素材需要实际透明通道，并验证循环、动作衔接和 Windows 播放。绿底源视频可以先保留，后期另做抠像。白龙娘已有 15 段 Q 版视频：10 个核心动作，加上整理龙翼、抱尾小憩、掌心微光、害羞卷尾和叉腰得意。前三个会随机出现，后两个加入点击回应，均可右键点播。欢迎继续扩充符合龙娘性格的动作，角色素材许可见[说明](../assets/white-dragon/NOTICE.md)。投稿由维护者逐项适配。

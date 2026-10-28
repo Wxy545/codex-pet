@@ -7,8 +7,8 @@ const A = require('./skin-actions.cjs');
 const { readCharacter, characterCopy } = require('./codex-character.cjs');
 const L = require('./codex-locale.cjs');
 const CHARACTERS = [{ id: 'white-dragon', label: '白龙娘', originalVideo: false }, { id: 'bluefish', label: '大肥鱼', originalVideo: true }];
-const MODES = ['q', 'sister', 'occasional'];
-const validSelection = value => value && CHARACTERS.some(character => character.id === value.character) && MODES.includes(value.mode);
+const knownCharacter = value => value && CHARACTERS.some(character => character.id === value.character);
+const validSelection = value => knownCharacter(value) && value.mode === 'q';
 
 async function saveJson(file, value) {
   await mkdir(path.dirname(file), { recursive: true });
@@ -73,19 +73,17 @@ function createSkinStore({ dataRoot, hostRequest, logger = console } = {}) {
     let input;
     try { input = JSON.parse(await readFile(path.join(directory, 'manifest.json'), 'utf8')); }
     catch (error) {
-      if (error.code !== 'ENOENT') { logger.warn('[Codex Pet] '+L.t('形象清单无法读取，保留原版显示。')); return { ...character, available: { q: character.originalVideo, sister: false, occasional: false }, invalidManifest: true, assets: {}, manifest: A.defaultManifest() }; }
+      if (error.code !== 'ENOENT') { logger.warn('[Codex Pet] '+L.t('形象清单无法读取，保留原版显示。')); return { ...character, available: { q: character.originalVideo }, invalidManifest: true, assets: {}, manifest: A.defaultManifest() }; }
     }
     let manifest;
     try { manifest = A.normalizeManifest(input); }
-    catch { logger.warn('[Codex Pet] '+L.t('形象清单格式无效，保留原版显示。')); return { ...character, available: { q: character.originalVideo, sister: false, occasional: false }, invalidManifest: true, assets: {}, manifest: A.defaultManifest() }; }
-    const names = [...new Set(Object.values(manifest.profiles).flatMap(profile => ['q', 'sister'].map(form => A.effectiveProfile(profile, form).file)))];
+    catch { logger.warn('[Codex Pet] '+L.t('形象清单格式无效，保留原版显示。')); return { ...character, available: { q: character.originalVideo }, invalidManifest: true, assets: {}, manifest: A.defaultManifest() }; }
+    const names = [...new Set(Object.values(manifest.profiles).map(profile => profile.file))];
     const images = await Promise.all(names.map(async name => [name, await (name.endsWith('.webm') ? videoAsset : pngAsset)(directory, name)]));
     const assets = Object.fromEntries(images);
-    const q = character.originalVideo || A.profileReady(manifest.profiles.idle, assets, 'q');
-    const sister = A.profileReady(manifest.profiles.idle, assets, 'sister');
-    return { ...character, available: { q, sister, occasional: q && sister }, assets, manifest, coverage: entries ? {
-      q: character.originalVideo ? { summary: { total: entries.length, dedicated: entries.length, shared: 0, missing: 0 }, originalVideos: true } : A.buildCoverage(entries, manifest, assets, 'q'),
-      sister: A.buildCoverage(entries, manifest, assets, 'sister'),
+    const q = character.originalVideo || A.profileReady(manifest.profiles.idle, assets);
+    return { ...character, available: { q }, assets, manifest, coverage: entries ? {
+      q: character.originalVideo ? { summary: { total: entries.length, dedicated: entries.length, shared: 0, missing: 0 }, originalVideos: true } : A.buildCoverage(entries, manifest, assets),
     } : null };
   }
 
@@ -101,13 +99,17 @@ function createSkinStore({ dataRoot, hostRequest, logger = console } = {}) {
     if (!selection) {
       try {
         const saved = JSON.parse(await readFile(selectionFile, 'utf8'));
-        if (validSelection(saved)) selection = { character: saved.character, mode: saved.mode };
+        // 旧选择仅迁移到同角色Q；旧素材留在磁盘，不再作为可选形态。
+        if (knownCharacter(saved) && ['q', 'sister', 'occasional'].includes(saved.mode)) {
+          selection = { character: saved.character, mode: 'q' };
+          if (saved.mode !== 'q') await saveJson(selectionFile, { ...saved, mode: 'q' });
+        }
       } catch (error) { if (error.code !== 'ENOENT') logger.warn('[Codex Pet] '+L.t('形象选择无法读取。')); }
       selection ??= { character: 'bluefish', mode: 'q' };
     }
     const selected = characters.find(character => character.id === selection.character);
     // 已选素材被移走时明确回原视频，不写掉用户保存的选择，恢复文件后仍能切回。
-    const effectiveSelection = selected?.available[selection.mode] ? selection : { character: 'bluefish', mode: 'q' };
+    const effectiveSelection = selected?.available.q ? selection : { character: 'bluefish', mode: 'q' };
     const model = { schemaVersion: 1, locale: identity.locale, selection: effectiveSelection, requestedSelection: selection, characters, catalog: entries, catalogStatus: entries ? 'known' : 'unknown' };
     await saveJson(path.join(skinsRoot, 'coverage.json'), { schemaVersion: 1, catalogStatus: model.catalogStatus, total: entries?.length ?? null, characters: Object.fromEntries(characters.map(character => [character.id, character.coverage ?? null])) });
     return model;
@@ -116,8 +118,8 @@ function createSkinStore({ dataRoot, hostRequest, logger = console } = {}) {
   async function select(value) {
     if (!validSelection(value)) throw new Error('invalid-skin-selection');
     const model = await readModel();
-    if (!model.characters.find(character => character.id === value.character)?.available[value.mode]) throw new Error('skin-unavailable');
-    const next = { character: value.character, mode: value.mode };
+    if (!model.characters.find(character => character.id === value.character)?.available.q) throw new Error('skin-unavailable');
+    const next = { character: value.character, mode: 'q' };
     await saveJson(selectionFile, { schemaVersion: 1, ...next });
     selection = next;
     return readModel();

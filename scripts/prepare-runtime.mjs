@@ -3,7 +3,7 @@ import { readFile, writeFile, copyFile, mkdir } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { resolve, dirname } from 'node:path';
 import { localizeHost, localizeCore, localizeEvents, localizeIndexHtml } from './runtime-locale-patches.mjs';
-import { patchHostAssets, patchBridgeAssets, patchDesktopMotion } from './upstream-fixes.mjs';
+import { patchHostAssets, patchBridgeAssets, patchDesktopMotion, patchDesktopBalanceEvents, patchDesktopWorkEvents, patchDesktopWorkResume } from './upstream-fixes.mjs';
 import { seedBundledWhiteDragon } from './bundled-skins.mjs';
 
 const root=resolve(dirname(fileURLToPath(import.meta.url)),'..');
@@ -49,9 +49,9 @@ await writeFile(resolve(pkg,'lib/codex-host.js'),host);
 const core=resolve(pkg,'runtime/electron-helper/shared-core.js');
 await writeFile(core,localizeCore(quotaPatch(await readFile(core,'utf8'))));
 const events=resolve(pkg,'runtime/electron-helper/events.js');
-await writeFile(events,localizeEvents(await readFile(events,'utf8')));
+await writeFile(events,localizeEvents(patchDesktopWorkEvents(patchDesktopBalanceEvents(await readFile(events,'utf8')))));
 const sprite=resolve(pkg,'runtime/electron-helper/sprite.js');
-await writeFile(sprite,patchDesktopMotion(await readFile(sprite,'utf8')));
+await writeFile(sprite,patchDesktopWorkResume(patchDesktopMotion(await readFile(sprite,'utf8'))));
 // 仅向原桌面壳追加通知入口，动画、物理、菜单仍运行原实现。
 const main=resolve(pkg,'runtime/electron-helper/main.js');
 let mainCode=await readFile(main,'utf8');
