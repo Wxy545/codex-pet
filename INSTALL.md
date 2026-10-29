@@ -22,8 +22,7 @@ WorkBuddy 的完整自动安装步骤见 [INSTALL.workbuddy.md](INSTALL.workbudd
 
 ```powershell
 $installer = Join-Path $env:TEMP ('codex-pet-install-' + [Guid]::NewGuid().ToString('N') + '.ps1')
-$file = Invoke-RestMethod 'https://api.github.com/repos/Wxy545/codex-pet/contents/install.ps1?ref=main' -Headers @{'User-Agent'='codex-pet'}
-[IO.File]::WriteAllBytes($installer, [Convert]::FromBase64String($file.content))
+Invoke-WebRequest 'https://raw.githubusercontent.com/Wxy545/codex-pet/main/install.ps1' -UseBasicParsing -OutFile $installer
 ```
 
 安装为 Codex 桌宠：

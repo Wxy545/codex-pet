@@ -17,8 +17,7 @@
 ```powershell
 $ErrorActionPreference = 'Stop'
 $installer = Join-Path $env:TEMP ('codex-pet-workbuddy-install-' + [Guid]::NewGuid().ToString('N') + '.ps1')
-$file = Invoke-RestMethod 'https://api.github.com/repos/Wxy545/codex-pet/contents/install.ps1?ref=main' -Headers @{'User-Agent'='codex-pet'}
-[IO.File]::WriteAllBytes($installer, [Convert]::FromBase64String($file.content))
+Invoke-WebRequest 'https://raw.githubusercontent.com/Wxy545/codex-pet/main/install.ps1' -UseBasicParsing -OutFile $installer
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File $installer -CompanionHost workbuddy
 if ($LASTEXITCODE -ne 0) { throw "Codex Pet 安装失败，退出码：$LASTEXITCODE。请保留安装器的实际错误。" }
 ```

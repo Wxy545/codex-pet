@@ -23,6 +23,33 @@ $installerTarget = [IO.Path]::GetFullPath($InstallDir)
 $installerTemp = Join-Path ([IO.Path]::GetTempPath()) ('codex-pet-' + [Guid]::NewGuid().ToString('N'))
 $installerOldPath = $env:PATH
 
+function Get-InstallerSourceCommit {
+    try {
+        $taskRef = Invoke-RestMethod ('https://api.github.com/repos/' + $installerRepo + '/git/ref/heads/main') -Headers @{ 'User-Agent' = 'codex-pet-installer' } -UseBasicParsing
+        $taskCommit = [string]$taskRef.object.sha
+    } catch {
+        $taskHttpStatus = 0
+        if ($_.Exception.Response -and $_.Exception.Response.StatusCode) { $taskHttpStatus = [int]$_.Exception.Response.StatusCode }
+        if ($taskHttpStatus -notin @(403, 429)) { throw }
+        # 匿名API限流时只查同一官方仓库的main提交流，下载仍固定到解析出的SHA。
+        $taskFeed = Invoke-WebRequest ('https://github.com/' + $installerRepo + '/commits/main.atom') -Headers @{ 'User-Agent' = 'codex-pet-installer' } -UseBasicParsing
+        try {
+            $taskXml = [Xml.XmlDocument]::new()
+            $taskXml.XmlResolver = $null
+            $taskXml.LoadXml([string]$taskFeed.Content)
+            $taskNamespaces = [Xml.XmlNamespaceManager]::new($taskXml.NameTable)
+            $taskNamespaces.AddNamespace('atom', 'http://www.w3.org/2005/Atom')
+            $taskId = $taskXml.SelectSingleNode('/atom:feed/atom:entry[1]/atom:id', $taskNamespaces)
+            if (-not $taskId -or $taskId.InnerText -notmatch '^tag:github\.com,2008:Grit::Commit/([a-f0-9]{40})$') { throw 'invalid-atom-commit' }
+            $taskCommit = $Matches[1]
+        } catch {
+            throw (Get-CodexPetText 'GitHub 返回的源码版本无效。' 'GitHub returned an invalid source revision.')
+        }
+    }
+    if ($taskCommit -notmatch '^[a-f0-9]{40}$') { throw (Get-CodexPetText 'GitHub 返回的源码版本无效。' 'GitHub returned an invalid source revision.') }
+    return $taskCommit
+}
+
 function Get-UsableNode {
     $candidate = Get-Command node.exe -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1
     if (-not $candidate) { return $null }
@@ -104,9 +131,7 @@ try {
     }
     New-Item -ItemType Directory -Path $installerTemp | Out-Null
     Write-Host (Get-CodexPetText '正在下载 Codex Pet ...' 'Downloading Codex Pet...')
-    $ref = Invoke-RestMethod ('https://api.github.com/repos/' + $installerRepo + '/git/ref/heads/main') -Headers @{ 'User-Agent' = 'codex-pet-installer' } -UseBasicParsing
-    $sourceCommit = [string]$ref.object.sha
-    if ($sourceCommit -notmatch '^[a-f0-9]{40}$') { throw (Get-CodexPetText 'GitHub 返回的源码版本无效。' 'GitHub returned an invalid source revision.') }
+    $sourceCommit = Get-InstallerSourceCommit
     # 一次安装固定到同一个提交，避免安装过程中 main 变化造成文件混用。
     $archive = Join-Path $installerTemp 'source.zip'
     Invoke-WebRequest ('https://github.com/' + $installerRepo + '/archive/' + $sourceCommit + '.zip') -UseBasicParsing -OutFile $archive

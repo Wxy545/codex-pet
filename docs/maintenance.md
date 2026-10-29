@@ -2,6 +2,8 @@
 
 产品名为 Codex Pet，公开仓库为 `Wxy545/codex-pet`。新安装默认目录为 `%LOCALAPPDATA%\codex-pet`；已有安装可以保留原目录。底层协议、通知身份等兼容标识不随产品名变更。
 
+安装入口从本仓库官方 Raw 地址获取安装器。源码提交查询遇到 GitHub 匿名 API 的 403/429 时，只改读同仓库 `main.atom` 的首条提交，仍按确切 SHA 下载 ZIP；其他错误不切换来源，也不要求用户配置 GitHub 凭据。
+
 ## 从源码运行
 
 需要 Windows 和 Node.js 22.12 或更高版本。Codex 模式另需已登录的 Codex CLI；WorkBuddy 模式使用该客户端自带的 CLI。日常安装可直接按 [INSTALL.md](../INSTALL.md) 操作；下面的步骤供修改源码时使用。
