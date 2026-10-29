@@ -15,32 +15,29 @@ Built on [dsh-pet](https://github.com/PC2005-cloud/dsh-pet), with task status, d
 
 ## Install
 
-Windows only. For Codex mode, install and sign in to Codex CLI first, then send this to Codex:
+Windows 64-bit. Send the matching message below to the assistant you use.
+
+### WorkBuddy: Curly the sheep
+
+Open WorkBuddy on Windows, sign in, and send:
+
+```text
+Install and launch this WorkBuddy desktop pet on my Windows PC: https://github.com/Wxy545/codex-pet/blob/main/INSTALL.workbuddy.md
+```
+
+The pet launches when setup finishes, with **Curly the sheep as the default**. WorkBuddy runs the installer to handle the download, runtime, task-event connection, and launch settings. You don't need to install dependencies or edit configuration files. Codex CLI is not required.
+
+### Codex: White Dragon Girl
+
+Install and sign in to Codex CLI first, then send this to Codex:
 
 ```text
 Install and start https://github.com/Wxy545/codex-pet on Windows. Follow the repository’s INSTALL.md.
 ```
 
-In WorkBuddy on Windows, send:
+New Codex installations start with White Dragon Girl. Both options enable launch alongside the selected app and keep any saved character choice.
 
-```text
-Read https://github.com/Wxy545/codex-pet/blob/main/INSTALL.workbuddy.md and install and start the pet for WorkBuddy on this Windows PC.
-```
-
-WorkBuddy handles the download and setup, including its event plugin and follow-start. New WorkBuddy installations start with Curly the sheep; Codex installations start with White Dragon Girl. Existing character choices are kept. WorkBuddy mode does not require Codex CLI; the current integration targets WorkBuddy 5.9.3.
-
-The installer prepares Node.js and the desktop runtime; Git is optional. The default folder is `%LOCALAPPDATA%\codex-pet`. The interface follows your Windows display language: Chinese for Chinese-language systems, English for all others.
-
-<details>
-<summary>Install from PowerShell</summary>
-
-```powershell
-$installer = Join-Path $env:TEMP 'codex-pet-install.ps1'; $file = Invoke-RestMethod 'https://api.github.com/repos/Wxy545/codex-pet/contents/install.ps1?ref=main' -Headers @{'User-Agent'='codex-pet'}; [IO.File]::WriteAllBytes($installer, [Convert]::FromBase64String($file.content)); powershell.exe -NoProfile -ExecutionPolicy Bypass -File $installer
-```
-
-For WorkBuddy, add `-CompanionHost workbuddy` at the end.
-
-</details>
+The default folder is `%LOCALAPPDATA%\codex-pet`; Git is optional. The interface follows your Windows display language: Chinese for Chinese-language systems, English for all others.
 
 The pet starts with your selected app after installation. Use **Companion app** in the right-click menu to switch between Codex and WorkBuddy. You can also double-click `Start Codex Pet.vbs` or `Stop Codex Pet.vbs` in the installation folder. After a manual stop, it stays stopped until the next launch of the selected app. See [INSTALL.md](INSTALL.md) for WorkBuddy setup, custom paths, and manual installation.
 
@@ -97,6 +94,11 @@ Open **Startup scene** in the right-click or tray menu to choose **Pet only**, *
 
 <img src="docs/assets/startup-scene.jpg" width="720" alt="White Dragon Girl and the window reveal in the startup cinematic">
 
+For updates, troubleshooting, or disabling launch alongside your app, ask your assistant to follow the [maintenance guide](docs/maintenance.md).
+
+<details>
+<summary>Manual settings and development</summary>
+
 To stop the pet from launching with the selected app:
 
 ```powershell
@@ -106,6 +108,8 @@ powershell -File scripts/disable-follow.ps1
 See [maintenance](docs/maintenance.md) for Codex and dsh-pet update checks, development setup, and troubleshooting. For a daily check, ask Codex to set up a maintenance task for your installation.
 
 After updating the source, run `node scripts/prepare-runtime.mjs` to prepare the bundled characters and startup film. Custom skins and your saved choices are kept.
+
+</details>
 
 ## DeepSeek Harness
 

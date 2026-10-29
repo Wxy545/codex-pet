@@ -15,32 +15,29 @@
 
 ## 安装
 
-目前只支持 Windows。使用 Codex 时，先安装并登录 Codex CLI，再把这句话发给 Codex：
+支持 Windows 64 位。选择你正在使用的助手，把对应的一句话发给它即可。
+
+### WorkBuddy：默认卷卷小羊
+
+在已安装并登录的 Windows 版 WorkBuddy 中发送：
+
+```text
+帮我下载安装并启动这个 WorkBuddy 桌宠：https://github.com/Wxy545/codex-pet/blob/main/INSTALL.workbuddy.md
+```
+
+装好后自动启动，**默认显示卷卷小羊**。下载、运行环境、事件联动和跟随启动由 WorkBuddy 调用安装器完成，用户不用手工安装依赖或修改配置，也无需安装 Codex CLI。
+
+### Codex：默认白龙娘
+
+先安装并登录 Codex CLI，再把这句话发给 Codex：
 
 ```text
 帮我安装并启动 https://github.com/Wxy545/codex-pet，按仓库的 INSTALL.md 操作。
 ```
 
-使用 Windows 版 WorkBuddy 时，直接把这句话发给 WorkBuddy：
+Codex 新安装默认白龙娘。两种安装方式都会开启跟随启动，已有形象选择保留。
 
-```text
-请读取 https://github.com/Wxy545/codex-pet/blob/main/INSTALL.workbuddy.md，帮我在这台 Windows 上下载安装并启动 WorkBuddy 桌宠。
-```
-
-WorkBuddy 会完成下载、运行环境准备、事件插件注册和跟随启动。WorkBuddy 新安装默认卷卷小羊，Codex 新安装默认白龙娘，已有形象选择保留。WorkBuddy 模式不需要 Codex CLI，当前适配 WorkBuddy 5.9.3。
-
-安装器会准备 Node.js 和桌宠运行环境，不需要预装 Git，默认安装到 `%LOCALAPPDATA%\codex-pet`。界面跟随 Windows 显示语言：中文系统使用中文，其他语言使用英文。
-
-<details>
-<summary>自己在 PowerShell 中安装</summary>
-
-```powershell
-$installer = Join-Path $env:TEMP 'codex-pet-install.ps1'; $file = Invoke-RestMethod 'https://api.github.com/repos/Wxy545/codex-pet/contents/install.ps1?ref=main' -Headers @{'User-Agent'='codex-pet'}; [IO.File]::WriteAllBytes($installer, [Convert]::FromBase64String($file.content)); powershell.exe -NoProfile -ExecutionPolicy Bypass -File $installer
-```
-
-安装为 WorkBuddy 桌宠时，在末尾加上 `-CompanionHost workbuddy`。
-
-</details>
+默认安装到 `%LOCALAPPDATA%\codex-pet`，不需要预装 Git。界面跟随 Windows 显示语言：中文系统使用中文，其他语言使用英文。
 
 安装后默认跟随所选应用启动。右键「联动应用」可在 Codex 和 WorkBuddy 之间切换。也可以在安装目录双击 `Start Codex Pet.vbs` 启动，双击 `Stop Codex Pet.vbs` 停止。手动停止后，等下次启动所选应用再跟随启动。WorkBuddy 接入、自定义目录和手动安装见 [INSTALL.md](INSTALL.md)。
 
@@ -97,6 +94,11 @@ $installer = Join-Path $env:TEMP 'codex-pet-install.ps1'; $file = Invoke-RestMet
 
 <img src="docs/assets/startup-scene.jpg" width="720" alt="龙娘启动电影与窗口揭幕">
 
+需要关闭跟随启动、更新或排查问题时，可以让当前助手按[维护文档](docs/maintenance.md)处理。
+
+<details>
+<summary>手动设置与源码维护</summary>
+
 关闭跟随启动：
 
 ```powershell
@@ -106,6 +108,8 @@ powershell -File scripts/disable-follow.ps1
 Codex 和 dsh-pet 的更新检查、源码运行及故障排查见[维护文档](docs/maintenance.md)。需要定时检查时，可以让 Codex 为你的安装设置每日维护任务。
 
 更新源码后运行 `node scripts/prepare-runtime.mjs`，准备内置角色包和启动电影；自定义皮肤与已经保存的选择保留。
+
+</details>
 
 ## DeepSeek Harness
 
