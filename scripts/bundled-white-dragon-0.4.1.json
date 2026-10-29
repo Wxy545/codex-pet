@@ -1,0 +1,29 @@
+{
+  "schemaVersion": 1,
+  "version": "0.4.1",
+  "files": {
+    "manifest.json": "05f50081384708e9678d6856fad337c1fc954e6bb52f17d7a98aa6eb622da0e7",
+    "NOTICE.md": "a3f37db29168a8c86ee1b58a799279413c503cf7b165e72242bb14a7f52fbcaa",
+    "q-idle.webm": "8b5913ac8edc9795ac90e49e16669babd8ae33f3176abd1a61fdf22139fcaa3e",
+    "q-walk-left.webm": "276ea56a74c51019d966d8f3a46dbaa0b5ac76750a408873eddeb48e02b704e8",
+    "q-click.webm": "63b1df517352de5c350ac09460e55a72a2682588491026b3636d6d3a60bef079",
+    "q-turn.webm": "5a881294f863cbb3503915c902e67c8eb927b3107b44192d8eb140501d9e50dd",
+    "q-drag.webm": "020cfa559f20deb97d5c83d67d0270f5fc25e6b329df068efafbf3a85e2f86d6",
+    "q-thinking.webm": "ac9b758f8bd91d6cc648900c69db4269e77347af9bdda3dcd8a3101c77fbc99b",
+    "q-working.webm": "27a1ccade00739f29c367535b3fbfd2d50e35607db6d9d0b46174dfbe2a806bf",
+    "q-waiting.webm": "965e65918ac0f45daa2473fd0889a9ecfec8a19e5d8ce9893cd2095ddbef92f1",
+    "q-success.webm": "7b264df56cf3a0fba2ff384b2b36d31ab5be38b22ded0800fdbccdbe1f8c361f",
+    "q-error.webm": "6494fa30756faa61b153aa9acab3617ae0ab11e588a9ccd0274787568bb43401",
+    "q-wing-care.webm": "c90ecb8fcc1e8a06f277ac73f85f2dcad1bbe766a753b05915b2882fd3e5ef17",
+    "q-tail-nap.webm": "a3063b2126d1862e73969a66d47c9540aadeff32bf22ed111feb416095e0ca84",
+    "q-magic.webm": "631842136b18d345a0d43da44beb893cc9d3ba430889835e2967afe2589c4fec",
+    "q-shy.webm": "31c73c5cb7fee4bf48247ef377953e176a20320facdfdc1fd103de0c7cc95441",
+    "q-proud.webm": "a16522c5a2fd4e34534a8f133b0d86ed2e230999041a8230c085e7a033dfbba6",
+    "q-dragon-snack.webm": "690a47e77715e6c532d317039cc959a1e08d6099bead11f86c4c6da81eb9a9b5",
+    "q-wing-fan.webm": "38eb508ff92483a2bfc0a751266517f24bf9e51f415d868092f7bc1c771193de",
+    "q-greeting.webm": "f1b805542d21fe41c454fa818460c51877a3f87fab8e65741c8225e0cf5e0e16",
+    "q-tickle.webm": "adb83ad01bba77f9d56c4a6727a71edf6894326d16bd57fc8a369f4ed73b2616",
+    "q-wing-hover.webm": "bfd1c92eba6328e3f2793ccef72a60da26971f29aabb3a9caef79e9f6af56de6",
+    "q-cushion-rest.webm": "c500a84cc377d8f94ef8b3a742cd7286fd5202c9951df61dac1a1833f971a5fd"
+  }
+}

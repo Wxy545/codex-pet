@@ -65,6 +65,18 @@ test('English pack contains localized role, menu actions and status text',()=>{
   assert.equal(built.config.animations.categories.reduce((n,c)=>n+c.weight,0),80);
 });
 
+test('护宝石是同一实际视频的玩耍和宽裕档共用，不新增空槽或缺片名称',t=>{
+  const candidate=structuredClone(manifest);candidate.profiles['treasure-guard']={type:'video',file:'q-treasure-guard.webm'};
+  candidate.actions={'余额-钱袋满溢':{profile:'treasure-guard',coverage:'shared'},'原地专心玩魔方':{profile:'treasure-guard',coverage:'shared'}};
+  for(const locale of ['zh-CN','en']){
+    const f=fixture(t,locale,candidate),label=locale==='en'?'Guarding a gem':'护住小宝石';
+    assert.equal(Object.keys(f.built.media).length,23);assert.equal(f.built.media[label+'.webm'],'q-treasure-guard.webm');
+    assert.ok(f.built.config.animations.categories[1].actions.includes(label));assert.equal(f.built.config.animations.events.balance[0],label);
+    assert.equal(f.built.config.animations.events.balance.length,6);assert.equal(Pack.seedHarnessPack({sourceRoot:f.sourceRoot,dshHome:f.home,locale}).videos,23);
+  }
+  assert.equal(definition('en').config.animations.events.balance[0],'Feeling smug');
+});
+
 test('optional seated profiles allow the existing pack or either new action without placeholder entries',t=>{
   for(const available of [[],['book-reading'],['cushion-rest'],['book-reading','cushion-rest']]){
     const candidate=structuredClone(manifest);

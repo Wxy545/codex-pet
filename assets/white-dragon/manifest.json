@@ -84,6 +84,14 @@
     "cushion-rest": {
       "type": "video",
       "file": "q-cushion-rest.webm"
+    },
+    "book-reading": {
+      "type": "video",
+      "file": "q-book-reading.webm"
+    },
+    "treasure-guard": {
+      "type": "video",
+      "file": "q-treasure-guard.webm"
     }
   },
   "actions": {
@@ -178,6 +186,18 @@
     "悠闲哼歌": {
       "profile": "cushion-rest",
       "coverage": "dedicated"
+    },
+    "轻快记录": {
+      "profile": "book-reading",
+      "coverage": "dedicated"
+    },
+    "原地专心玩魔方": {
+      "profile": "treasure-guard",
+      "coverage": "shared"
+    },
+    "余额-钱袋满溢": {
+      "profile": "treasure-guard",
+      "coverage": "shared"
     }
   }
 }

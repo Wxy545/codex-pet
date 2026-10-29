@@ -9,6 +9,8 @@ const L = require('./codex-locale.cjs');
 
 const MODES = ['pet', 'startup', 'both'];
 const DURATION_MS = 14400;
+const FILM_DURATION_MS = 12000;
+const FILM_MAX_BYTES = 96 * 1024 * 1024;
 const WATCHDOG_MS = 22000;
 const CHANNELS = ['get', 'set', 'preview', 'scene', 'target', 'ready', 'finish'];
 const PROFILES = ['idle', 'wing-care', 'greeting', 'turn', 'working', 'magic', 'success'];
@@ -140,6 +142,21 @@ function createController({ electron, dataRoot, fileRoot = __dirname, timers = g
       return assets;
     } catch { return {}; }
   }
+  function cinematicVideo() {
+    try {
+      const directory = path.join(dataRoot, 'startup-media');
+      const file = path.join(directory, 'white-dragon-cinematic.webm');
+      const realRoot = fs.realpathSync(dataRoot), realDirectory = fs.realpathSync(directory);
+      if (path.relative(realRoot, realDirectory) !== 'startup-media' || fs.lstatSync(directory).isSymbolicLink() || fs.lstatSync(file).isSymbolicLink()) return null;
+      const realFile = fs.realpathSync(file), stat = fs.statSync(realFile);
+      if (path.dirname(realFile) !== realDirectory || !stat.isFile() || stat.size < 16 || stat.size > FILM_MAX_BYTES) return null;
+      const descriptor = fs.openSync(realFile, 'r'), header = Buffer.alloc(512);
+      let length;
+      try { length = fs.readSync(descriptor, header, 0, header.length, 0); } finally { fs.closeSync(descriptor); }
+      if (length < 12 || !header.subarray(0, 4).equals(Buffer.from('1a45dfa3', 'hex')) || !header.subarray(4, length).includes(Buffer.from('4282847765626d', 'hex'))) return null;
+      return pathToFileURL(realFile).href;
+    } catch { return null; }
+  }
   async function probeTarget() {
     if (disposed) return { ok: false, ready: false };
     if (targetAt && Date.now() - targetAt < 800) return target;
@@ -152,8 +169,9 @@ function createController({ electron, dataRoot, fileRoot = __dirname, timers = g
   const allowed = reason => ['preview', 'codex', 'manual'].includes(reason) && !(reason === 'codex' && mode === 'pet' || reason === 'manual' && mode !== 'startup');
   async function open(reason) {
     if (disposed || opening || windowRef || !allowed(reason)) return false;
-    const assets = videoAssets();
-    if (!assets.idle) return false;
+    const film = cinematicVideo();
+    const assets = film ? {} : videoAssets();
+    if (!film && !assets.idle) return false;
     opening = true;
     const epoch = generation;
     try {
@@ -176,7 +194,7 @@ function createController({ electron, dataRoot, fileRoot = __dirname, timers = g
         webPreferences: { preload: path.join(fileRoot, 'startup-preload.cjs'), contextIsolation: true, nodeIntegration: false, sandbox: true, backgroundThrottling: false, autoplayPolicy: 'no-user-gesture-required' },
       });
       windowRef = win;
-      scene = { video: assets.idle, assets, reason, target: targetView(located), durationMs: DURATION_MS, locale: locale(), copy: COPY[locale()] || COPY.en };
+      scene = { video: film || assets.idle, assets, film: Boolean(film), reason, target: targetView(located), durationMs: film ? FILM_DURATION_MS : DURATION_MS, locale: locale(), copy: COPY[locale()] || COPY.en };
       // 主进程超时独立于渲染器；视频加载失败或页面卡住也不会留下遮挡窗口。
       timeout = timers.setTimeout(finish, WATCHDOG_MS);
       timeout?.unref?.();

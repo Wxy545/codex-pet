@@ -30,8 +30,9 @@ const LABELS = {
   'dragon-snack': ['吃星形饼干', 'Star-cookie snack'], 'wing-fan': ['扇翼纳凉', 'Wing fan'],
   greeting: ['招手眨眼', 'A little wave'], tickle: ['怕痒缩肩', 'Ticklish shrug'], 'wing-hover': ['振翼踏步', 'Wing-assisted steps'],
   'book-reading': ['抱书阅读', 'Reading a spellbook'], 'cushion-rest': ['坐垫歇息', 'Cushion break'],
+  'treasure-guard': ['护住小宝石', 'Guarding a gem'],
 };
-const OPTIONAL_PROFILES = new Set(['book-reading', 'cushion-rest']);
+const OPTIONAL_PROFILES = new Set(['book-reading', 'cushion-rest', 'treasure-guard']);
 
 /** 只把实际视频放进原生动画池；事件槽可以共用，不虚增专属动作。 */
 export function buildHarnessConfig({ manifest, locale = 'zh-CN', copy }) {
@@ -43,7 +44,8 @@ export function buildHarnessConfig({ manifest, locale = 'zh-CN', copy }) {
     if (profile === undefined && OPTIONAL_PROFILES.has(key)) continue;
     if (profile?.type !== 'video' || !sourceName(profile.file)) throw new Error('harness-profile-video-required: ' + key);
     const action = Object.entries(manifest.actions ?? {}).find(([, value]) => value.profile === key)?.[0];
-    const label = copy.actionLabels?.[action] || labels[english ? 1 : 0];
+    // 护宝石同时绑定额度与玩耍槽，原生媒体名称不能由actions对象的顺序决定。
+    const label = key === 'treasure-guard' ? labels[english ? 1 : 0] : copy.actionLabels?.[action] || labels[english ? 1 : 0];
     if (!targetName(label + '.webm') || media[label + '.webm']) throw new Error('invalid-harness-action-label');
     names[key] = label; media[label + '.webm'] = profile.file;
   }
@@ -59,9 +61,9 @@ export function buildHarnessConfig({ manifest, locale = 'zh-CN', copy }) {
       moves: { default: { minDist: 60, maxDist: 240, margin: 20, leadSec: .12, tailSec: .12 },
         actions: [{ name: names.walk }, { name: names['wing-hover'], params: { minDist: 40, maxDist: 120 } }] },
       categories: [group(english ? 'Little gestures' : '小动作', 20, ['wing-care', 'tail-nap', 'book-reading', 'cushion-rest']),
-        group(english ? 'Play' : '玩耍', 20, ['magic']), group(english ? 'Snacks' : '吃什么', 16, ['dragon-snack']),
+        group(english ? 'Play' : '玩耍', 20, ['magic', 'treasure-guard']), group(english ? 'Snacks' : '吃什么', 16, ['dragon-snack']),
         group(english ? 'Cooling off' : '时节', 14, ['wing-fan']), group(english ? 'Greetings' : '招呼', 10, ['greeting'])],
-      events: { balance: ['proud', 'success', 'idle', 'thinking', 'waiting', 'error'].map(key => names[key]),
+      events: { balance: ['treasure-guard' in names ? 'treasure-guard' : 'proud', 'success', 'idle', 'thinking', 'waiting', 'error'].map(key => names[key]),
         whisper: ['working', 'thinking', 'greeting'].map(key => names[key]),
         workStatus: ['thinking', 'working', 'working', 'waiting', 'success', 'error'].map(key => names[key]) },
     },
@@ -72,7 +74,7 @@ export function buildHarnessConfig({ manifest, locale = 'zh-CN', copy }) {
   return { config, media, coverage: { videos: Object.keys(media).length, balanceSlots: 6, whisperSlots: 3, workSlots: 6, sharedWorkResult: true } };
 }
 
-/** 动作引用必须与实际媒体逐一对应；两条新动作可缺省，旧核心动作不能缺。 */
+/** 动作引用必须与实际媒体逐一对应；新增动作可缺省，旧核心动作不能缺。 */
 function referencedMedia(config, locale) {
   const animations = config?.animations;
   if (!animations) throw new Error('invalid-harness-pack');

@@ -5,6 +5,7 @@ import { resolve, dirname } from 'node:path';
 import { localizeHost, localizeCore, localizeEvents, localizeIndexHtml } from './runtime-locale-patches.mjs';
 import { patchHostAssets, patchBridgeAssets, patchDesktopMotion, patchDesktopBalanceEvents, patchDesktopWorkEvents, patchDesktopWorkResume } from './upstream-fixes.mjs';
 import { seedBundledWhiteDragon } from './bundled-skins.mjs';
+import { seedBundledStartup } from './bundled-startup.mjs';
 import { patchStartupMain } from './startup-runtime-patch.mjs';
 
 const root=resolve(dirname(fileURLToPath(import.meta.url)),'..');
@@ -100,9 +101,10 @@ for(const file of ['codex-notifications.cjs','foreground-codex.ps1','codex-api.c
   'codex-skins.cjs','codex-skin-renderer.js','skin-actions.cjs','codex-character.cjs','codex-locale.cjs','locale-en.cjs','codex-runtime-locale.cjs','panel-locale.js','runtime-range.cjs']){
   await copyFile(resolve(root,'src',file),resolve(pkg,'runtime/electron-helper',file));
 }
-for(const file of ['codex-startup.cjs','startup-target.ps1','startup-preload.cjs','startup-menu.js','startup-window.html','startup-window.js','startup-window.css']){
+for(const file of ['codex-startup.cjs','startup-target.ps1','startup-preload.cjs','startup-menu.js','startup-window.html','startup-window.js','startup-window.css','startup-cinema.js','startup-cinema.css']){
   await copyFile(resolve(root,'src',file),resolve(pkg,'runtime/electron-helper',file));
 }
 await mkdir(resolve(root,'data'),{recursive:true});
 await seedBundledWhiteDragon({projectRoot:root});
+await seedBundledStartup({projectRoot:root});
 console.log('dsh-pet 0.3.8 runtime prepared: Codex Pet.');

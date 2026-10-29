@@ -139,3 +139,33 @@ test('窗口helper请求只允许固定动作，输出不传递路径标题或�
  assert.deepEqual(Startup.normalizeTarget({ok:true,ready:true,bounds:{x:NaN,y:0,width:20,height:30}}),{ok:true,ready:false});
  assert.deepEqual(await Startup.createTargetRequest({platform:'linux'})('probe'),{ok:false,ready:false});
 });
+
+test('自有电影优先于Q片且不依赖桌宠清单，来源只暴露受控WebM文件',async t=>{
+ const f=fixture(t,'both'),directory=path.join(f.root,'startup-media');fs.mkdirSync(directory);
+ fs.copyFileSync(path.join(f.root,'skins/white-dragon/q-idle.webm'),path.join(directory,'white-dragon-cinematic.webm'));
+ fs.rmSync(path.join(f.root,'skins'),{recursive:true});
+ const c=Startup.createController({electron:f.electron,dataRoot:f.root,fileRoot:__dirname,timers:f.timerApi,targetRequest:f.targetRequest});t.after(()=>c.dispose());
+ assert.equal(await c.open('preview'),true);const win=f.windows[0],scene=f.handlers.get('codex-startup:scene')({sender:win.webContents});
+ assert.equal(scene.film,true);assert.match(scene.video,/startup-media\/white-dragon-cinematic\.webm$/);assert.deepEqual(scene.assets,{});assert.equal(scene.durationMs,12000);
+ assert.equal([...f.timers.values()].some(timer=>timer.ms===22000),true);
+});
+
+test('电影缺失、空文件、坏容器和超大文件只使用原Q路径，不打开任意文件',async t=>{
+ const f=fixture(t,'both'),directory=path.join(f.root,'startup-media');fs.mkdirSync(directory);
+ const file=path.join(directory,'white-dragon-cinematic.webm');
+ const c=Startup.createController({electron:f.electron,dataRoot:f.root,fileRoot:__dirname,timers:f.timerApi,targetRequest:f.targetRequest});t.after(()=>c.dispose());
+ for(const [index,input] of [null,Buffer.alloc(0),Buffer.from('not a webm video container'),Buffer.from('1a45dfa3934282847765626d000000000000','hex')].entries()){
+  if(input!==null)fs.writeFileSync(file,input);
+  if(index===3)fs.truncateSync(file,96*1024*1024+1);
+  assert.equal(await c.open('preview'),true);const win=f.windows.at(-1),scene=f.handlers.get('codex-startup:scene')({sender:win.webContents});
+  assert.equal(scene.film,false);assert.match(scene.video,/q-idle\.webm$/);f.handlers.get('codex-startup:finish')({sender:win.webContents});
+ }
+});
+
+test('电影目录junction不能越过预期目录，即使被指向文件也是WebM也不加载',async t=>{
+ const f=fixture(t,'both'),outside=path.join(f.root,'outside-film');fs.mkdirSync(outside);
+ fs.copyFileSync(path.join(f.root,'skins/white-dragon/q-idle.webm'),path.join(outside,'white-dragon-cinematic.webm'));
+ fs.symlinkSync(outside,path.join(f.root,'startup-media'),'junction');
+ const c=Startup.createController({electron:f.electron,dataRoot:f.root,fileRoot:__dirname,timers:f.timerApi,targetRequest:f.targetRequest});t.after(()=>c.dispose());
+ await c.open('preview');const win=f.windows[0],scene=f.handlers.get('codex-startup:scene')({sender:win.webContents});assert.equal(scene.film,false);assert.match(scene.video,/q-idle\.webm$/);
+});

@@ -1,0 +1,15 @@
+body.cinema-active{background:transparent}body.cinema-active>.scene{display:none}
+.cinema{position:fixed;inset:0;overflow:hidden;isolation:isolate;background:#e8ebf2;color:#252735;font-family:"Segoe UI","Microsoft YaHei",sans-serif;opacity:0}
+.cinema-video{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;z-index:0}
+.cinema-app{position:absolute;inset:0;z-index:3;transform-origin:0 0;opacity:0;border:1px solid #ffffffc4;border-radius:18px;background:linear-gradient(145deg,#fffffff5,#eff1f9ed);box-shadow:0 20px 100px #7375a83d,0 1px 0 #ffffffd9 inset;overflow:hidden;pointer-events:none;will-change:transform,opacity}
+.cinema-app-chrome{position:absolute;top:0;left:0;right:0;height:46px;display:flex;justify-content:space-between;align-items:center;padding:0 24px;border-bottom:1px solid #9da2bf21;color:#8e91a0;font-size:15px}
+.cinema-app-nav{font-size:20px;letter-spacing:7px}.cinema-app-window-controls{letter-spacing:20px;font:15px Consolas,monospace}
+.cinema-app-brand{position:absolute;left:0;right:0;top:38%;margin:0;text-align:center;font-size:clamp(30px,4.2vw,68px);letter-spacing:-.055em;font-weight:500;color:#262936;text-shadow:0 1px 0 white}
+.cinema-composer{position:absolute;left:23%;right:23%;top:59%;min-height:95px;border:1px solid #b3b8cb54;border-radius:22px;padding:22px 23px 18px;background:#ffffffd9;box-shadow:0 3px 18px #555b8810;color:#737685}
+.cinema-composer-placeholder{font-size:clamp(12px,1.2vw,18px);line-height:1.4}.cinema-composer-tools{display:flex;justify-content:space-between;align-items:center;margin-top:14px;font-size:21px;color:#555968}.cinema-composer-send{display:grid;place-items:center;background:#282b35;color:white;width:29px;height:29px;border-radius:50%;font-size:18px}
+.cinema-flash{position:absolute;inset:0;z-index:6;background:#fafaff;opacity:0;pointer-events:none}
+.cinema-controls{position:absolute;right:3%;bottom:3%;z-index:10;display:flex;gap:9px}
+.cinema-controls button{border:1px solid #8e92ad45;border-radius:24px;color:#52576c;background:#fafaffc9;padding:8px 14px;font:11px "Segoe UI","Microsoft YaHei",sans-serif;cursor:pointer;box-shadow:0 2px 12px #626c9c09}
+.cinema-controls button:hover,.cinema-controls button:focus-visible{color:#343949;background:#fff;outline:1px solid #777eac80}.cinema-controls button:disabled{opacity:.5;cursor:default}
+@media(max-width:750px){.cinema-composer{left:12%;right:12%;min-height:85px}.cinema-controls{right:4%;bottom:3%}.cinema-app-chrome{padding:0 17px}.cinema-app-brand{font-size:42px}}
+@media(prefers-reduced-motion:reduce){.cinema-app{will-change:opacity}.cinema-flash{display:none}}

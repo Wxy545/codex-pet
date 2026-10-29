@@ -164,3 +164,20 @@ test('目标探测Promise不兑现也不能绕过页面等待上限，迟到响�
   const pending = deferred(), h = harness({ reason: 'codex', target: () => pending.promise }); await h.start(); await h.advance(22000);
   assert.equal(h.stats.finishes, 1); assert.equal(h.timers.size, 0); pending.resolve({ ready: true }); await h.flush(); await h.advance(2000); assert.equal(h.stats.finishes, 1);
 });
+
+test('单次读取到电影时撤销旧Q全部监听再委派，不重开旧视频或关闭电影', async () => {
+  const h = harness({ get: async () => ({ film: true, video: 'file:///local/white-dragon-cinematic.webm', locale: 'en' }) });
+  let delegated = 0;
+  h.window.CodexStartupCinema = { play: ({ api, value }) => { delegated++; assert.equal(api, h.window.startupScene); assert.equal(value.film, true); } };
+  await h.flush();
+  assert.equal(delegated, 1); assert.equal(h.stats.ready, 0); assert.equal(h.stats.finishes, 0); assert.ok(h.videos.every(video => video.loads.length === 0));
+  h.document.emit('keydown', { key: 'Escape' }); h.window.emit('beforeunload'); h.nodes.skip.emit('click');
+  assert.equal(h.stats.finishes, 0);
+  for (const target of [h.window, h.document, h.nodes.skip, h.nodes.sound]) assert.ok([...target.listeners.values()].every(list => list.size === 0));
+});
+
+test('电影模块缺失时有界关闭，早于scene返回的跳过不再委派', async () => {
+  const missing = harness({ get: async () => ({ film: true }) }); await missing.flush(); assert.equal(missing.stats.finishes, 1);
+  const pending = deferred(), early = harness({ get: () => pending.promise }); let delegated = 0; early.window.CodexStartupCinema = { play: () => delegated++ };
+  early.nodes.skip.emit('click'); pending.resolve({ film: true }); await early.flush(); assert.equal(early.stats.finishes, 1); assert.equal(delegated, 0);
+});

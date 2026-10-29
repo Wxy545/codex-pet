@@ -2,7 +2,7 @@
 
 [English](#install) | [简体中文](#安装)
 
-The chibi white dragon girl from [Codex Pet](https://github.com/Wxy545/codex-pet), running as a native [dsh-pet](https://github.com/PC2005-cloud/dsh-pet) pet pack in DeepSeek Harness. The pack has 21 transparent videos, five click reactions, two ways to wander, and wing care, cushion breaks, tail naps, little magic, snacks, and greetings.
+The chibi white dragon girl from [Codex Pet](https://github.com/Wxy545/codex-pet), running as a native [dsh-pet](https://github.com/PC2005-cloud/dsh-pet) pet pack in DeepSeek Harness. The pack has 23 transparent videos, five click reactions, two ways to wander, and spellbook reading, gem guarding, wing care, cushion breaks, snacks, and greetings.
 
 You can ask Codex: **Install White Dragon Girl from https://github.com/Wxy545/codex-pet in my DeepSeek Harness. Follow harness/README.md and use the CLI that belongs to my Harness installation.**
 
@@ -48,7 +48,7 @@ powershell -File scripts/install-harness.ps1 -Profile web
 
 Harness 桌面版需要先启动一次、再完全退出，用 `-Profile desktop -DshCommand '<安装目录>/resources/runtime/cli/bin/dsh.cmd'` 指定桌面版自带命令。npm 安装的普通 dsh 不能管理 desktop profile；脚本会在构建和安装前检查。当前项目尚未实测 Harness 桌面应用载体。
 
-角色动作、点击、拖拽、随机漫游和菜单由原版 dsh-pet 播放；工作状态、余额、碎碎念、聊天和通知沿用 Harness 接口与账号。龙娘有 21 段视频，余额六档、碎念三档及部分工作状态共用现有片段。
+角色动作、点击、拖拽、随机漫游和菜单由原版 dsh-pet 播放；工作状态、余额、碎碎念、聊天和通知沿用 Harness 接口与账号。龙娘有 23 段 Q 版视频，含抱书阅读、护住小宝石；余额六档、碎念三档及部分工作状态共用现有片段。
 
 插件层只加入指定 profile。种类文件遵循 dsh-pet 原生规则，位于各 profile 共用的 `$DSH_HOME/dsh-pet/pet`，使用独立的 `codex-white-dragon` 前缀。更新保留用户改过的文件。可以编辑 `codex-white-dragon-config.json` 调整龙娘的大小、位置、开关和显示方式；卸载插件时这些用户文件保留。
 

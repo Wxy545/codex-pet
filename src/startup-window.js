@@ -147,6 +147,17 @@
   listen(window, 'resize', resize); listen(window, 'beforeunload', finish);
   void api.get().then(result => {
     if (ended) return;
+    if (result.film === true) {
+      if (typeof window.CodexStartupCinema?.play !== 'function') { finish(); return; }
+      // 电影只接管同一次scene读取；旧Q页监听必须先撤掉，不能由旧beforeunload误关电影。
+      ended = true;
+      for (const timer of timers) clearTimeout(timer);
+      timers.clear(); disposers.forEach(dispose => dispose());
+      if (frame !== null) cancelAnimationFrame(frame);
+      try { window.CodexStartupCinema.play({ api, value: result }); }
+      catch { void api.finish().catch(() => {}); }
+      return;
+    }
     value = result; document.documentElement.lang = value.locale === 'zh-CN' ? 'zh-CN' : 'en';
     document.getElementById('skip').textContent = value.reason === 'preview' ? value.copy.skip : `${value.copy.skip} · Esc`;
     document.getElementById('ready-label').textContent = value.locale === 'zh-CN' ? '随时出发' : 'READY WHEN YOU ARE';

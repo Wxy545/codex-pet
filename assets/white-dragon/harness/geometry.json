@@ -110,6 +110,16 @@
       "sourceSha256": "c500a84cc377d8f94ef8b3a742cd7286fd5202c9951df61dac1a1833f971a5fd",
       "sha256": "f50e20d31eb67b5002f965bf3176bbc111d89e58623634ab268ad8a40ab263c2",
       "bytes": 330484
+    },
+    "q-book-reading.webm": {
+      "sourceSha256": "d1e86d07d73a639f605865cbdb16f39db9d87f5723d6687d64e51e4d7db396a4",
+      "sha256": "92fb3bb9314f0a87c47d328c22294a38916c2483b38fa5d9816fab6b6848d0cf",
+      "bytes": 450053
+    },
+    "q-treasure-guard.webm": {
+      "sourceSha256": "e6f2f164eeeb0d235df7081936aaa6d6303fd9dbbbec1a90287ad2f35f779b37",
+      "sha256": "8d5bf0ecc61f4e52012d2cbca468e9ef3c941e7e51cd0e1ac581fdc9b658b38e",
+      "bytes": 613848
     }
   }
 }
