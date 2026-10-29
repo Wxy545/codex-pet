@@ -144,10 +144,10 @@ try {
         Write-Host (Get-CodexPetText '正在安装 Codex Pet 依赖 ...' 'Installing Codex Pet dependencies...')
         & $npmPath ci --legacy-peer-deps --ignore-scripts --no-audit --no-fund --registry=https://registry.npmjs.org
         if ($LASTEXITCODE -ne 0) { throw (Get-CodexPetText '安装 Codex Pet 依赖失败。' 'Failed to install Codex Pet dependencies.') }
-        & $nodePath scripts/prepare-runtime.mjs
-        if ($LASTEXITCODE -ne 0) { throw (Get-CodexPetText '准备 Codex Pet 运行时失败。' 'Failed to prepare the Codex Pet runtime.') }
         & $nodePath src/host-cli.mjs --host $CompanionHost
         if ($LASTEXITCODE -ne 0) { throw (Get-CodexPetText '保存联动应用失败。' 'Could not save the companion app.') }
+        & $nodePath scripts/prepare-runtime.mjs
+        if ($LASTEXITCODE -ne 0) { throw (Get-CodexPetText '准备 Codex Pet 运行时失败。' 'Failed to prepare the Codex Pet runtime.') }
     } finally { Pop-Location }
     New-Item -ItemType Directory -Path (Join-Path $appStage 'data') -Force | Out-Null
     @{ sourceCommit = $sourceCommit; installedAt = [DateTime]::UtcNow.ToString('o'); portableNode = [bool]$portable } |

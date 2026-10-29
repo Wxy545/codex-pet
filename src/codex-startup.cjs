@@ -14,6 +14,7 @@ const FILM_MAX_BYTES = 96 * 1024 * 1024;
 const WATCHDOG_MS = 22000;
 const CHANNELS = ['get', 'set', 'preview', 'scene', 'target', 'ready', 'finish'];
 const PROFILES = ['idle', 'wing-care', 'greeting', 'turn', 'working', 'magic', 'success'];
+const SHEEP_PROFILES = ['idle', 'working', 'greeting'];
 const COPY = {
   'zh-CN': { menu: '启动演出', pet: '仅桌宠', startup: '仅启动演出', both: '桌宠与启动演出', preview: '预览演出', skip: '跳过', subject: '白龙娘', status: ['连接建立', '角色档案', '龙翼展开', '准备就绪'], detail: '白角 · 龙翼 · 龙尾' },
   en: { menu: 'Startup scene', pet: 'Pet only', startup: 'Startup scene only', both: 'Pet and startup scene', preview: 'Preview scene', skip: 'Skip', subject: 'Dragon Girl', status: ['LINK ESTABLISHED', 'CHARACTER FILE', 'WINGS UNFOLDED', 'READY'], detail: 'WHITE HORNS · DRAGON WINGS · TAIL' },
@@ -125,14 +126,14 @@ function createController({ electron, dataRoot, fileRoot = __dirname, timers = g
     writes = operation;
     return operation;
   }
-  function videoAssets() {
+  function videoAssets(character = 'white-dragon', profiles = PROFILES) {
     try {
-      const directory = path.join(dataRoot, 'skins', 'white-dragon');
+      const directory = path.join(dataRoot, 'skins', character);
       const manifest = A.normalizeManifest(JSON.parse(fs.readFileSync(path.join(directory, 'manifest.json'), 'utf8')));
       const realDirectory = fs.realpathSync(directory), realDataRoot = fs.realpathSync(dataRoot);
-      if (path.relative(realDataRoot, realDirectory) !== path.join('skins', 'white-dragon')) return {};
+      if (path.relative(realDataRoot, realDirectory) !== path.join('skins', character)) return {};
       const assets = {};
-      for (const key of PROFILES) {
+      for (const key of profiles) {
         const profile = manifest.profiles[key];
         if (profile?.type !== 'video') continue;
         try {
@@ -178,8 +179,10 @@ function createController({ electron, dataRoot, fileRoot = __dirname, timers = g
   async function open(reason) {
     if (disposed || opening || windowRef || !allowed(reason)) return false;
     const selectedHost = currentHost();
-    const film = cinematicVideo();
-    const assets = film ? {} : videoAssets();
+    const sheep = selectedHost === 'workbuddy';
+    const film = sheep ? null : cinematicVideo();
+    const assets = sheep ? videoAssets('curly-sheep', SHEEP_PROFILES) : film ? {} : videoAssets();
+    if (sheep && SHEEP_PROFILES.some(key => !assets[key])) return false;
     if (!film && !assets.idle) return false;
     opening = true;
     const epoch = generation;
@@ -203,7 +206,8 @@ function createController({ electron, dataRoot, fileRoot = __dirname, timers = g
         webPreferences: { preload: path.join(fileRoot, 'startup-preload.cjs'), contextIsolation: true, nodeIntegration: false, sandbox: true, backgroundThrottling: false, autoplayPolicy: 'no-user-gesture-required' },
       });
       windowRef = win;
-      scene = { video: film || assets.idle, assets, film: Boolean(film), reason, host: selectedHost, brand: selectedHost === 'workbuddy' ? 'WorkBuddy' : 'ChatGPT', target: targetView(located), durationMs: film ? FILM_DURATION_MS : DURATION_MS, locale: locale(), copy: COPY[locale()] || COPY.en };
+      const copy = COPY[locale()] || COPY.en;
+      scene = { video: film || assets.idle, assets, film: Boolean(film), sheep, character: sheep ? 'curly-sheep' : 'white-dragon', reason, host: selectedHost, brand: sheep ? 'WorkBuddy' : 'ChatGPT', target: targetView(located), durationMs: sheep ? 14000 : film ? FILM_DURATION_MS : DURATION_MS, locale: locale(), copy: sheep ? { skip: copy.skip, subject: locale() === 'zh-CN' ? '卷卷' : 'Curly' } : copy };
       // 主进程超时独立于渲染器；视频加载失败或页面卡住也不会留下遮挡窗口。
       timeout = timers.setTimeout(finish, WATCHDOG_MS);
       timeout?.unref?.();

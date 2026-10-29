@@ -153,10 +153,9 @@ test('真正启动在目标就绪后退场，预览不调用目标探测', async
   const preview = harness(); await preview.start(); await preview.advance(14400); assert.equal(preview.stats.target, 0); assert.equal(preview.stats.finishes, 1);
 });
 
-test('缺电影的WorkBuddy兼容Q演出显示正确宿主并等待它就绪', async () => {
+test('WorkBuddy缺专用卷卷场景时直接退出，不落回旧龙娘Q演出', async () => {
   let ready = false; const h = harness({ host: 'workbuddy', reason: 'workbuddy', target: async () => ({ ready }) }); await h.start();
-  assert.equal(h.document.title, 'Codex Pet · WorkBuddy'); assert.equal(h.nodes['startup-brand'].textContent, 'WorkBuddy'); assert.equal(h.nodes.scene.attributes.get('aria-label'), 'WorkBuddy');
-  await h.advance(13350); assert.equal(h.stats.target, 1); assert.equal(h.stats.finishes, 0); ready = true; await h.advance(1650); assert.equal(h.stats.finishes, 1);
+  assert.equal(h.stats.finishes,1);assert.equal(h.stats.ready,0);assert.equal(h.stats.target,0);assert.ok(h.videos.every(v=>v.loads.every(src=>!src)));await h.advance(22000);assert.equal(h.stats.finishes,1);
 });
 
 test('目标一直未就绪或探测拒绝时仍有界退场', async () => {
@@ -180,6 +179,13 @@ test('单次读取到电影时撤销旧Q全部监听再委派，不重开旧视�
   h.document.emit('keydown', { key: 'Escape' }); h.window.emit('beforeunload'); h.nodes.skip.emit('click');
   assert.equal(h.stats.finishes, 0);
   for (const target of [h.window, h.document, h.nodes.skip, h.nodes.sound]) assert.ok([...target.listeners.values()].every(list => list.size === 0));
+});
+
+test('卷卷专用演出只委派羊播放器，撤销旧龙娘页面监听且不加载任何龙娘视频',async()=>{
+ const h=harness({get:async()=>({sheep:true,film:false,character:'curly-sheep',assets:{idle:'file:///curly-sheep/q-idle.webm'},host:'workbuddy',locale:'zh-CN'})});let sheep=0,dragon=0;
+ h.window.CodexStartupSheep={play:({value})=>{sheep++;assert.equal(value.character,'curly-sheep');}};h.window.CodexStartupCinema={play:()=>dragon++};await h.flush();
+ assert.equal(sheep,1);assert.equal(dragon,0);assert.ok(h.videos.every(v=>v.loads.length===0));h.document.emit('keydown',{key:'Escape'});h.window.emit('beforeunload');h.nodes.skip.emit('click');assert.equal(h.stats.finishes,0);
+ const missing=harness({get:async()=>({sheep:true,film:false})});await missing.flush();assert.equal(missing.stats.finishes,1);assert.ok(missing.videos.every(v=>v.loads.every(src=>!src)));
 });
 
 test('电影模块缺失时有界关闭，早于scene返回的跳过不再委派', async () => {

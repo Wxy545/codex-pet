@@ -147,14 +147,17 @@
   listen(window, 'resize', resize); listen(window, 'beforeunload', finish);
   void api.get().then(result => {
     if (ended) return;
-    if (result.film === true) {
-      if (typeof window.CodexStartupCinema?.play !== 'function') { finish(); return; }
-      // 电影只接管同一次scene读取；旧Q页监听必须先撤掉，不能由旧beforeunload误关电影。
+    // 旧helper不能把WorkBuddy继续送入龙娘兼容演出；缺卷卷场景时直接交还桌面。
+    if (result.host === 'workbuddy' && result.sheep !== true) { finish(); return; }
+    if (result.film === true || result.sheep === true) {
+      const player = result.sheep === true ? window.CodexStartupSheep : window.CodexStartupCinema;
+      if (typeof player?.play !== 'function') { finish(); return; }
+      // 专用演出只接管同一次scene读取，先撤旧页监听，避免旧beforeunload误关新演出。
       ended = true;
       for (const timer of timers) clearTimeout(timer);
       timers.clear(); disposers.forEach(dispose => dispose());
       if (frame !== null) cancelAnimationFrame(frame);
-      try { window.CodexStartupCinema.play({ api, value: result }); }
+      try { player.play({ api, value: result }); }
       catch { void api.finish().catch(() => {}); }
       return;
     }

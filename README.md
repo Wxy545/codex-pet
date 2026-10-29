@@ -86,7 +86,7 @@ The original blue whale maid retains her **106 transparent animations**. These p
 
 ## Startup and updates
 
-New installations play a cinematic dragon-girl intro when the selected app starts: eyes opening, wings unfolding, glass panels sweeping past, then a window reveal into Codex or WorkBuddy. It lasts about 11 seconds, with original sound effects. Use **Skip** or Esc to leave early; the sound button toggles audio.
+New installations enable the pet and a startup scene. WorkBuddy opens with Curly: a blink, a little typing, then a wave before the WorkBuddy window is revealed. Codex keeps its dragon-girl cinematic: eyes opening, wings unfolding, glass panels sweeping past, then a window reveal into Codex. The Codex intro lasts about 11 seconds. Both scenes have original sound effects. Use **Skip** or Esc to leave early; the sound button toggles audio.
 
 The cinematic uses her full-size form. The desktop companions stay chibi, with no random transformations.
 

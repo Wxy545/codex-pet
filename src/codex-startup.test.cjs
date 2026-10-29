@@ -7,6 +7,9 @@ function fixture(t,mode){
  const dir=path.join(root,'skins/white-dragon');fs.mkdirSync(dir,{recursive:true});
  fs.writeFileSync(path.join(dir,'manifest.json'),JSON.stringify({schemaVersion:1,profiles:{idle:{type:'video',file:'q-idle.webm',forms:{sister:{file:'sister.webm'}}}}}));
  fs.writeFileSync(path.join(dir,'q-idle.webm'),Buffer.from('1a45dfa3934282847765626d000000000000','hex'));
+ const sheep=path.join(root,'skins/curly-sheep');fs.mkdirSync(sheep,{recursive:true});
+ fs.writeFileSync(path.join(sheep,'manifest.json'),JSON.stringify({schemaVersion:1,profiles:Object.fromEntries(['idle','working','greeting'].map(key=>[key,{type:'video',file:'q-'+key+'.webm'}]))}));
+ for(const key of ['idle','working','greeting'])fs.copyFileSync(path.join(dir,'q-idle.webm'),path.join(sheep,'q-'+key+'.webm'));
  if(mode)fs.writeFileSync(path.join(root,'startup.json'),JSON.stringify({mode}));
  let id=0;const windows=[],handlers=new Map(),timers=new Map(),app=new EventEmitter();app.whenReady=()=>Promise.resolve();
  class Window extends EventEmitter{
@@ -75,15 +78,16 @@ test('外部启动通知只收两个宿主原因，不接受模式/路径或手�
  q.request({reason:'workbuddy'});assert.equal(q.take().event.reason,'workbuddy');
 });
 
-test('WorkBuddy演出仅接受当前宿主事件，电影/兼容Q均附正确品牌，预览不交还焦点',async t=>{
+test('WorkBuddy仅播放完整卷卷角色包，有龙娘电影仍不使用，预览不交还焦点',async t=>{
  const f=fixture(t,'both'),calls=[];
  const c=Startup.createController({electron:f.electron,dataRoot:f.root,fileRoot:__dirname,host:'workbuddy',timers:f.timerApi,targetRequest:async action=>{calls.push(action);return{ok:true,ready:true,bounds:{x:0,y:0,width:800,height:600}};}});t.after(()=>c.dispose());
  assert.equal(await c.open('codex'),false);assert.equal(await c.open('workbuddy'),true);
- let win=f.windows.at(-1),scene=f.handlers.get('codex-startup:scene')({sender:win.webContents});assert.equal(scene.host,'workbuddy');assert.equal(scene.brand,'WorkBuddy');
+ let win=f.windows.at(-1),scene=f.handlers.get('codex-startup:scene')({sender:win.webContents});assert.equal(scene.host,'workbuddy');assert.equal(scene.brand,'WorkBuddy');assert.equal(scene.sheep,true);assert.equal(scene.character,'curly-sheep');assert.equal(scene.film,false);assert.ok(Object.values(scene.assets).every(url=>url.includes('/curly-sheep/')));assert.match(scene.video,/curly-sheep\/q-idle.webm$/);
  f.handlers.get('codex-startup:finish')({sender:win.webContents});await f.flush();assert.equal(calls.filter(x=>x==='focus').length,1);
  fs.mkdirSync(path.join(f.root,'startup-media'));fs.copyFileSync(path.join(f.root,'skins/white-dragon/q-idle.webm'),path.join(f.root,'startup-media/white-dragon-cinematic.webm'));
- assert.equal(await c.open('preview'),true);win=f.windows.at(-1);scene=f.handlers.get('codex-startup:scene')({sender:win.webContents});assert.equal(scene.film,true);assert.equal(scene.host,'workbuddy');
+ assert.equal(await c.open('preview'),true);win=f.windows.at(-1);scene=f.handlers.get('codex-startup:scene')({sender:win.webContents});assert.equal(scene.film,false);assert.equal(scene.sheep,true);assert.equal(scene.host,'workbuddy');assert.deepEqual(Object.keys(scene.assets).sort(),['greeting','idle','working']);
  f.handlers.get('codex-startup:ready')({sender:win.webContents});assert.equal(win.showKind,'inactive');f.handlers.get('codex-startup:finish')({sender:win.webContents});await f.flush();assert.equal(calls.filter(x=>x==='focus').length,1);
+ fs.unlinkSync(path.join(f.root,'skins/curly-sheep/q-working.webm'));assert.equal(await c.open('preview'),false);assert.equal(f.windows.length,2);
  await c.setMode('pet');assert.equal(await c.open('workbuddy'),false);assert.equal(c.state().mode,'pet');
 });
 
