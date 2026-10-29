@@ -68,10 +68,31 @@ test('宿主事件被一次消费后helper重建不重播，启动演出模式�
  assert.deepEqual(requests[0],['POST','/dsh-pet-7340/codex-startup/pending']);
  const next=Startup.createController({electron:f.electron,dataRoot:f.root,fileRoot:__dirname,timers:f.timerApi,targetRequest:f.targetRequest,hostRequest});t.after(()=>next.dispose());next.start('manual');await f.flush();assert.equal(f.windows.length,1);
 });
-test('外部启动通知只收Codex原因，不接受模式/路径或手动预览请求',()=>{
+test('外部启动通知只收两个宿主原因，不接受模式/路径或手动预览请求',()=>{
  const q=Startup.createLaunchQueue();assert.equal(typeof q.request,'function');
  for(const value of [null,[],{reason:'manual'},{reason:'preview'},{reason:'codex',mode:'both'},{reason:'codex',path:'C:/private.webm'}])assert.throws(()=>q.request(value),/invalid-startup-reason/);
  q.request({reason:'codex'});assert.equal(q.take().event.reason,'codex');
+ q.request({reason:'workbuddy'});assert.equal(q.take().event.reason,'workbuddy');
+});
+
+test('WorkBuddy演出仅接受当前宿主事件，电影/兼容Q均附正确品牌，预览不交还焦点',async t=>{
+ const f=fixture(t,'both'),calls=[];
+ const c=Startup.createController({electron:f.electron,dataRoot:f.root,fileRoot:__dirname,host:'workbuddy',timers:f.timerApi,targetRequest:async action=>{calls.push(action);return{ok:true,ready:true,bounds:{x:0,y:0,width:800,height:600}};}});t.after(()=>c.dispose());
+ assert.equal(await c.open('codex'),false);assert.equal(await c.open('workbuddy'),true);
+ let win=f.windows.at(-1),scene=f.handlers.get('codex-startup:scene')({sender:win.webContents});assert.equal(scene.host,'workbuddy');assert.equal(scene.brand,'WorkBuddy');
+ f.handlers.get('codex-startup:finish')({sender:win.webContents});await f.flush();assert.equal(calls.filter(x=>x==='focus').length,1);
+ fs.mkdirSync(path.join(f.root,'startup-media'));fs.copyFileSync(path.join(f.root,'skins/white-dragon/q-idle.webm'),path.join(f.root,'startup-media/white-dragon-cinematic.webm'));
+ assert.equal(await c.open('preview'),true);win=f.windows.at(-1);scene=f.handlers.get('codex-startup:scene')({sender:win.webContents});assert.equal(scene.film,true);assert.equal(scene.host,'workbuddy');
+ f.handlers.get('codex-startup:ready')({sender:win.webContents});assert.equal(win.showKind,'inactive');f.handlers.get('codex-startup:finish')({sender:win.webContents});await f.flush();assert.equal(calls.filter(x=>x==='focus').length,1);
+ await c.setMode('pet');assert.equal(await c.open('workbuddy'),false);assert.equal(c.state().mode,'pet');
+});
+
+test('动态宿主切换后探测分别缓存，已在播放的演出只交还原宿主',async t=>{
+ const f=fixture(t,'both'),calls=[];let selected='workbuddy';
+ const c=Startup.createController({electron:f.electron,dataRoot:f.root,fileRoot:__dirname,host:()=>selected,timers:f.timerApi,targetRequest:async(action,host)=>{calls.push([action,host]);return{ok:true,ready:true,bounds:{x:0,y:0,width:800,height:600}};}});t.after(()=>c.dispose());
+ await c.open('workbuddy');selected='codex';f.handlers.get('codex-startup:finish')({sender:f.windows.at(-1).webContents});await f.flush();
+ assert.deepEqual(calls,[['probe','workbuddy'],['focus','workbuddy']]);await c.open('codex');
+ const scene=f.handlers.get('codex-startup:scene')({sender:f.windows.at(-1).webContents});assert.equal(scene.host,'codex');assert.deepEqual(calls.at(-1),['probe','codex']);
 });
 
 test('已有显式模式均保持，新默认不会覆盖用户选择',async t=>{
@@ -136,6 +157,9 @@ test('窗口helper请求只允许固定动作，输出不传递路径标题或�
  assert.deepEqual(await request('probe'),{ok:true,ready:true,bounds:{x:0,y:10,width:800,height:600}});
  assert.equal(captured.args.at(-1),'Probe');assert.equal(captured.options.windowsHide,true);assert.equal(captured.options.timeout,2500);
  await request('focus');assert.equal(captured.args.at(-1),'Focus');await assert.rejects(request('launch'),/invalid-startup-target-action/);
+ const buddyRequest=Startup.createTargetRequest({platform:'win32',host:'workbuddy',fileRoot:__dirname,execFileImpl:(file,args,options,callback)=>{captured={file,args,options};callback(null,'{"ok":true,"ready":false}');}});await buddyRequest('probe');
+ assert.equal(path.basename(captured.args[captured.args.indexOf('-File')+1]),'workbuddy-target.ps1');assert.equal(captured.options.timeout,2500);
+ await buddyRequest('focus');assert.equal(captured.options.timeout,6500);assert.equal(captured.args.at(-1),'Focus');
  assert.deepEqual(Startup.normalizeTarget({ok:true,ready:true,bounds:{x:NaN,y:0,width:20,height:30}}),{ok:true,ready:false});
  assert.deepEqual(await Startup.createTargetRequest({platform:'linux'})('probe'),{ok:false,ready:false});
 });

@@ -113,7 +113,7 @@
   async function handoff() {
     if (ended) return;
     // 真正启动时短暂等候主窗口，预览按时结束；22秒主进程看门狗另作兜底。
-    if (value.reason !== 'codex' || typeof api.target !== 'function') { depart(); return; }
+    if (!['codex', 'workbuddy'].includes(value.reason) || typeof api.target !== 'function') { depart(); return; }
     const deadline = epoch + 20000;
     // 独立于IPC兑现；即使探测Promise永久挂起，也按上限退场。
     wait(depart, Math.max(0, deadline - performance.now()));
@@ -159,6 +159,9 @@
       return;
     }
     value = result; document.documentElement.lang = value.locale === 'zh-CN' ? 'zh-CN' : 'en';
+    const brand = value.host === 'workbuddy' ? 'WorkBuddy' : 'ChatGPT';
+    document.title = 'Codex Pet · ' + brand; scene.setAttribute('aria-label', brand);
+    const wordmark = document.getElementById('startup-brand'); if (wordmark) wordmark.textContent = brand;
     document.getElementById('skip').textContent = value.reason === 'preview' ? value.copy.skip : `${value.copy.skip} · Esc`;
     document.getElementById('ready-label').textContent = value.locale === 'zh-CN' ? '随时出发' : 'READY WHEN YOU ARE';
     setSound(false);

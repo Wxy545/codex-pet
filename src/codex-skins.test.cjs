@@ -4,6 +4,7 @@ const assert = require('node:assert/strict');
 const actions = require('./skin-actions.cjs');
 const catalog = require('./skin-action-catalog.json');
 const { createSkinStore } = require('./codex-skins.cjs');
+const Character = require('./codex-character.cjs');
 const { mkdtemp, mkdir, writeFile, readFile, rm } = require('node:fs/promises');
 const { tmpdir } = require('node:os');
 const { join } = require('node:path');
@@ -130,6 +131,26 @@ async function fixture(t) {
   const hostRequest = async () => ({ status: 200, body: JSON.stringify({ main: { animations: { idle: ['呼吸'], moves: { actions: [] } } } }) });
   return { dataRoot, png, hostRequest };
 }
+
+test('两个宿主的新装形象与真实身份一致，已保存三角色选择逐字保留',async t=>{
+ const options=await fixture(t),previous=process.env.CODEX_PET_HOST,directory=join(options.dataRoot,'skins/curly-sheep'),selection=join(options.dataRoot,'skins/selection.json');
+ await mkdir(directory,{recursive:true});await writeFile(join(directory,'manifest.json'),JSON.stringify({schemaVersion:1,profiles:{idle:{type:'video',file:'q-idle.webm'}}}));
+ const media=Buffer.from('1a45dfa3934282847765626d000000000000','hex');await writeFile(join(directory,'q-idle.webm'),media);
+ try{
+  for(const[host,expected]of [['workbuddy','curly-sheep'],['codex','white-dragon']]){
+   process.env.CODEX_PET_HOST=host;const model=await createSkinStore(options).readModel(),identity=Character.readCharacter(options.dataRoot);assert.deepEqual(model.selection,identity.selection);assert.equal(model.selection.character,expected);
+   await assert.rejects(readFile(selection));
+   for(const id of ['white-dragon','bluefish','curly-sheep']){
+    const saved=JSON.stringify({schemaVersion:1,character:id,mode:'q',userNote:'keep'});await writeFile(selection,saved);
+    const existing=await createSkinStore(options).readModel();assert.deepEqual(existing.selection,{character:id,mode:'q'});assert.deepEqual(existing.selection,Character.readCharacter(options.dataRoot).selection);assert.equal(await readFile(selection,'utf8'),saved);
+   }
+   await rm(selection);
+  }
+  process.env.CODEX_PET_HOST='workbuddy';await writeFile(join(directory,'q-idle.webm'),'broken media');
+  assert.deepEqual((await createSkinStore(options).readModel()).selection,{character:'bluefish',mode:'q'});assert.equal(Character.readCharacter(options.dataRoot).id,'bluefish');
+  const saved=JSON.stringify({schemaVersion:1,character:'curly-sheep',mode:'q'});await writeFile(selection,saved);const missing=await createSkinStore(options).readModel();assert.equal(missing.selection.character,'bluefish');assert.equal(missing.requestedSelection.character,'curly-sheep');assert.equal(await readFile(selection,'utf8'),saved);
+ }finally{if(previous===undefined)delete process.env.CODEX_PET_HOST;else process.env.CODEX_PET_HOST=previous;}
+});
 
 test('仅Q版形象选择落盘并重启恢复，旧形态请求始终拒绝', async t => {
   const options = await fixture(t), store = createSkinStore(options);

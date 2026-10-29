@@ -154,7 +154,7 @@ function readForeground() {
 }
 
 /** 可注入依赖用于验证通知分支；生产入口 install 使用真实 Electron 和前台探测。 */
-function createController({ hostRequest, electron, checkForeground = readForeground, log = console.warn, beforeStart = () => {}, locale = Locale.getLocale() }) {
+function createController({ hostRequest, electron, checkForeground = readForeground, activateNotice, log = console.warn, beforeStart = () => {}, locale = Locale.getLocale() }) {
   if (typeof hostRequest !== 'function') throw new TypeError('hostRequest is required');
   const { app, Notification, shell } = electron;
   const history = new NoticeHistory();
@@ -209,6 +209,13 @@ function createController({ hostRequest, electron, checkForeground = readForegro
           notification.once('show', () => logOnce('shown', '系统通知已提交。'));
           notification.once('click', () => {
             release();
+            // 宿主适配可提供固定激活动作，避免把其他产品的会话交给Codex协议。
+            if (typeof activateNotice === 'function') {
+              Promise.resolve().then(() => activateNotice(notice, foreground)).catch(() => {
+                logOnce('activate', '无法激活通知对应的应用。');
+              });
+              return;
+            }
             const url = threadUrl(notice, foreground.protocolRegistered);
             if (!url) {
               logOnce('protocol', 'Codex 跳转不可用，已保留系统通知。');

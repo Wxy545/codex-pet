@@ -1,5 +1,5 @@
 ﻿[CmdletBinding()]
-param([string]$AppRoot, [switch]$NoStart, [ValidateSet('manual', 'codex')][string]$Reason = 'manual')
+param([string]$AppRoot, [switch]$NoStart, [ValidateSet('manual', 'codex', 'workbuddy')][string]$Reason = 'manual')
 
 $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot 'scripts/locale.ps1')
@@ -48,7 +48,7 @@ function Send-TaskStartupSignal {
         throw (Get-CodexPetText '桌宠运行信息无效，请重新启动 Codex Pet。' 'Codex Pet runtime information is invalid. Restart Codex Pet.')
     }
     # 使用现有本机能力令牌投递原因，不启动第二个宿主或输出令牌。
-    Invoke-RestMethod -UseBasicParsing -Method Post -Uri ("http://127.0.0.1:{0}/dsh-pet-7340/codex-startup" -f $taskRuntimePort) -Headers @{'x-dsh-pet-token'=[string]$taskRuntimeState.token} -ContentType 'application/json' -Body '{"reason":"codex"}' -TimeoutSec 3 | Out-Null
+    Invoke-RestMethod -UseBasicParsing -Method Post -Uri ("http://127.0.0.1:{0}/dsh-pet-7340/codex-startup" -f $taskRuntimePort) -Headers @{'x-dsh-pet-token'=[string]$taskRuntimeState.token} -ContentType 'application/json' -Body (@{reason=$Reason}|ConvertTo-Json -Compress) -TimeoutSec 3 | Out-Null
 }
 
 if ($NoStart) {
@@ -69,13 +69,14 @@ try {
     catch [System.Threading.AbandonedMutexException] { $taskOwnsMutex = $true }
     if (-not $taskOwnsMutex) { throw (Get-CodexPetText 'Codex Pet 正在启动，请稍后重试。' 'Codex Pet is starting. Please try again shortly.') }
     if (Test-TaskPetRunning) {
-        if ($Reason -eq 'codex') { Send-TaskStartupSignal }
+        if ($Reason -in @('codex','workbuddy')) { Send-TaskStartupSignal }
         Write-Output (Get-CodexPetText 'Codex Pet 已在运行。' 'Codex Pet is already running.'); return
     }
     $taskData = Join-Path $taskRoot 'data'
     New-Item -ItemType Directory -Path $taskData -Force | Out-Null
     $taskArguments = @('"' + $taskApp + '"')
     if ($Reason -eq 'codex') { $taskArguments += '--codex-startup' }
+    if ($Reason -eq 'workbuddy') { $taskArguments += '--workbuddy-startup' }
     Start-Process -FilePath $taskNode -ArgumentList $taskArguments -WorkingDirectory $taskRoot -WindowStyle Hidden -RedirectStandardOutput (Join-Path $taskData 'app.log') -RedirectStandardError (Join-Path $taskData 'app-error.log')
 } finally {
     if ($taskOwnsMutex) { $taskMutex.ReleaseMutex() }

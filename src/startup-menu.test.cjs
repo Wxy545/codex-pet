@@ -1,14 +1,49 @@
 'use strict';
-const test=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path'),vm=require('node:vm');
-test('启动菜单是独立包装：保持原菜单/角色入口，英文自然显示且选择模式只传白名单值',async()=>{
- let tree,chosen,preview=0,subscribed;const state={mode:'pet',locale:'en'};
- class Pet{mountContextMenu(options){tree=options.tree;return tree;}onMenuAction(leaf){this.original=leaf;}closeMenu(){this.closed=true;}}
- const window={codexStartup:{getState:async()=>state,setMode:async value=>{chosen=value;return{...state,mode:value};},preview:async()=>{preview++;},onChanged:fn=>{subscribed=fn;return()=>{};}},addEventListener(){}};
- const file=path.join(__dirname,'startup-menu.js');assert.equal(fs.existsSync(file),true);vm.runInNewContext(fs.readFileSync(file,'utf8'),{window,PetSprite:Pet,console:{warn(){}}});await new Promise(resolve=>setImmediate(resolve));
- const p=new Pet(),base=[{label:'Chat',action:'chat'},{label:'Third party',owner:'custom',action:'custom'},{label:'Character',children:[{label:'Dragon Girl',action:'codex-select-skin'}]}];p.mountContextMenu({tree:base});
- assert.equal(tree.length,4);base.forEach((node,index)=>assert.equal(tree[index],node));const menu=tree[3];assert.equal(menu.label,'Startup scene');assert.equal(menu.children.length,4);assert.equal(menu.children[0].label,'✓ Pet only');assert.ok(menu.children.every(node=>!/[\u3400-\u9fff]/.test(node.label)));
- p.onMenuAction(menu.children[2]);await new Promise(resolve=>setImmediate(resolve));assert.equal(chosen,'both');assert.equal(p.closed,true);
- p.onMenuAction(menu.children[3]);await new Promise(resolve=>setImmediate(resolve));assert.equal(preview,1);
- p.onMenuAction({action:'custom'});assert.equal(p.original.action,'custom');
- subscribed({mode:'startup',locale:'zh-CN'});p.mountContextMenu({tree:base});assert.equal(tree[3].label,'启动演出');assert.equal(tree[3].children[1].label,'✓ 仅启动演出');
+const test=require('node:test'),assert=require('node:assert/strict'),vm=require('node:vm');
+const {readFileSync}=require('node:fs'),{join}=require('node:path');
+
+function fixture({locale='en',host='codex',deferInitial=false}={}) {
+ let mounted,changed,initialResolve,unsubscribed=0,closed=0;const calls=[],events=new Map();
+ const shared={mountContextMenu:options=>{mounted=options;return{close(){}};},displayMenuBranch:()=>({action:'display'}),buildMoreBranch:()=>null,buildMenuTree:()=>[{label:'Actions',children:[{anim:'idle',label:'Idle'}]}]};
+ const state={mode:'both',locale},bridge={getState:()=>deferInitial?new Promise(resolve=>{initialResolve=resolve;}):Promise.resolve(state),onChanged:handler=>{changed=handler;return()=>{unsubscribed++;};},setMode:async mode=>{calls.push(['mode',mode]);return{mode,locale};},preview:async()=>calls.push(['preview'])};
+ const window={PetShared:shared,__dshPetDebug:{},codexStartup:bridge,addEventListener:(name,fn)=>events.set(name,fn)};
+ const context=vm.createContext({window,S:shared,OPEN_TARGET:'web',navigator:{language:locale},console});
+ // 不伪造不存在的原型mount：执行上游实际onContextMenu以及onMenuAction调用链。
+ vm.runInContext(readFileSync(join(__dirname,'../node_modules/dsh-pet/runtime/electron-helper/sprite.js'),'utf8'),context);
+ if(host==='workbuddy'){
+  window.petHost={initialHost:host,getState:async()=>({host}),selectHost:async()=>{}};window.CodexLocale={getLocale:()=>locale};
+  vm.runInContext(readFileSync(join(__dirname,'pet-host-menu.js'),'utf8'),context);
+ }
+ vm.runInContext(readFileSync(join(__dirname,'startup-menu.js'),'utf8'),context);
+ const sprite=vm.runInContext('Object.create(PetSprite.prototype)',context);
+ Object.assign(sprite,{dragState:{},animations:{},menuItems:[],stopThrow(){},stopMove(){},setInteractive(){},syncInputBusy(){},syncInputRegions(){},visibleClampRect:()=>null,closeMenu(){closed++;this.menuOpen=false;}});
+ const flush=async()=>{for(let i=0;i<4;i++)await Promise.resolve();};
+ const open=()=>{sprite.menuOpen=false;sprite.onContextMenu({preventDefault(){},clientX:20,clientY:30});return mounted;};
+ return{window,shared,sprite,open,flush,calls,events,change:value=>changed(value),initial:value=>initialResolve(value),get mounted(){return mounted;},get unsubscribed(){return unsubscribed;},get closed(){return closed;}};
+}
+
+test('原sprite真实右键出现启动演出菜单，中英文模式及预览沿原onMenuAction接到桥',async()=>{
+ for(const [locale,label]of [['en','Startup scene'],['zh-CN','启动演出']]){
+  const f=fixture({locale});await f.flush();const menu=f.open(),entry=menu.tree.find(node=>node.label===label);assert.ok(entry);assert.equal(entry.children.length,4);assert.equal(entry.children[2].label.startsWith('✓ '),true);
+  menu.onAction(entry.children[0]);await f.flush();assert.deepEqual(f.calls,[['mode','pet']]);assert.equal(f.closed,1);
+  f.open().onAction(entry.children[3]);await f.flush();assert.deepEqual(f.calls.at(-1),['preview']);assert.equal(f.closed,2);
+  assert.equal(f.open().tree.find(node=>node.label===label).children[0].label.startsWith('✓ '),true);
+ }
+});
+
+test('WorkBuddy过滤账号入口后启动演出和联动应用共存，不丢动作或恢复聊天余额',async()=>{
+ const f=fixture({host:'workbuddy'});await f.flush();const tree=f.open().tree;
+ assert.ok(tree.find(node=>node.label==='Startup scene'));assert.ok(tree.find(node=>node.label==='Companion app'));assert.ok(tree.find(node=>node.label==='Actions'));
+ assert.equal(tree.find(node=>node.action==='open-site')?.label,'Open WorkBuddy');
+ assert.ok(!tree.some(node=>['chat','show-balance','whisper','codex-task-panel'].includes(node.action)));
+ // home/reload是主菜单稳定技术ID；没有chat/open-site时仍能加启动选项。
+ f.shared.mountContextMenu({tree:[{action:'home'},{action:'reload'}]});
+ assert.ok(f.mounted.tree.find(node=>node.label==='Startup scene'));
+});
+
+test('启动偏好广播优先于迟到初始GET，卸载释放订阅，第三方小菜单不追加启动项',async()=>{
+ const f=fixture({deferInitial:true});f.change({mode:'startup',locale:'en'});f.initial({mode:'pet',locale:'zh-CN'});await f.flush();
+ const entry=f.open().tree.find(node=>node.label==='Startup scene');assert.equal(entry.children[1].label.startsWith('✓ '),true);
+ const foreign={tree:[{action:'third-party',label:'Custom'}]};f.shared.mountContextMenu(foreign);assert.equal(f.mounted,foreign);assert.equal(f.mounted.tree.length,1);
+ f.events.get('beforeunload')();assert.equal(f.unsubscribed,1);
 });

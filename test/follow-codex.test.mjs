@@ -58,6 +58,37 @@ test('只读探测识别Codex UI，忽略普通ChatGPT与CLI，且不触发start
   await assert.rejects(access(join(folder, 'data')));
 });
 
+test('跟随读取当前宿主选择，WorkBuddy必须同时匹配程序、产品与发行方', windowsOnly, async t => {
+  const folder = await temporaryRoot(t); await writeFile(join(folder, 'start.ps1'), "\uFEFFparam([string]$AppRoot)\nthrow 'must-not-start'\n");
+  await mkdir(join(folder, 'data')); await writeFile(join(folder, 'data/host.json'), JSON.stringify({ schemaVersion: 1, host: 'workbuddy' }));
+  for (const [name, product, company, expected] of [
+    ['WorkBuddy.exe', 'WorkBuddy', 'Tencent Technology (Shenzhen) Company Limited', true],
+    ['WorkBuddy.exe', 'WorkBuddy', 'Other', false],
+    ['WorkBuddy.exe', 'Other', 'Tencent Technology (Shenzhen) Company Limited', false],
+    ['ChatGPT.exe', 'WorkBuddy', 'Tencent Technology (Shenzhen) Company Limited', false],
+  ]) {
+    const command = "function global:Get-Process { [CmdletBinding()]param([string]$Name); [pscustomobject]@{Path=" + psQuote('C:/fake/' + name) + ';Product=' + psQuote(product) + ';Company=' + psQuote(company) + "} }; & " + psQuote(follow) + ' -AppRoot ' + psQuote(folder) + ' -Once -NoStart';
+    const probe = JSON.parse((await runPs(command)).stdout.trim()); assert.equal(probe.host, 'workbuddy'); assert.equal(probe.hostRunning, expected); assert.equal(probe.workbuddyRunning, expected); assert.equal(probe.codexRunning, false); assert.equal(probe.startRequested, false);
+  }
+  await assert.rejects(access(join(folder, 'data/app.log')));
+});
+
+test('一个watcher切换宿主后只投递对应启动边沿，不另建第二个监控器', windowsOnly, async t => {
+  const folder = await temporaryRoot(t); await mkdir(join(folder, 'data')); await writeFile(join(folder, 'data/host.json'), JSON.stringify({ schemaVersion: 1, host: 'workbuddy' }));
+  await writeFile(join(folder, 'start.ps1'), '\uFEFF' + [
+    'param([string]$AppRoot,[string]$Reason)',
+    "[IO.File]::AppendAllText((Join-Path $AppRoot 'reasons.txt'),$Reason+[Environment]::NewLine)",
+    "if($Reason -eq 'workbuddy') { [IO.File]::WriteAllText((Join-Path $AppRoot 'data/host.json'),'{\"schemaVersion\":1,\"host\":\"codex\"}'); return }",
+    '$taskHasher=[Security.Cryptography.SHA256]::Create()',
+    "try{$taskKey=([BitConverter]::ToString($taskHasher.ComputeHash([Text.Encoding]::UTF8.GetBytes($AppRoot.ToLowerInvariant())))).Replace('-','').Substring(0,24)}finally{$taskHasher.Dispose()}",
+    '$taskStop=[Threading.EventWaitHandle]::OpenExisting("Local\\dsh-pet-codex-follow-stop-$taskKey")',
+    'try{$taskStop.Set() | Out-Null}finally{$taskStop.Dispose()}',
+  ].join('\n'));
+  const command = "function global:Get-Process { [CmdletBinding()]param([string]$Name); if($Name -eq 'WorkBuddy'){[pscustomobject]@{Path='C:/fake/WorkBuddy.exe';Product='WorkBuddy';Company='Tencent Technology (Shenzhen) Company Limited'}}else{[pscustomobject]@{Path=" + psQuote(fakeCodexPath) + "}} }; & " + psQuote(follow) + ' -AppRoot ' + psQuote(folder) + ' -PollSeconds 1';
+  const probes = (await runPs(command)).stdout.trim().split(/\r?\n/).map(line => JSON.parse(line));
+  assert.deepEqual((await readFile(join(folder, 'reasons.txt'), 'utf8')).trim().split(/\r?\n/), ['workbuddy', 'codex']); assert.deepEqual(probes.map(value => value.host), ['workbuddy', 'codex']); assert.ok(probes.every(value => value.startRequested));
+});
+
 test('跟随只在Codex启动边沿调用start，重复实例被拒绝，退出信号结束自己的监控器', windowsOnly, async t => {
   const folder = await temporaryRoot(t);
   const stub = '\uFEFF' + [

@@ -116,7 +116,7 @@
   }
   function coreCharacter() {
     const character = model?.characters.find(value => value.id === model.selection.character);
-    if (character?.id !== 'white-dragon') return null;
+    if (!character || character.originalVideo) return null;
     const idle = character.manifest.profiles.idle;
     return idle?.type === 'video' && A.profileReady(idle, character.assets) && !failedAssets.has(character.assets[idle.file]?.url) ? character : null;
   }
@@ -133,7 +133,7 @@
     return { id };
   }
   function textFreeGreeting(character, id) {
-    return character?.id === 'white-dragon' && character.manifest.actions[id]?.profile === 'greeting' && readyNativeAction(character, id);
+    return character && !character.originalVideo && character.manifest.actions[id]?.profile === 'greeting' && readyNativeAction(character, id);
   }
   function visibleCategories(categories, character) {
     return (categories ?? []).filter(category => !(model?.locale === 'en' && character?.originalVideo && category.id === '文字'));
@@ -147,7 +147,7 @@
   }
   const isNoMirrorAnimation = shared.isNoMirrorAnimation;
   shared.isNoMirrorAnimation = function (categories, id) {
-    // 龙娘招手片没有烘焙文字，不继承原槽位的文字镜像限制；原鱼与自定义动作继续走上游判断。
+    // 新角色的招手片没有烘焙文字，不继承原文字槽位镜像限制；原鱼继续走上游判断。
     return textFreeGreeting(currentCharacter(), id) ? false : isNoMirrorAnimation.apply(this, arguments);
   };
   function preload(controller, request) {

@@ -1,7 +1,7 @@
 'use strict';
 const test = require('node:test'), assert = require('node:assert/strict'), fs = require('node:fs'), path = require('node:path'), vm = require('node:vm');
 function deferred() { let resolve, reject; const promise = new Promise((a,b) => { resolve=a;reject=b; }); return {promise,resolve,reject}; }
-function harness({locale='en',reason='preview',target=async()=>({ready:true}),audio=false,audioFailure=false,heldPlay=false,duration=8,reduced=false}={}) {
+function harness({locale='en',reason='preview',host='codex',target=async()=>({ready:true}),audio=false,audioFailure=false,heldPlay=false,duration=8,reduced=false}={}) {
  class Element {
   constructor(tag) { this.tagName=tag;this.children=[];this.listeners=new Map();this.style={};this.dataset={};this.attributes={};this.textContent='';const classes=new Set();this.classList={add:x=>classes.add(x),remove:x=>classes.delete(x),contains:x=>classes.has(x)}; }
   appendChild(child){this.children.push(child);child.parent=this;return child;} remove(){if(this.parent)this.parent.children=this.parent.children.filter(c=>c!==this);}
@@ -23,7 +23,7 @@ function harness({locale='en',reason='preview',target=async()=>({ready:true}),au
  const api={ready:async()=>{stats.ready++;},finish:async()=>{stats.finish++;},target:async()=>{stats.target++;return target();}};
  const context={window,document,innerWidth:1280,innerHeight:800,performance:{now:()=>now},console,Math,Float32Array,setTimeout:(fn,ms)=>{const key=++id;timers.set(key,{fn,due:now+ms});return key;},clearTimeout:key=>timers.delete(key),requestAnimationFrame:fn=>{const key=++id;frames.set(key,fn);return key;},cancelAnimationFrame:key=>frames.delete(key)};
  vm.runInNewContext(fs.readFileSync(path.join(__dirname,'startup-cinema.js'),'utf8'),context);
- const control=window.CodexStartupCinema.play({api,value:{film:true,video:'file:///local/white-dragon-cinematic.webm',locale,reason,copy:{skip:locale==='zh-CN'?'跳过':'Skip'}}});
+ const control=window.CodexStartupCinema.play({api,value:{film:true,video:'file:///local/white-dragon-cinematic.webm',locale,reason,host,copy:{skip:locale==='zh-CN'?'跳过':'Skip'}}});
  const root=elements.find(e=>e.className==='cinema'),video=elements.find(e=>e.tagName==='video'),application=elements.find(e=>e.className==='cinema-app'),buttons=elements.filter(e=>e.tagName==='button');
  const flush=async()=>{for(let i=0;i<5;i++)await new Promise(r=>setImmediate(r));};
  const decode=async()=>{video.readyState=2;video.emit('loadeddata');await flush();};
@@ -48,6 +48,17 @@ test('真实EOS启动程序窗口推进，预览不探测目标且3秒内揭幕�
 test('Codex窗口未就绪时保持落稳画面，ready后只退出一次',async()=>{
  let ready=false;const h=harness({reason:'codex',locale:'zh-CN',target:async()=>({ready})});await h.decode();assert.equal(h.buttons[1].textContent,'跳过 · Esc');h.video.currentTime=8;h.video.emit('ended');
  await h.advance(2000);await h.tick(8);assert.equal(h.stats.target,1);assert.notEqual(h.root.dataset.phase,'handoff');ready=true;await h.advance(650);await h.tick(8);await h.tick(8);assert.equal(h.root.dataset.phase,'handoff');await h.advance(780);await h.tick(8);assert.equal(h.stats.finish,1);
+});
+
+test('WorkBuddy电影使用对应品牌并等它就绪，预览仍不探测或抢焦点',async()=>{
+ for(const locale of ['en','zh-CN']){
+  let ready=false;const h=harness({host:'workbuddy',reason:'workbuddy',locale,target:async()=>({ready})});await h.decode();
+  assert.equal(h.root.attributes['aria-label'],'WorkBuddy');assert.equal(h.document.title,'Codex Pet · WorkBuddy');assert.match(h.application.html,/>WorkBuddy</);assert.doesNotMatch(h.application.html,/ChatGPT/);
+  assert.equal(h.application.placeholder.textContent,locale==='en'?'Message WorkBuddy':'向 WorkBuddy 发送消息');
+  h.video.currentTime=8;h.video.emit('ended');await h.advance(2000);await h.tick(8);assert.equal(h.stats.target,1);assert.notEqual(h.root.dataset.phase,'handoff');
+  ready=true;await h.advance(650);await h.tick(8);await h.tick(8);assert.equal(h.root.dataset.phase,'handoff');h.control.finish();
+ }
+ const preview=harness({host:'workbuddy'});await preview.decode();preview.video.currentTime=8;preview.video.emit('ended');await preview.advance(2730);await preview.tick(8);assert.equal(preview.stats.target,0);assert.equal(preview.buttons[1].textContent,'Skip');preview.control.finish();
 });
 test('目标IPC永不兑现或媒体卡顿时独立20秒上限仍退场',async()=>{
  for(const eof of [false,true]){const pending=deferred(),h=harness({reason:'codex',target:()=>pending.promise});await h.decode();if(eof){h.video.currentTime=8;h.video.emit('ended');await h.advance(2000);await h.tick(8);}

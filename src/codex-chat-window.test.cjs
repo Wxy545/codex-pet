@@ -210,6 +210,14 @@ test('身份只取可信GET，按角色隔离历史；角色不能由renderer sy
   assert.ok(f.identityCalls.every(call => call.route === '/dsh-pet-7340/codex-character'));
 });
 
+test('小羊通过可信身份接口进入独立历史桶，换回鱼或龙不串话', async t => {
+  const f = fixture(); t.after(() => f.controller.dispose()); await f.controller.open(); await f.invoke(CHANNELS.send, { text: 'Fish question', imageIds: [] });
+  const sheep = { id: 'curly-sheep', name: 'Curly', locale: 'en' }; f.setIdentity(sheep); assert.equal(f.controller.onCharacterChanged(sheep), true); assert.deepEqual((await f.invoke(CHANNELS.state)).state.messages, []);
+  await f.invoke(CHANNELS.send, { text: 'Sheep question', imageIds: [] }); assert.deepEqual(JSON.parse(f.calls[1].body).messages.map(message => message.content), ['Sheep question']); assert.equal(f.windows[0].title, 'Codex Pet · Curly · Chat');
+  const dragon = { id: 'white-dragon', name: 'Dragon Girl', locale: 'en' }; f.setIdentity(dragon); f.controller.onCharacterChanged(dragon); assert.deepEqual((await f.invoke(CHANNELS.state)).state.messages, []);
+  f.setIdentity(sheep); f.controller.onCharacterChanged(sheep); assert.equal((await f.invoke(CHANNELS.state)).state.messages[0].text, 'Sheep question'); assert.equal(f.controller.onCharacterChanged({ id: 'untrusted-role', name: 'Other', locale: 'en' }), false);
+});
+
 test('身份GET等待期间关窗或重复发送，不得启动模型；关闭窗口历史不复活', async t => {
   const f = fixture(); t.after(() => f.controller.dispose()); await f.controller.open();
   let resume;

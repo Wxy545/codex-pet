@@ -1,0 +1,9 @@
+{
+  "name": "codex-pet-companion",
+  "version": "0.1.0",
+  "description": "Connect WorkBuddy task states to Codex Pet desktop companions",
+  "author": {"name": "Wxy545"},
+  "homepage": "https://github.com/Wxy545/codex-pet",
+  "license": "MIT",
+  "hooks": "./hooks/hooks.json"
+}

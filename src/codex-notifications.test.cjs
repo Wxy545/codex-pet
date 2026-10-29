@@ -44,6 +44,7 @@ function fixture(foreground, options = {}) {
     checkForeground: async () => { checks += 1; if (foreground instanceof Error) throw foreground; return foreground; },
     electron: { app, Notification, shell: { openExternal: async (url) => { opened.push(url); } } },
     log: (value) => logs.push(value),
+    activateNotice: options.activateNotice,
   });
   return { controller, app, shown, opened, logs, checks: () => checks };
 }
@@ -144,6 +145,13 @@ test('unregistered protocol keeps toast without attempting an external open', as
   assert.equal(f.shown.length, 1);
   assert.deepEqual(f.opened, []);
   f.controller.stop();
+});
+
+test('宿主激活接缝优先于Codex深链，既有默认跳转保持原样', async () => {
+  const calls = [];
+  const f = fixture({ ok: true, isCodexForeground: false, protocolRegistered: true }, { activateNotice: async (value, foreground) => { calls.push({ value, foreground }); } });
+  await f.controller.poll(); f.shown[0].emit('click'); await new Promise(setImmediate);
+  assert.equal(calls.length, 1); assert.equal(calls[0].value.id, 'one'); assert.equal(calls[0].foreground.protocolRegistered, true); assert.deepEqual(f.opened, []); f.controller.stop();
 });
 
 test('polls do not overlap and shutdown ignores a pending response', async () => {

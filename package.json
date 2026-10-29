@@ -1,9 +1,9 @@
 {
   "name": "codex-pet",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "private": true,
   "type": "module",
-  "description": "Codex Pet: a Windows desktop companion for Codex, based on dsh-pet",
+  "description": "Codex Pet: a Windows desktop companion for Codex and WorkBuddy, based on dsh-pet",
   "homepage": "https://github.com/Wxy545/codex-pet#readme",
   "repository": {
     "type": "git",

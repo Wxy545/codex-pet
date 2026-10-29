@@ -68,7 +68,7 @@ function createController({ hostRequest, electron, fileRoot = __dirname, fsImpl 
     try { windowRef.webContents.send(CHANNELS.changed, snapshot()); } catch { /* 窗口退出时丢弃更新。 */ }
   }
   function onCharacterChanged(value) {
-    if (!value || !['white-dragon', 'bluefish'].includes(value.id) || typeof value.name !== 'string' || !['zh-CN', 'en'].includes(value.locale)) return false;
+    if (!value || !['white-dragon', 'bluefish', 'curly-sheep'].includes(value.id) || typeof value.name !== 'string' || !['zh-CN', 'en'].includes(value.locale)) return false;
     identityRevision++;
     if (identity.id !== value.id || identity.locale !== value.locale) {
       histories.set(identity.id, history);

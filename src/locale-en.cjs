@@ -4,6 +4,14 @@
 })(typeof window === 'object' ? window : globalThis, function () {
   'use strict';
   return {
+    '联动应用': 'Companion app',
+    '请先安装 Codex CLI，再选择 Codex 联动。': 'Install Codex CLI before choosing Codex as the companion app.',
+    '请先等当前任务结束，再切换联动应用。': 'Finish the current task before changing companion apps.',
+    '联动应用未能切换，请稍后重试。': 'Could not change companion apps. Please try again.',
+    '当前联动应用未提供桌宠聊天接口。': 'Chat is unavailable for this companion app.',
+    '请在 WorkBuddy 中提交操作任务。': 'Submit tasks in WorkBuddy.',
+    '桌宠已联动 WorkBuddy，右键可点播动作和切换形象。': 'Connected to WorkBuddy. Right-click to play actions or change characters.',
+    '无法激活通知对应的应用。': 'Could not activate the app for this notification.',
     '打开 AI 设置': 'Open AI settings',
     '龙娘桌宠': 'Codex Pet',
     '白龙娘': 'Dragon Girl',

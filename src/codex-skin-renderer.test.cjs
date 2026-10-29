@@ -82,6 +82,38 @@ function representativeHarness(locale='zh-CN') {
  return h;
 }
 
+function sheepHarness(locale='en') {
+ const h=representativeHarness(locale),manifest=A.normalizeManifest(JSON.parse(readFileSync(join(__dirname,'../assets/curly-sheep/manifest.json'),'utf8')));
+ const sheep={id:'curly-sheep',label:'卷卷',copy:require('./codex-character.cjs').characterCopy('curly-sheep',locale),originalVideo:false,available:{q:true},manifest,assets:Object.fromEntries(Object.values(manifest.profiles).filter(profile=>profile.type==='video').map(profile=>[profile.file,{type:'video',available:true,url:'file:///'+profile.file}]))};
+ h.model.characters.push(sheep);h.model.selection.character='curly-sheep';return h;
+}
+
+test('小羊菜单只呈现21个真实绑定槽位、3角色可切换，余额碎念明确共用且不暴露85个鱼日常',async()=>{
+ const h=sheepHarness();await h.flush();const p=h.sprite();p.animations=h.animations;p.playOnce('待机呼吸休闲');await h.ready(p);
+ const S=h.win.PetShared;S.mountContextMenu({tree:[{label:'打开网站',action:'open-site'},...S.buildMenuTree(p.animations)]});
+ const leaves=nodes=>nodes.flatMap(node=>node.anim?[node]:leaves(node.children??[])),actions=leaves(h.menu().tree),manifest=h.model.characters.at(-1).manifest;
+ assert.equal(actions.length,21);assert.deepEqual(actions.map(node=>node.anim).sort(),Object.keys(manifest.actions).sort());assert.equal(h.menu().tree.find(node=>node.label==='Appearance').children.length,3);
+ assert.equal(actions.some(node=>['原地小憩沉眠','凭空生花','原地专心玩魔方'].includes(node.anim)),false);assert.doesNotMatch(actions.map(node=>node.label).join(''),/[\u3400-\u9fff]|Dragon|Whale/i);
+ const eventIds=h.model.catalog.filter(entry=>['event:balance','event:whisper'].includes(entry.group)).map(entry=>entry.id);for(const id of eventIds)assert.equal(actions.find(node=>node.anim===id).hint,'Shared animation');
+ assert.equal(p.animations,h.animations);assert.equal(h.model.catalog.length,106);assert.equal(p.hit.attrs['aria-label'],'Curly');p.dispose();
+});
+
+test('小羊真实随机转向与点击仅取已绑定候选，回原鱼恢复完整点击表',async()=>{
+ const h=sheepHarness('zh-CN');await h.flush();const p=h.sprite();p.animations=h.animations;p.weights={idle:10,turn:10,move:10};const original=p.animations,weights=p.weights;
+ h.win.PetShared.rollKind=()=> 'turn';p.playIdle();assert.equal(p.pending.anim,'东张西望');assert.equal(p.animations,original);assert.equal(p.weights,weights);await h.ready(p);
+ let choices;h.win.PetShared.pick=pool=>{choices=[...pool];return pool.at(-1);};p.onClick({});assert.deepEqual(choices,['点击回应-开心跃动','点击回应-元气挥手']);assert.equal(p.pending.anim,'点击回应-元气挥手');await h.ready(p);
+ const next=structuredClone(h.model);next.selection.character='bluefish';h.change(next);await h.flush();p.onClick({});assert.equal(choices.length,5);assert.equal(p.animations,original);p.dispose();
+});
+
+test('小羊左右走路直接使用视频源和原物理时钟，首尾缓冲保持短且不改共享slot参数',async()=>{
+ for(const facing of ['left','right']){
+  const h=sheepHarness();await h.flush();const p=h.sprite();p.animations=h.animations;p._facing=facing;
+  p.pendingMove={startRatio:.5,startYRatio:.5,targetRatio:facing==='right'?.7:.3,leadSec:2,tailSec:2};p.playOnce('螃蟹走路');assert.equal(p.pendingMove.leadSec,.12);assert.equal(p.pendingMove.tailSec,.12);await h.ready(p);
+  const video=p.front===0?p.videoA:p.videoB;assert.equal(video.src,'file:///q-walk-left.webm');assert.equal(h.media.length,0);assert.equal(p.__codexSkinController.layers[p.front].layer.style.transform,facing==='right'?'scaleX(-1)':'');
+  await h.frame(p,.05);const start=h.positions.at(-1)[0];await h.frame(p,.5);const next=h.positions.at(-1)[0];assert.ok(facing==='right'?next>start:next<start);assert.equal(p.animations.moves.default.leadSec,2);assert.equal(p.animations.moves.default.tailSec,2);p.dispose();
+ }
+});
+
 test('五类龙娘代表动作均能进入真实随机链，招呼朝右可选且五种点击完整',async()=>{
  const h=representativeHarness('en');await h.flush();const p=h.sprite();p.animations=h.animations;p.weights={idle:10,turn:5,move:5};p._facing='right';
  const original=p.animations,weights=p.weights;let selection=0,seen;

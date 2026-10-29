@@ -8,16 +8,17 @@
 
   function play({ api, value }) {
     const english = value.locale !== 'zh-CN';
+    const brand = value.host === 'workbuddy' ? 'WorkBuddy' : 'ChatGPT';
     const reduced = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches === true;
     const listeners = [], timers = new Set(), audioNodes = [], cues = new Set();
     let finished = false, started = false, beginning = false, buffering = false, frame = null;
-    let endAt = null, exitAt = null, targetReady = value.reason !== 'codex', targetPending = false, nextProbeAt = 0;
+    let endAt = null, exitAt = null, targetReady = !['codex', 'workbuddy'].includes(value.reason), targetPending = false, nextProbeAt = 0;
     let audio = null, master = null, soundOn = false;
-    const root = document.createElement('main'); root.className = 'cinema'; root.setAttribute('aria-label', 'ChatGPT');
+    const root = document.createElement('main'); root.className = 'cinema'; root.setAttribute('aria-label', brand);
     const video = document.createElement('video'); video.className = 'cinema-video'; video.muted = true; video.loop = false; video.playsInline = true; video.preload = 'auto';
     const application = document.createElement('section'); application.className = 'cinema-app'; application.setAttribute('aria-hidden', 'true');
-    application.innerHTML = '<div class="cinema-app-chrome"><span class="cinema-app-nav">☰</span><span class="cinema-app-window-controls">− □ ×</span></div><div class="cinema-app-brand">ChatGPT</div><div class="cinema-composer"><div class="cinema-composer-placeholder"></div><div class="cinema-composer-tools"><span>＋</span><span class="cinema-composer-send">↑</span></div></div>';
-    application.querySelector('.cinema-composer-placeholder').textContent = english ? 'Message ChatGPT' : '向 ChatGPT 发送消息';
+    application.innerHTML = '<div class="cinema-app-chrome"><span class="cinema-app-nav">☰</span><span class="cinema-app-window-controls">− □ ×</span></div><div class="cinema-app-brand">' + brand + '</div><div class="cinema-composer"><div class="cinema-composer-placeholder"></div><div class="cinema-composer-tools"><span>＋</span><span class="cinema-composer-send">↑</span></div></div>';
+    application.querySelector('.cinema-composer-placeholder').textContent = english ? 'Message ' + brand : '向 ' + brand + ' 发送消息';
     const flash = document.createElement('div'); flash.className = 'cinema-flash';
     const controls = document.createElement('div'); controls.className = 'cinema-controls';
     const sound = document.createElement('button'); sound.type = 'button';
@@ -25,7 +26,7 @@
     skip.textContent = (value.copy?.skip || (english ? 'Skip' : '跳过')) + (value.reason === 'preview' ? '' : ' · Esc');
     controls.appendChild(sound); controls.appendChild(skip);
     root.appendChild(video); root.appendChild(application); root.appendChild(flash); root.appendChild(controls);
-    document.documentElement.lang = english ? 'en' : 'zh-CN'; document.body.classList.add('cinema-active'); document.body.appendChild(root);
+    document.title = 'Codex Pet · ' + brand; document.documentElement.lang = english ? 'en' : 'zh-CN'; document.body.classList.add('cinema-active'); document.body.appendChild(root);
 
     function listen(target, name, handler) { target.addEventListener(name, handler); listeners.push(() => target.removeEventListener(name, handler)); }
     function later(callback, ms) {

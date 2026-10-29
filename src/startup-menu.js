@@ -1,7 +1,8 @@
 (() => {
   'use strict';
   const bridge = window.codexStartup;
-  if (!bridge || typeof PetSprite !== 'function') return;
+  const shared = window.PetShared;
+  if (!bridge || !shared || typeof PetSprite !== 'function') return;
   let state = { mode: 'pet', locale: 'en' };
   let revision = 0;
   const update = value => { if (value && ['pet', 'startup', 'both'].includes(value.mode)) { state = value; revision++; } };
@@ -9,9 +10,10 @@
   const initialRevision = revision;
   void bridge.getState().then(value => { if (revision === initialRevision) update(value); }).catch(() => {});
   window.addEventListener('beforeunload', unsubscribe, { once: true });
-  const mount = PetSprite.prototype.mountContextMenu;
-  PetSprite.prototype.mountContextMenu = function (options) {
-    if (!options?.tree?.some(item => ['chat', 'open-site'].includes(item.action))) return mount.apply(this, arguments);
+  const mount = shared.mountContextMenu;
+  shared.mountContextMenu = function (options) {
+    // 原sprite通过共享函数挂菜单；WorkBuddy过滤账号入口后仍有home/reload根工具。
+    if (!options?.tree?.some(item => ['chat', 'open-site', 'home', 'reload'].includes(item.action))) return mount.apply(this, arguments);
     const zh = state.locale === 'zh-CN';
     const labels = zh ? ['仅桌宠', '仅启动演出', '桌宠与启动演出'] : ['Pet only', 'Startup scene only', 'Pet and startup scene'];
     const children = ['pet', 'startup', 'both'].map((mode, index) => ({

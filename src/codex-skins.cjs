@@ -6,7 +6,7 @@ const { randomUUID } = require('node:crypto');
 const A = require('./skin-actions.cjs');
 const { readCharacter, characterCopy } = require('./codex-character.cjs');
 const L = require('./codex-locale.cjs');
-const CHARACTERS = [{ id: 'white-dragon', label: '白龙娘', originalVideo: false }, { id: 'bluefish', label: '大肥鱼', originalVideo: true }];
+const CHARACTERS = [{ id: 'white-dragon', label: '白龙娘', originalVideo: false }, { id: 'bluefish', label: '大肥鱼', originalVideo: true }, { id: 'curly-sheep', label: '卷卷', originalVideo: false }];
 const knownCharacter = value => value && CHARACTERS.some(character => character.id === value.character);
 const validSelection = value => knownCharacter(value) && value.mode === 'q';
 
@@ -105,7 +105,8 @@ function createSkinStore({ dataRoot, hostRequest, logger = console } = {}) {
           if (saved.mode !== 'q') await saveJson(selectionFile, { ...saved, mode: 'q' });
         }
       } catch (error) { if (error.code !== 'ENOENT') logger.warn('[Codex Pet] '+L.t('形象选择无法读取。')); }
-      selection ??= { character: characters.find(character => character.id === 'white-dragon')?.available.q ? 'white-dragon' : 'bluefish', mode: 'q' };
+      const preferred = process.env.CODEX_PET_HOST === 'workbuddy' ? 'curly-sheep' : 'white-dragon';
+      selection ??= { character: characters.find(character => character.id === preferred)?.available.q ? preferred : 'bluefish', mode: 'q' };
     }
     const selected = characters.find(character => character.id === selection.character);
     // 已选素材被移走时明确回原视频，不写掉用户保存的选择，恢复文件后仍能切回。

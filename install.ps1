@@ -1,6 +1,8 @@
 ﻿[CmdletBinding()]
 param(
     [string]$InstallDir = (Join-Path $env:LOCALAPPDATA 'codex-pet'),
+    [ValidateSet('codex','workbuddy')][string]$CompanionHost = 'codex',
+    [string]$WorkBuddyExe,
     [switch]$NoStart,
     [switch]$NoFollow
 )
@@ -125,13 +127,27 @@ try {
     Push-Location -LiteralPath $appStage
     try {
         # 只确认本机 CLI 可执行文件存在，不读取凭据，也不发起模型请求。
-        & $nodePath --input-type=module -e "import { locateCodex } from './src/codex-path.mjs'; locateCodex();"
-        if ($LASTEXITCODE -ne 0) { throw (Get-CodexPetText '未找到 Codex CLI。请先安装 Codex，或用 CODEX_PET_CLI 指向真实的 codex.exe。' 'Codex CLI was not found. Install Codex first, or set CODEX_PET_CLI to the actual codex.exe.') }
+        if ($CompanionHost -eq 'codex') {
+            & $nodePath --input-type=module -e "import { locateCodex } from './src/codex-path.mjs'; locateCodex();"
+            if ($LASTEXITCODE -ne 0) { throw (Get-CodexPetText '未找到 Codex CLI。请先安装 Codex，或用 CODEX_PET_CLI 指向真实的 codex.exe。' 'Codex CLI was not found. Install Codex first, or set CODEX_PET_CLI to the actual codex.exe.') }
+        } else {
+            if (-not $WorkBuddyExe) {
+                $taskBuddyPaths = @(Get-Process -Name WorkBuddy -ErrorAction SilentlyContinue | ForEach-Object {
+                    try { if ($_.Path -and $_.Product -eq 'WorkBuddy' -and $_.Company -eq 'Tencent Technology (Shenzhen) Company Limited') { $_.Path } } catch {}
+                } | Select-Object -Unique)
+                if ($taskBuddyPaths.Count -eq 1) { $WorkBuddyExe = $taskBuddyPaths[0] }
+            }
+            if (-not $WorkBuddyExe -or -not (Test-Path -LiteralPath $WorkBuddyExe -PathType Leaf)) {
+                throw (Get-CodexPetText '请先安装并打开 WorkBuddy，或用 -WorkBuddyExe 指定它的程序路径。' 'Install and open WorkBuddy first, or pass its executable path with -WorkBuddyExe.')
+            }
+        }
         Write-Host (Get-CodexPetText '正在安装 Codex Pet 依赖 ...' 'Installing Codex Pet dependencies...')
         & $npmPath ci --legacy-peer-deps --ignore-scripts --no-audit --no-fund --registry=https://registry.npmjs.org
         if ($LASTEXITCODE -ne 0) { throw (Get-CodexPetText '安装 Codex Pet 依赖失败。' 'Failed to install Codex Pet dependencies.') }
         & $nodePath scripts/prepare-runtime.mjs
         if ($LASTEXITCODE -ne 0) { throw (Get-CodexPetText '准备 Codex Pet 运行时失败。' 'Failed to prepare the Codex Pet runtime.') }
+        & $nodePath src/host-cli.mjs --host $CompanionHost
+        if ($LASTEXITCODE -ne 0) { throw (Get-CodexPetText '保存联动应用失败。' 'Could not save the companion app.') }
     } finally { Pop-Location }
     New-Item -ItemType Directory -Path (Join-Path $appStage 'data') -Force | Out-Null
     @{ sourceCommit = $sourceCommit; installedAt = [DateTime]::UtcNow.ToString('o'); portableNode = [bool]$portable } |
@@ -147,6 +163,10 @@ try {
     } else {
         # PowerShell 不能跨盘移动目录；新目标先复制成功，再由 finally 清理本次临时目录。
         Copy-Item -LiteralPath $appStage -Destination $installerTarget -Recurse
+    }
+    if ($CompanionHost -eq 'workbuddy') {
+        & (Join-Path $installerTarget 'workbuddy/install.ps1') -AppRoot $installerTarget -WorkBuddyExe $WorkBuddyExe
+        if ($LASTEXITCODE -ne 0) { throw (Get-CodexPetText '安装 WorkBuddy 桌宠插件失败。' 'Could not install the WorkBuddy companion plugin.') }
     }
     if (-not $NoFollow) {
         & (Join-Path $installerTarget 'scripts/enable-follow.ps1') -AppRoot $installerTarget -NoStartWatcher:$NoStart

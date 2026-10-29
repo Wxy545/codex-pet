@@ -1,0 +1,356 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "powershell.exe -NoProfile -NonInteractive -WindowStyle Hidden -ExecutionPolicy Bypass -File \"${CODEBUDDY_PLUGIN_ROOT}/hooks/report.ps1\"",
+            "timeout": 5,
+            "allowedEnvVars": [
+              "PATH",
+              "SystemRoot",
+              "WINDIR",
+              "TEMP",
+              "TMP",
+              "USERPROFILE",
+              "CODEBUDDY_SESSION_ID",
+              "CODEBUDDY_CONVERSATION_REQUEST_ID",
+              "CODEBUDDY_ROOT_REQUEST_ID"
+            ]
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "powershell.exe -NoProfile -NonInteractive -WindowStyle Hidden -ExecutionPolicy Bypass -File \"${CODEBUDDY_PLUGIN_ROOT}/hooks/report.ps1\"",
+            "timeout": 5,
+            "allowedEnvVars": [
+              "PATH",
+              "SystemRoot",
+              "WINDIR",
+              "TEMP",
+              "TMP",
+              "USERPROFILE",
+              "CODEBUDDY_SESSION_ID",
+              "CODEBUDDY_CONVERSATION_REQUEST_ID",
+              "CODEBUDDY_ROOT_REQUEST_ID"
+            ]
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "powershell.exe -NoProfile -NonInteractive -WindowStyle Hidden -ExecutionPolicy Bypass -File \"${CODEBUDDY_PLUGIN_ROOT}/hooks/report.ps1\"",
+            "timeout": 5,
+            "allowedEnvVars": [
+              "PATH",
+              "SystemRoot",
+              "WINDIR",
+              "TEMP",
+              "TMP",
+              "USERPROFILE",
+              "CODEBUDDY_SESSION_ID",
+              "CODEBUDDY_CONVERSATION_REQUEST_ID",
+              "CODEBUDDY_ROOT_REQUEST_ID"
+            ]
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "powershell.exe -NoProfile -NonInteractive -WindowStyle Hidden -ExecutionPolicy Bypass -File \"${CODEBUDDY_PLUGIN_ROOT}/hooks/report.ps1\"",
+            "timeout": 5,
+            "allowedEnvVars": [
+              "PATH",
+              "SystemRoot",
+              "WINDIR",
+              "TEMP",
+              "TMP",
+              "USERPROFILE",
+              "CODEBUDDY_SESSION_ID",
+              "CODEBUDDY_CONVERSATION_REQUEST_ID",
+              "CODEBUDDY_ROOT_REQUEST_ID"
+            ]
+          }
+        ]
+      }
+    ],
+    "PostToolUseFailure": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "powershell.exe -NoProfile -NonInteractive -WindowStyle Hidden -ExecutionPolicy Bypass -File \"${CODEBUDDY_PLUGIN_ROOT}/hooks/report.ps1\"",
+            "timeout": 5,
+            "allowedEnvVars": [
+              "PATH",
+              "SystemRoot",
+              "WINDIR",
+              "TEMP",
+              "TMP",
+              "USERPROFILE",
+              "CODEBUDDY_SESSION_ID",
+              "CODEBUDDY_CONVERSATION_REQUEST_ID",
+              "CODEBUDDY_ROOT_REQUEST_ID"
+            ]
+          }
+        ]
+      }
+    ],
+    "Notification": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "powershell.exe -NoProfile -NonInteractive -WindowStyle Hidden -ExecutionPolicy Bypass -File \"${CODEBUDDY_PLUGIN_ROOT}/hooks/report.ps1\"",
+            "timeout": 5,
+            "allowedEnvVars": [
+              "PATH",
+              "SystemRoot",
+              "WINDIR",
+              "TEMP",
+              "TMP",
+              "USERPROFILE",
+              "CODEBUDDY_SESSION_ID",
+              "CODEBUDDY_CONVERSATION_REQUEST_ID",
+              "CODEBUDDY_ROOT_REQUEST_ID"
+            ]
+          }
+        ]
+      }
+    ],
+    "PermissionRequest": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "powershell.exe -NoProfile -NonInteractive -WindowStyle Hidden -ExecutionPolicy Bypass -File \"${CODEBUDDY_PLUGIN_ROOT}/hooks/report.ps1\"",
+            "timeout": 5,
+            "allowedEnvVars": [
+              "PATH",
+              "SystemRoot",
+              "WINDIR",
+              "TEMP",
+              "TMP",
+              "USERPROFILE",
+              "CODEBUDDY_SESSION_ID",
+              "CODEBUDDY_CONVERSATION_REQUEST_ID",
+              "CODEBUDDY_ROOT_REQUEST_ID"
+            ]
+          }
+        ]
+      }
+    ],
+    "PermissionDenied": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "powershell.exe -NoProfile -NonInteractive -WindowStyle Hidden -ExecutionPolicy Bypass -File \"${CODEBUDDY_PLUGIN_ROOT}/hooks/report.ps1\"",
+            "timeout": 5,
+            "allowedEnvVars": [
+              "PATH",
+              "SystemRoot",
+              "WINDIR",
+              "TEMP",
+              "TMP",
+              "USERPROFILE",
+              "CODEBUDDY_SESSION_ID",
+              "CODEBUDDY_CONVERSATION_REQUEST_ID",
+              "CODEBUDDY_ROOT_REQUEST_ID"
+            ]
+          }
+        ]
+      }
+    ],
+    "Elicitation": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "powershell.exe -NoProfile -NonInteractive -WindowStyle Hidden -ExecutionPolicy Bypass -File \"${CODEBUDDY_PLUGIN_ROOT}/hooks/report.ps1\"",
+            "timeout": 5,
+            "allowedEnvVars": [
+              "PATH",
+              "SystemRoot",
+              "WINDIR",
+              "TEMP",
+              "TMP",
+              "USERPROFILE",
+              "CODEBUDDY_SESSION_ID",
+              "CODEBUDDY_CONVERSATION_REQUEST_ID",
+              "CODEBUDDY_ROOT_REQUEST_ID"
+            ]
+          }
+        ]
+      }
+    ],
+    "ElicitationResult": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "powershell.exe -NoProfile -NonInteractive -WindowStyle Hidden -ExecutionPolicy Bypass -File \"${CODEBUDDY_PLUGIN_ROOT}/hooks/report.ps1\"",
+            "timeout": 5,
+            "allowedEnvVars": [
+              "PATH",
+              "SystemRoot",
+              "WINDIR",
+              "TEMP",
+              "TMP",
+              "USERPROFILE",
+              "CODEBUDDY_SESSION_ID",
+              "CODEBUDDY_CONVERSATION_REQUEST_ID",
+              "CODEBUDDY_ROOT_REQUEST_ID"
+            ]
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "powershell.exe -NoProfile -NonInteractive -WindowStyle Hidden -ExecutionPolicy Bypass -File \"${CODEBUDDY_PLUGIN_ROOT}/hooks/report.ps1\"",
+            "timeout": 5,
+            "allowedEnvVars": [
+              "PATH",
+              "SystemRoot",
+              "WINDIR",
+              "TEMP",
+              "TMP",
+              "USERPROFILE",
+              "CODEBUDDY_SESSION_ID",
+              "CODEBUDDY_CONVERSATION_REQUEST_ID",
+              "CODEBUDDY_ROOT_REQUEST_ID"
+            ]
+          }
+        ]
+      }
+    ],
+    "FinalStop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "powershell.exe -NoProfile -NonInteractive -WindowStyle Hidden -ExecutionPolicy Bypass -File \"${CODEBUDDY_PLUGIN_ROOT}/hooks/report.ps1\"",
+            "timeout": 5,
+            "allowedEnvVars": [
+              "PATH",
+              "SystemRoot",
+              "WINDIR",
+              "TEMP",
+              "TMP",
+              "USERPROFILE",
+              "CODEBUDDY_SESSION_ID",
+              "CODEBUDDY_CONVERSATION_REQUEST_ID",
+              "CODEBUDDY_ROOT_REQUEST_ID"
+            ]
+          }
+        ]
+      }
+    ],
+    "StopFailure": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "powershell.exe -NoProfile -NonInteractive -WindowStyle Hidden -ExecutionPolicy Bypass -File \"${CODEBUDDY_PLUGIN_ROOT}/hooks/report.ps1\"",
+            "timeout": 5,
+            "allowedEnvVars": [
+              "PATH",
+              "SystemRoot",
+              "WINDIR",
+              "TEMP",
+              "TMP",
+              "USERPROFILE",
+              "CODEBUDDY_SESSION_ID",
+              "CODEBUDDY_CONVERSATION_REQUEST_ID",
+              "CODEBUDDY_ROOT_REQUEST_ID"
+            ]
+          }
+        ]
+      }
+    ],
+    "SessionEnd": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "powershell.exe -NoProfile -NonInteractive -WindowStyle Hidden -ExecutionPolicy Bypass -File \"${CODEBUDDY_PLUGIN_ROOT}/hooks/report.ps1\"",
+            "timeout": 5,
+            "allowedEnvVars": [
+              "PATH",
+              "SystemRoot",
+              "WINDIR",
+              "TEMP",
+              "TMP",
+              "USERPROFILE",
+              "CODEBUDDY_SESSION_ID",
+              "CODEBUDDY_CONVERSATION_REQUEST_ID",
+              "CODEBUDDY_ROOT_REQUEST_ID"
+            ]
+          }
+        ]
+      }
+    ],
+    "SubagentStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "powershell.exe -NoProfile -NonInteractive -WindowStyle Hidden -ExecutionPolicy Bypass -File \"${CODEBUDDY_PLUGIN_ROOT}/hooks/report.ps1\"",
+            "timeout": 5,
+            "allowedEnvVars": [
+              "PATH",
+              "SystemRoot",
+              "WINDIR",
+              "TEMP",
+              "TMP",
+              "USERPROFILE",
+              "CODEBUDDY_SESSION_ID",
+              "CODEBUDDY_CONVERSATION_REQUEST_ID",
+              "CODEBUDDY_ROOT_REQUEST_ID"
+            ]
+          }
+        ]
+      }
+    ],
+    "SubagentStop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "powershell.exe -NoProfile -NonInteractive -WindowStyle Hidden -ExecutionPolicy Bypass -File \"${CODEBUDDY_PLUGIN_ROOT}/hooks/report.ps1\"",
+            "timeout": 5,
+            "allowedEnvVars": [
+              "PATH",
+              "SystemRoot",
+              "WINDIR",
+              "TEMP",
+              "TMP",
+              "USERPROFILE",
+              "CODEBUDDY_SESSION_ID",
+              "CODEBUDDY_CONVERSATION_REQUEST_ID",
+              "CODEBUDDY_ROOT_REQUEST_ID"
+            ]
+          }
+        ]
+      }
+    ]
+  }
+}

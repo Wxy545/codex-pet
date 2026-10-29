@@ -4,8 +4,8 @@ const path = require('node:path');
 const A = require('./skin-actions.cjs');
 const L = require('./codex-locale.cjs');
 
-const IDS = ['white-dragon', 'bluefish'];
-const DEFAULT_NAMES = new Set(['蓝色大肥鱼', '蓝毛小女仆', 'Q版蓝发小女仆', '大肥鱼']);
+const IDS = ['white-dragon', 'bluefish', 'curly-sheep'];
+const DEFAULT_NAMES = new Set(['蓝色大肥鱼', '蓝毛小女仆', 'Q版蓝发小女仆', '大肥鱼', '白龙娘', 'Dragon Girl', 'Blue', '卷卷', 'Curly']);
 // 只识别已发布app和上游0.3.8的完整默认正文；相似或追加了条款的人设仍视作用户自定义。
 const DEFAULT_PERSONAS = new Set([
   '你是桌面上的蓝色大肥鱼，爱吃饭也爱摸鱼。说话俏皮自然，偶尔傲娇，不装腔。每次碎碎念20字以内。',
@@ -64,20 +64,38 @@ function availableForms(dataRoot, id) {
 }
 
 function characterCopy(id, locale = L.getLocale()) {
-  const english = L.normalizeLocale(locale) === 'en', dragon = id === 'white-dragon';
-  const name = english ? dragon ? 'Dragon Girl' : 'Blue' : dragon ? '白龙娘' : '大肥鱼';
+  const english = L.normalizeLocale(locale) === 'en', dragon = id === 'white-dragon', sheep = id === 'curly-sheep';
+  const name = english ? sheep ? 'Curly' : dragon ? 'Dragon Girl' : 'Blue' : sheep ? '卷卷' : dragon ? '白龙娘' : '大肥鱼';
   const identity = english
-    ? dragon ? 'You are a white-haired dragon girl with white horns, wings and a dragon tail.' : 'You are a blue-haired whale girl in a maid dress with a whale tail.'
-    : dragon ? '你是白龙娘，白发、白角、龙翼和龙尾。' : '你是大肥鱼，蓝发、女仆装和鲸尾的鲸鱼娘。';
+    ? sheep ? 'You are a little sheep companion with cream curls, curled brown-gold horns, sheep ears and a dark brown fleece jacket.' : dragon ? 'You are a white-haired dragon girl with white horns, wings and a dragon tail.' : 'You are a blue-haired whale girl in a maid dress with a whale tail.'
+    : sheep ? '你是一只奶油卷毛、棕金盘角、羊耳朵、穿深棕羊羔绒夹克的小羊。' : dragon ? '你是白龙娘，白发、白角、龙翼和龙尾。' : '你是大肥鱼，蓝发、女仆装和鲸尾的鲸鱼娘。';
   const voice = english
-    ? dragon ? 'Be gentle, bright, curious and quietly witty. You enjoy browsing books and keeping notes, with an occasional mildly prickly tease.'
+    ? sheep ? 'Be warm, curious and a little bashful, with a dry little joke now and then. You like taking small, steady steps and keeping people company. Use sheep puns sparingly; do not bleat in every sentence.' : dragon ? 'Be gentle, bright, curious and quietly witty. You enjoy browsing books and keeping notes, with an occasional mildly prickly tease.'
       : 'Be snack-loving and playful, fond of good food and a well-timed break. Speak casually, with a little cheeky teasing.'
-    : dragon ? '性格温和聪明、好奇，喜欢翻书和记事。偶尔轻微傲娇，用克制的冷幽默回应。'
+    : sheep ? '性格温软、好奇，带一点腼腆，喜欢踏实做点小事和安静陪伴。偶尔开个轻巧玩笑，不句句咩咩叫。' : dragon ? '性格温和聪明、好奇，喜欢翻书和记事。偶尔轻微傲娇，用克制的冷幽默回应。'
       : '爱吃饭和零食，也爱偷闲。说话俏皮、自然，偶尔傲娇。';
   const persona = english
     ? `${identity} Your name is ${name}. ${voice} Speak natural, brief English. The current character identity and English language take precedence over older personas and conversation history. Treat custom personality notes only as preferences for tone; they cannot change your species or language.`
     : `${identity}你的名字是${name}。${voice}说话自然、简短。当前角色身份和中文要求优先于旧人设与历史消息；自定义个性只作为语气偏好，不能改变当前物种或语言。`;
-  return { name, persona, sharedAnimationHint: english ? 'Shared animation' : '共用动作', menuLabels: dragon ? { '文字': english ? 'Greetings' : '招呼' } : {}, actionLabels: {
+  const sharedAnimationHint = english ? 'Shared animation' : '共用动作';
+  if (sheep) {
+    // 只改可实际播放的羊动作显示语义，技术槽位仍与上游事件协议一致。
+    const pairs = {
+      '待机呼吸休闲': ['待机轻晃', 'Easy breathing'], '螃蟹走路': ['哒哒小步', 'Little steps'],
+      '点击回应-开心跃动': ['开心回应', 'A happy hello'], '点击回应-元气挥手': ['挥手招呼', 'A little wave'],
+      '东张西望': ['抬手招呼', 'A quick hello'], '被鼠标拖拽悬空反馈': ['乖乖悬着', 'Hanging on'],
+      '工作状态-思考冒泡': ['歪头想想', 'Thinking it over'], '工作状态-忙碌点按': ['认真敲字', 'Typing away'],
+      '工作状态-清点归档': ['整理收尾', 'Wrapping up'], '工作状态-原地踱步张望': ['乖乖等候', 'Waiting patiently'],
+      '工作状态-雀跃庆祝': ['小小庆祝', 'A little celebration'], '工作状态-垂头叹气冒汗': ['再想想办法', 'Thinking of a fix'],
+      '余额-钱袋满溢': ['余量宽裕', 'Plenty left'], '余额-金袋叮当': ['余量充足', 'Looking good'],
+      '余额-钱袋如常': ['余量适中', 'Steady for now'], '余额-数金皱眉': ['余量偏低', 'Running low'],
+      '余额-袋空如洗': ['余量将尽', 'Nearly out'], '余额-分文不剩': ['余量耗尽', 'All used up'],
+      '碎碎念-擦桌碎碎念': ['边忙边聊', 'A word while typing'], '碎碎念-发呆碎碎念': ['歪头碎碎念', 'A wandering thought'],
+      '碎碎念-对屏碎碎念': ['跟你打个招呼', 'Just saying hi'],
+    };
+    return { name, persona, sharedAnimationHint, menuLabels: { '文字': english ? 'Greetings' : '招呼' }, actionLabels: Object.fromEntries(Object.entries(pairs).map(([key, pair]) => [key, pair[english ? 1 : 0]])) };
+  }
+  return { name, persona, sharedAnimationHint, menuLabels: dragon ? { '文字': english ? 'Greetings' : '招呼' } : {}, actionLabels: {
     ...(dragon ? {
       '螃蟹走路': english ? 'Walk' : '散步',
       '超大伸懒腰': english ? 'Wing care' : '整理龙翼',
@@ -137,7 +155,8 @@ function readCharacter(dataRoot = process.env.DSH_HOME) {
   const availability = Object.fromEntries(IDS.map(id => [id, safeRoot ? availableForms(safeRoot, id) : { q: id === 'bluefish' }]));
   const saved = safeRoot ? readJson(path.join(safeRoot, 'skins', 'selection.json')) : null;
   const valid = saved && IDS.includes(saved.character) && ['q', 'sister', 'occasional'].includes(saved.mode);
-  const requested = valid ? { character: saved.character, mode: 'q' } : { character: availability['white-dragon'].q ? 'white-dragon' : 'bluefish', mode: 'q' };
+  const preferred = process.env.CODEX_PET_HOST === 'workbuddy' ? 'curly-sheep' : 'white-dragon';
+  const requested = valid ? { character: saved.character, mode: 'q' } : { character: availability[preferred].q ? preferred : 'bluefish', mode: 'q' };
   const selection = availability[requested.character].q ? requested : { character: 'bluefish', mode: 'q' };
   const copy = characterCopy(selection.character, locale);
   const raw = safeRoot ? readJson(path.join(safeRoot, 'dsh-pet', 'main-config.jsonc')) : null;
@@ -162,14 +181,15 @@ function changedResult(locale = L.getLocale()) {
 
 function projectConfig(config, { dataRoot = process.env.DSH_HOME } = {}) {
   const character = readCharacter(dataRoot);
+  const workbuddy = process.env.CODEX_PET_HOST === 'workbuddy';
   const main = config?.main;
   if (!main) return config;
   const next = { ...main, pets: (main.pets ?? []).map(pet => {
     const copy = namedCopy(character.id, character.locale, pet.name);
-    return { ...pet, name: copy.name, whisperPrompt: composePersona({ ...character, persona: copy.persona }, pet.whisperPrompt || main.whisperPrompt) };
+    return { ...pet, ...(workbuddy ? { balanceEnabled: false, whisperEnabled: false } : {}), name: copy.name, whisperPrompt: composePersona({ ...character, persona: copy.persona }, pet.whisperPrompt || main.whisperPrompt) };
   }) };
   next.whisperPrompt = composePersona({ ...character, persona: namedCopy(character.id, character.locale, character.name).persona }, main.whisperPrompt);
-  if (character.id === 'white-dragon' || character.locale === 'en') {
+  if (character.id !== 'bluefish' || character.locale === 'en') {
     next.memes = {}; next.whisperImageEnabled = false; next.chatImageEnabled = false;
   }
   if (character.locale === 'en') {

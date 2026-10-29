@@ -1,0 +1,31 @@
+(() => {
+  'use strict';
+  const bridge=window.petHost;
+  const shared=window.PetShared;
+  if(!bridge||!shared||typeof PetSprite!=='function')return;
+  let host=bridge.initialHost||'codex',closed=false;
+  void bridge.getState().then(value=>{if(!closed&&['codex','workbuddy'].includes(value?.host))host=value.host;}).catch(()=>{});
+  window.addEventListener('beforeunload',()=>{closed=true;},{once:true});
+  const mount=shared.mountContextMenu;
+  // 没有接入的账号能力不提供入口，动作点播中的余额和碎念视频仍可观看。
+  function filter(nodes){return nodes.flatMap(node=>{
+    if(node.action==='third-party')return[node];
+    if(host==='workbuddy'&&node.action==='open-site')return[{...node,label:(window.CodexLocale?.getLocale()||navigator.language).startsWith('zh')?'打开 WorkBuddy':'Open WorkBuddy'}];
+    if(host==='workbuddy'&&['chat','codex-task-panel','show-balance','balance','say','whisper','open-ai-settings'].includes(node.action))return[];
+    return[{...node,...(node.children?{children:filter(node.children)}:{})}];
+  });}
+  shared.mountContextMenu=function(options){
+    if(!options?.tree?.some(item=>['chat','open-site','home','reload'].includes(item.action)))return mount.apply(this,arguments);
+    const zh=(window.CodexLocale?.getLocale()||navigator.language).startsWith('zh');
+    const tree=filter(options.tree);
+    tree.push({label:zh?'联动应用':'Companion app',children:[['codex','Codex'],['workbuddy','WorkBuddy']].map(([id,label])=>({label:(id===host?'✓ ':'')+label,action:'pet-select-host',host:id}))});
+    return mount.call(this,{...options,tree});
+  };
+  const action=PetSprite.prototype.onMenuAction;
+  PetSprite.prototype.onMenuAction=function(leaf){
+    if(leaf?.action==='pet-select-host'){
+      this.closeMenu();void bridge.selectHost(leaf.host).catch(()=>console.warn('[Codex Pet] Companion app could not be changed.'));return;
+    }
+    return action.apply(this,arguments);
+  };
+})();

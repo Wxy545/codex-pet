@@ -2,6 +2,7 @@
 param(
     [string]$AppRoot,
     [ValidateRange(1, 300)][int]$PollSeconds = 5,
+    [ValidateSet('auto', 'codex', 'workbuddy')][string]$PetHost = 'auto',
     [switch]$Once,
     [switch]$NoStart
 )
@@ -37,9 +38,40 @@ function Test-TaskCodexUi {
     return $false
 }
 
+function Get-TaskPetHost {
+    if ($PetHost -ne 'auto') { return $PetHost }
+    try {
+        $taskHostFile = Get-Item -LiteralPath (Join-Path $taskRoot 'data/host.json') -ErrorAction Stop
+        if ($taskHostFile.PSIsContainer -or $taskHostFile.Length -gt 4096) { return 'codex' }
+        $taskHostValue = [IO.File]::ReadAllText($taskHostFile.FullName) | ConvertFrom-Json -ErrorAction Stop
+        if ($taskHostValue.schemaVersion -eq 1 -and $taskHostValue.host -eq 'workbuddy') { return 'workbuddy' }
+    } catch { # 缺失或损坏的选择不改变既有Codex默认值。
+    }
+    return 'codex'
+}
+
+function Test-TaskWorkBuddyUi {
+    foreach ($taskProcess in @(Get-Process -Name 'WorkBuddy' -ErrorAction SilentlyContinue)) {
+        try {
+            if ([IO.Path]::GetFileName([string]$taskProcess.Path) -ine 'WorkBuddy.exe') { continue }
+            if ([string]$taskProcess.Product -ieq 'WorkBuddy' -and [string]$taskProcess.Company -ieq 'Tencent Technology (Shenzhen) Company Limited') { return $true }
+        } catch { # 无法确认产品与发行方的进程不计入宿主。
+        }
+    }
+    return $false
+}
+
+function Test-TaskHostUi([string]$SelectedHost) {
+    if ($SelectedHost -eq 'workbuddy') { return Test-TaskWorkBuddyUi }
+    return Test-TaskCodexUi
+}
+
 function Write-TaskProbe([bool]$Running, [bool]$WouldStart, [bool]$Started) {
     [ordered]@{
-        codexRunning = $Running
+        host = $taskSelectedHost
+        hostRunning = $Running
+        codexRunning = ($taskSelectedHost -eq 'codex' -and $Running)
+        workbuddyRunning = ($taskSelectedHost -eq 'workbuddy' -and $Running)
         wouldStart = $WouldStart
         startRequested = $Started
         noStart = [bool]$NoStart
@@ -48,7 +80,8 @@ function Write-TaskProbe([bool]$Running, [bool]$WouldStart, [bool]$Started) {
 }
 
 if ($Once -and $NoStart) {
-    $taskRunning = Test-TaskCodexUi
+    $taskSelectedHost = Get-TaskPetHost
+    $taskRunning = Test-TaskHostUi $taskSelectedHost
     Write-TaskProbe $taskRunning $taskRunning $false
     return
 }
@@ -67,21 +100,25 @@ try {
     $taskStop = [System.Threading.EventWaitHandle]::new($false, [System.Threading.EventResetMode]::ManualReset, "Local\dsh-pet-codex-follow-stop-$taskKey")
     $taskStop.Reset() | Out-Null
     $taskWasRunning = $false
+    $taskPreviousHost = $null
     do {
         if ($taskStop.WaitOne(0)) { break }
-        $taskRunning = Test-TaskCodexUi
+        $taskSelectedHost = Get-TaskPetHost
+        # 一个watcher跟随当前明确选择的宿主，切换后重新建立该宿主的启动边沿。
+        if ($taskPreviousHost -ne $taskSelectedHost) { $taskWasRunning = $false; $taskPreviousHost = $taskSelectedHost }
+        $taskRunning = Test-TaskHostUi $taskSelectedHost
         $taskRisingEdge = $taskRunning -and -not $taskWasRunning
         $taskRequested = $false
         if ($taskRisingEdge -and -not $NoStart) {
             try {
-                & (Join-Path $taskRoot 'start.ps1') -AppRoot $taskRoot -Reason codex | Out-Null
+                & (Join-Path $taskRoot 'start.ps1') -AppRoot $taskRoot -Reason $taskSelectedHost | Out-Null
                 $taskRequested = $true
             } catch {
                 [Console]::Error.WriteLine((Get-CodexPetText '跟随启动失败，请运行 setup.ps1 并检查 Codex Pet 日志。' 'Follow-startup failed. Run setup.ps1 and check the Codex Pet logs.'))
             }
         }
         if ($Once -or $NoStart -or $taskRisingEdge) { Write-TaskProbe $taskRunning $taskRisingEdge $taskRequested }
-        # 用户手动停宠物后，只在下次Codex由关闭变为运行时再启动，避免反复拉起。
+        # 用户手动停宠物后，只在宿主下次启动或用户切换宿主时再启动。
         $taskWasRunning = $taskRunning
         if ($Once) { break }
     } while (-not $taskStop.WaitOne($PollSeconds * 1000))

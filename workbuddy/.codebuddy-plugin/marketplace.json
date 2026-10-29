@@ -1,0 +1,5 @@
+{
+  "name": "codex-pet-workbuddy",
+  "owner": {"name": "Wxy545"},
+  "plugins": [{"name": "codex-pet-companion", "source": "./plugin", "description": "Desktop companion reactions for WorkBuddy", "version": "0.1.0"}]
+}

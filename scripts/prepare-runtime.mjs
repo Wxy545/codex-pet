@@ -5,8 +5,10 @@ import { resolve, dirname } from 'node:path';
 import { localizeHost, localizeCore, localizeEvents, localizeIndexHtml } from './runtime-locale-patches.mjs';
 import { patchHostAssets, patchBridgeAssets, patchDesktopMotion, patchDesktopBalanceEvents, patchDesktopWorkEvents, patchDesktopWorkResume } from './upstream-fixes.mjs';
 import { seedBundledWhiteDragon } from './bundled-skins.mjs';
+import { seedBundledSheep } from './bundled-sheep.mjs';
 import { seedBundledStartup } from './bundled-startup.mjs';
 import { patchStartupMain } from './startup-runtime-patch.mjs';
+import { patchHostOpenTarget } from './runtime-host-patch.mjs';
 
 const root=resolve(dirname(fileURLToPath(import.meta.url)),'..');
 const pkg=resolve(root,'node_modules/dsh-pet');
@@ -58,12 +60,16 @@ await writeFile(sprite,patchDesktopWorkResume(patchDesktopMotion(await readFile(
 const main=resolve(pkg,'runtime/electron-helper/main.js');
 let mainCode=await readFile(main,'utf8');
 mainCode=patchBridgeAssets(mainCode);
+mainCode=patchHostOpenTarget(mainCode);
 await writeFile(main,mainCode);
-const noticeHook="require('./codex-notifications.cjs').install({hostRequest});";
+const oldNoticeHook="require('./codex-notifications.cjs').install({hostRequest});";
+const noticeHook="require(process.env.CODEX_PET_HOST === 'workbuddy' ? './workbuddy-notifications.cjs' : './codex-notifications.cjs').install({hostRequest});";
+if(mainCode.includes(oldNoticeHook)){mainCode=mainCode.replaceAll(oldNoticeHook,noticeHook);await writeFile(main,mainCode);}
 if(!mainCode.includes(noticeHook)) await writeFile(main,mainCode+'\n'+noticeHook+'\n');
 mainCode=await readFile(main,'utf8');
 const extensionHook=`// codex-pet-extensions-v2
 const codexPanelRequest = require('./codex-api.cjs').createHostRequest();
+const codexPetHost = require('./pet-host-menu.cjs').install({hostRequest:codexPanelRequest});
 const codexTaskPanel = require('./codex-task-window.cjs').install({hostRequest:codexPanelRequest});
 const codexChatPanel = require('./codex-chat-window.cjs').install({hostRequest:codexPanelRequest,openTaskPanel:()=>codexTaskPanel.open()});
 require('./codex-skins.cjs').install({hostRequest,dataRoot:process.env.DSH_HOME,onSelectionChanged:async model=>{const character=model.characters.find(item=>item.id===model.selection.character);codexChatPanel.onCharacterChanged?.({id:model.selection.character,name:character.copy.name,locale:model.locale});if(tray){tray.destroy();tray=null;}await startTray();}});
@@ -79,6 +85,8 @@ mainCode=await readFile(main,'utf8');
 const oldTray="tray.setToolTip('dsh-pet 桌面宠物');";
 mainCode=mainCode.replace(oldTray,"tray.setToolTip('Codex Pet');").replace("tray.setToolTip('龙娘桌宠');","tray.setToolTip('Codex Pet');");
 mainCode=patchStartupMain(mainCode);
+const hostTray='...codexStartup.trayItems(), ...codexPetHost.trayItems()]';
+if(!mainCode.includes(hostTray)) mainCode=patchOnce(mainCode,'...codexStartup.trayItems()]',hostTray,'联动应用托盘');
 await writeFile(main,mainCode);
 const preload=resolve(pkg,'runtime/electron-helper/preload.js');
 let preloadCode=await readFile(preload,'utf8');
@@ -90,12 +98,17 @@ if(!preloadCode.includes('// codex-pet-preloads-v1')) await writeFile(preload,pr
 preloadCode=await readFile(preload,'utf8');
 const startupPreload="require('./codex-startup.cjs').installPreload();";
 if(!preloadCode.includes(startupPreload)) await writeFile(preload,preloadCode+'\n'+startupPreload+'\n');
+preloadCode=await readFile(preload,'utf8');
+const hostPreload="require('./pet-host-menu.cjs').installPreload();";
+if(!preloadCode.includes(hostPreload)) await writeFile(preload,preloadCode+'\n'+hostPreload+'\n');
 const html=resolve(pkg,'runtime/electron-helper/index.html');
 let htmlCode=await readFile(html,'utf8');
 htmlCode=localizeIndexHtml(htmlCode);
 if(!htmlCode.includes('src="startup-menu.js"')) htmlCode=patchOnce(htmlCode,'<script src="./events.js"></script>','<script src="startup-menu.js"></script>\n    <script src="./events.js"></script>','启动演出菜单');
+if(!htmlCode.includes('src="pet-host-menu.js"')) htmlCode=patchOnce(htmlCode,'<script src="./events.js"></script>','<script src="pet-host-menu.js"></script>\n    <script src="./events.js"></script>','联动应用菜单');
 await writeFile(html,htmlCode);
-for(const file of ['codex-notifications.cjs','foreground-codex.ps1','codex-api.cjs',
+for(const file of ['codex-notifications.cjs','foreground-codex.ps1','codex-api.cjs','pet-host.cjs','pet-host-menu.cjs','pet-host-menu.js',
+  'workbuddy-notifications.cjs','foreground-workbuddy.ps1','workbuddy-target.ps1',
   'codex-task-window.cjs','task-preload.cjs','task-window.html','task-window.js','task-window.css',
   'codex-chat-window.cjs','chat-preload.cjs','chat-window.html','chat-window.js','chat-window.css',
   'codex-skins.cjs','codex-skin-renderer.js','skin-actions.cjs','codex-character.cjs','codex-locale.cjs','locale-en.cjs','codex-runtime-locale.cjs','panel-locale.js','runtime-range.cjs']){
@@ -106,5 +119,6 @@ for(const file of ['codex-startup.cjs','startup-target.ps1','startup-preload.cjs
 }
 await mkdir(resolve(root,'data'),{recursive:true});
 await seedBundledWhiteDragon({projectRoot:root});
+await seedBundledSheep({projectRoot:root});
 await seedBundledStartup({projectRoot:root});
 console.log('dsh-pet 0.3.8 runtime prepared: Codex Pet.');

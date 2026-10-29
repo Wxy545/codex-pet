@@ -11,6 +11,45 @@ function fixture(t){
   const png=Buffer.alloc(24);Buffer.from('89504e470d0a1a0a','hex').copy(png);png.writeUInt32BE(1200,16);png.writeUInt32BE(1200,20);
   L.setLocale('zh-CN');return{root,write,png};
 }
+
+test('新装身份按宿主默认：WorkBuddy卷卷、Codex白龙，首选媒体未就绪回原鱼',t=>{
+ const previous=process.env.CODEX_PET_HOST,f=fixture(t);
+ f.write('skins/white-dragon/sprites.png',f.png);f.write('skins/curly-sheep/manifest.json',{schemaVersion:1,profiles:{idle:{type:'video',file:'q-idle.webm'}}});
+ f.write('skins/curly-sheep/q-idle.webm',Buffer.from('1a45dfa3934282847765626d000000000000','hex'));
+ try{
+  for(const[host,id,name]of [['workbuddy','curly-sheep','卷卷'],['codex','white-dragon','白龙娘']]){
+   process.env.CODEX_PET_HOST=host;const identity=C.readCharacter(f.root);assert.equal(identity.id,id);assert.equal(identity.name,name);assert.deepEqual(identity.requestedSelection,{character:id,mode:'q'});
+   assert.equal(fs.existsSync(path.join(f.root,'skins/selection.json')),false);
+  }
+  process.env.CODEX_PET_HOST='workbuddy';f.write('skins/curly-sheep/q-idle.webm','broken media');assert.equal(C.readCharacter(f.root).id,'bluefish');
+  process.env.CODEX_PET_HOST='codex';fs.unlinkSync(path.join(f.root,'skins/white-dragon/sprites.png'));assert.equal(C.readCharacter(f.root).id,'bluefish');
+ }finally{if(previous===undefined)delete process.env.CODEX_PET_HOST;else process.env.CODEX_PET_HOST=previous;}
+});
+
+test('卷卷可切换且默认仍是白龙，小羊独立中英人设和昵称不混入鱼龙身份',async t=>{
+ const f=fixture(t),manifest=JSON.parse(fs.readFileSync(path.join(__dirname,'../assets/curly-sheep/manifest.json'),'utf8'));
+ f.write('skins/white-dragon/sprites.png',f.png);f.write('skins/curly-sheep/manifest.json',manifest);
+ for(const name of new Set(Object.values(manifest.profiles).map(profile=>profile.file)))f.write('skins/curly-sheep/'+name,Buffer.from('1a45dfa3934282847765626d000000000000','hex'));
+ assert.equal(C.readCharacter(f.root).id,'white-dragon');const store=createSkinStore({dataRoot:f.root});await store.select({character:'curly-sheep',mode:'q'});
+ for(const [locale,name]of [['zh-CN','卷卷'],['en','Curly']]){
+  L.setLocale(locale);const sheep=C.readCharacter(f.root);assert.equal(sheep.id,'curly-sheep');assert.equal(sheep.name,name);assert.doesNotMatch(sheep.persona,/龙翼|龙尾|鲸尾|whale|dragon/i);
+  assert.match(sheep.persona,locale==='en'?/sheep companion.*cream curls.*horns/:/奶油卷毛.*盘角.*小羊/);
+  const copy=C.characterCopy('curly-sheep',locale);assert.equal(copy.actionLabels['工作状态-忙碌点按'],locale==='en'?'Typing away':'认真敲字');assert.equal(copy.actionLabels['用鲸鱼尾巴拍打地面'],undefined);
+  for(const key of Object.keys(manifest.actions))assert.ok(copy.actionLabels[key],key);if(locale==='en')assert.doesNotMatch(Object.values(copy.actionLabels).join(''),/[\u3400-\u9fff]/);
+ }
+ L.setLocale('zh-CN');f.write('dsh-pet/main-config.jsonc',{pets:[{id:'main',name:'团子',whisperPrompt:'喜欢园艺。'}]});const before=fs.readFileSync(path.join(f.root,'dsh-pet/main-config.jsonc'),'utf8');
+ const custom=C.readCharacter(f.root);assert.equal(custom.name,'团子');assert.match(custom.persona,/你的名字是团子/);assert.match(custom.persona,/喜欢园艺/);assert.equal(fs.readFileSync(path.join(f.root,'dsh-pet/main-config.jsonc'),'utf8'),before);
+ const projected=C.projectConfig({main:{pets:[{id:'main',name:'大肥鱼'}],memes:{fish:'old'},chatImageEnabled:true,whisperImageEnabled:true}},{dataRoot:f.root});assert.deepEqual(projected.main.memes,{});assert.equal(projected.main.chatImageEnabled,false);
+ await store.select({character:'bluefish',mode:'q'});assert.equal(C.readCharacter(f.root).id,'bluefish');
+});
+
+test('WorkBuddy只在配置投影禁用每只宠物的余额和自动碎念，不改原配置或Codex选择',t=>{
+ const f=fixture(t),previous=process.env.CODEX_PET_HOST;const config={main:{pets:[{id:'main',balanceEnabled:true,whisperEnabled:true},{id:'second',balanceEnabled:true,whisperEnabled:true}]}};
+ try{
+  process.env.CODEX_PET_HOST='workbuddy';const projected=C.projectConfig(config,{dataRoot:f.root});assert.ok(projected.main.pets.every(p=>p.balanceEnabled===false&&p.whisperEnabled===false));assert.ok(config.main.pets.every(p=>p.balanceEnabled===true&&p.whisperEnabled===true));
+  process.env.CODEX_PET_HOST='codex';const codex=C.projectConfig(config,{dataRoot:f.root});assert.ok(codex.main.pets.every(p=>p.balanceEnabled===true&&p.whisperEnabled===true));
+ }finally{if(previous===undefined)delete process.env.CODEX_PET_HOST;else process.env.CODEX_PET_HOST=previous;}
+});
 test('旧姐姐和偶尔选择在身份读取时归同角色Q，不依赖旧形态文件',t=>{
  const f=fixture(t);f.write('skins/white-dragon/sprites.png',f.png);
  for(const mode of ['sister','occasional']){

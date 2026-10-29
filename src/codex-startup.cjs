@@ -29,15 +29,16 @@ function normalizeTarget(value) {
   return { ok: true, ready: value.ready === true && Boolean(bounds), ...(bounds ? { bounds } : {}), ...(typeof value.focused === 'boolean' ? { focused: value.focused } : {}) };
 }
 
-/** 启动演出只探测或聚焦已确认的Codex主窗；不读取标题、内容或登录数据。 */
-function createTargetRequest({ platform = process.platform, fileRoot = __dirname, execFileImpl = execFile } = {}) {
+/** 启动演出只探测或聚焦当前宿主的主窗；不读取标题、内容或登录数据。 */
+function createTargetRequest({ platform = process.platform, fileRoot = __dirname, execFileImpl = execFile, host = process.env.CODEX_PET_HOST || 'codex' } = {}) {
+  const script = host === 'workbuddy' ? 'workbuddy-target.ps1' : 'startup-target.ps1';
   return async action => {
     if (!['probe', 'focus'].includes(action)) throw new Error('invalid-startup-target-action');
     if (platform !== 'win32') return { ok: false, ready: false };
     const executable = path.join(process.env.SystemRoot || 'C:\\Windows', 'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe');
     return new Promise(resolve => {
-      execFileImpl(executable, ['-NoLogo', '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', path.join(fileRoot, 'startup-target.ps1'), '-Action', action === 'probe' ? 'Probe' : 'Focus'],
-        { windowsHide: true, timeout: 2500, maxBuffer: 4096, encoding: 'utf8' }, (error, stdout) => {
+      execFileImpl(executable, ['-NoLogo', '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', path.join(fileRoot, script), '-Action', action === 'probe' ? 'Probe' : 'Focus'],
+        { windowsHide: true, timeout: action === 'focus' && host === 'workbuddy' ? 6500 : 2500, maxBuffer: 4096, encoding: 'utf8' }, (error, stdout) => {
           if (error) return resolve({ ok: false, ready: false });
           try { resolve(normalizeTarget(JSON.parse(stdout.replace(/^\uFEFF/, '').trim()))); }
           catch { resolve({ ok: false, ready: false }); }
@@ -50,20 +51,23 @@ function createLaunchQueue() {
   let event = null;
   const queue = {
     push(reason) {
-      if (!['codex', 'manual'].includes(reason)) throw new Error('invalid-startup-reason');
+      if (!['codex', 'workbuddy', 'manual'].includes(reason)) throw new Error('invalid-startup-reason');
       event = { id: randomUUID(), reason };
     },
     take() { const next = event; event = null; return { event: next }; },
     request(value) {
-      if (!value || value.reason !== 'codex' || Object.keys(value).some(key => key !== 'reason')) throw new Error('invalid-startup-reason');
-      queue.push('codex');
+      if (!value || !['codex', 'workbuddy'].includes(value.reason) || Object.keys(value).some(key => key !== 'reason')) throw new Error('invalid-startup-reason');
+      queue.push(value.reason);
     },
   };
   return queue;
 }
 
-function createController({ electron, dataRoot, fileRoot = __dirname, timers = globalThis, hostRequest, targetRequest = createTargetRequest({ fileRoot }), onPetEnabled = () => {}, onModeChanged = () => {} }) {
+function createController({ electron, dataRoot, fileRoot = __dirname, timers = globalThis, hostRequest, host = process.env.CODEX_PET_HOST || 'codex', targetRequest, onPetEnabled = () => {}, onModeChanged = () => {} }) {
   if (!dataRoot || !path.isAbsolute(dataRoot)) throw new Error('startup-data-root-required');
+  const currentHost = () => (typeof host === 'function' ? host() : host) === 'workbuddy' ? 'workbuddy' : 'codex';
+  const targetRequests = { codex: createTargetRequest({ fileRoot, host: 'codex' }), workbuddy: createTargetRequest({ fileRoot, host: 'workbuddy' }) };
+  const requestTarget = (action, selectedHost) => typeof targetRequest === 'function' ? targetRequest(action, selectedHost) : targetRequests[selectedHost](action);
   const { app, BrowserWindow, ipcMain, screen } = electron;
   const preferenceFile = path.join(dataRoot, 'startup.json');
   let mode = 'both';
@@ -71,7 +75,8 @@ function createController({ electron, dataRoot, fileRoot = __dirname, timers = g
   catch { /* 新安装默认同时启用桌宠和演出；已有有效选择保持原样。 */ }
   let windowRef = null, scene = null, timeout = null, disposed = false, pollTimer = null, polling = false;
   let writes = Promise.resolve();
-  let opening = false, generation = 0, handoffPending = Promise.resolve(), targetPending = null, targetAt = 0, target = { ok: false, ready: false };
+  let opening = false, generation = 0, handoffPending = Promise.resolve();
+  const targets = new Map();
   const locale = () => L.getLocale();
   const state = () => ({ mode, locale: locale() });
   const petEnabled = () => mode !== 'startup';
@@ -87,14 +92,15 @@ function createController({ electron, dataRoot, fileRoot = __dirname, timers = g
   function finish({ handoff = true } = {}) {
     const win = windowRef;
     const reason = scene?.reason;
+    const selectedHost = scene?.host;
     generation++;
     windowRef = null; scene = null;
     if (timeout !== null) timers.clearTimeout(timeout);
     timeout = null;
-    if (handoff && reason === 'codex' && !disposed) {
+    if (handoff && ['codex', 'workbuddy'].includes(reason) && reason === selectedHost && !disposed) {
       // 新演出等上一次交还完成后再建窗，旧调用不能抢走新覆盖层的焦点。
       // 在关闭覆盖层前拉起薄helper，使Windows保留本次主动启动的前台交接权限。
-      handoffPending = (async () => { try { return await targetRequest('focus'); } catch { return { ok: false, ready: false }; } })();
+      handoffPending = (async () => { try { return await requestTarget('focus', selectedHost); } catch { return { ok: false, ready: false }; } })();
     }
     // 演出没有待保存数据，不能让beforeunload取消22秒看门狗的退场。
     if (win && !win.isDestroyed()) win.destroy();
@@ -157,18 +163,21 @@ function createController({ electron, dataRoot, fileRoot = __dirname, timers = g
       return pathToFileURL(realFile).href;
     } catch { return null; }
   }
-  async function probeTarget() {
+  async function probeTarget(selectedHost = scene?.host || currentHost()) {
     if (disposed) return { ok: false, ready: false };
-    if (targetAt && Date.now() - targetAt < 800) return target;
-    if (!targetPending) targetPending = Promise.resolve().then(() => targetRequest('probe')).then(value => {
-      target = normalizeTarget(value); targetAt = Date.now(); return target;
-    }).catch(() => ({ ok: false, ready: false })).finally(() => { targetPending = null; });
-    return targetPending;
+    if (!targets.has(selectedHost)) targets.set(selectedHost, { at: 0, value: { ok: false, ready: false }, pending: null });
+    const target = targets.get(selectedHost);
+    if (target.at && Date.now() - target.at < 800) return target.value;
+    if (!target.pending) target.pending = Promise.resolve().then(() => requestTarget('probe', selectedHost)).then(value => {
+      target.value = normalizeTarget(value); target.at = Date.now(); return target.value;
+    }).catch(() => ({ ok: false, ready: false })).finally(() => { target.pending = null; });
+    return target.pending;
   }
   const targetView = value => ({ ok: value.ok, ready: value.ready });
-  const allowed = reason => ['preview', 'codex', 'manual'].includes(reason) && !(reason === 'codex' && mode === 'pet' || reason === 'manual' && mode !== 'startup');
+  const allowed = (reason, selectedHost = currentHost()) => ['preview', selectedHost, 'manual'].includes(reason) && !(reason === selectedHost && mode === 'pet' || reason === 'manual' && mode !== 'startup');
   async function open(reason) {
     if (disposed || opening || windowRef || !allowed(reason)) return false;
+    const selectedHost = currentHost();
     const film = cinematicVideo();
     const assets = film ? {} : videoAssets();
     if (!film && !assets.idle) return false;
@@ -176,8 +185,8 @@ function createController({ electron, dataRoot, fileRoot = __dirname, timers = g
     const epoch = generation;
     try {
       await handoffPending;
-      const located = await probeTarget();
-      if (disposed || generation !== epoch || !allowed(reason)) return false;
+      const located = await probeTarget(selectedHost);
+      if (disposed || generation !== epoch || currentHost() !== selectedHost || !allowed(reason, selectedHost)) return false;
       let display = screen.getPrimaryDisplay();
       if (located.bounds && typeof screen.getDisplayMatching === 'function') {
         try {
@@ -194,7 +203,7 @@ function createController({ electron, dataRoot, fileRoot = __dirname, timers = g
         webPreferences: { preload: path.join(fileRoot, 'startup-preload.cjs'), contextIsolation: true, nodeIntegration: false, sandbox: true, backgroundThrottling: false, autoplayPolicy: 'no-user-gesture-required' },
       });
       windowRef = win;
-      scene = { video: film || assets.idle, assets, film: Boolean(film), reason, target: targetView(located), durationMs: film ? FILM_DURATION_MS : DURATION_MS, locale: locale(), copy: COPY[locale()] || COPY.en };
+      scene = { video: film || assets.idle, assets, film: Boolean(film), reason, host: selectedHost, brand: selectedHost === 'workbuddy' ? 'WorkBuddy' : 'ChatGPT', target: targetView(located), durationMs: film ? FILM_DURATION_MS : DURATION_MS, locale: locale(), copy: COPY[locale()] || COPY.en };
       // 主进程超时独立于渲染器；视频加载失败或页面卡住也不会留下遮挡窗口。
       timeout = timers.setTimeout(finish, WATCHDOG_MS);
       timeout?.unref?.();
@@ -227,7 +236,7 @@ function createController({ electron, dataRoot, fileRoot = __dirname, timers = g
       const response = await hostRequest('POST', '/dsh-pet-7340/codex-startup/pending');
       if (!disposed && response.status === 200) {
         const reason = JSON.parse(response.body).event?.reason;
-        if (['codex', 'manual'].includes(reason)) await open(reason);
+        if (['codex', 'workbuddy', 'manual'].includes(reason)) await open(reason);
       }
     } catch { /* 宿主短暂不可用不产生演出，也不重复投递旧事件。 */ }
     finally { polling = false; }

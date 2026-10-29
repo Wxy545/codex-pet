@@ -6,7 +6,7 @@ const path = require('node:path');
 const vm = require('node:vm');
 const ASSETS = Object.fromEntries(['idle', 'wing-care', 'magic', 'greeting'].map(key => [key, `file:///local/q-${key}.webm`]));
 function deferred() { let resolve, reject; const promise = new Promise((yes, no) => { resolve = yes; reject = no; }); return { promise, resolve, reject }; }
-function harness({ locale = 'en', reason = 'preview', reduced = false, assets = ASSETS, target = async () => ({ ready: true }), get, audio = true, audioFailure = false } = {}) {
+function harness({ locale = 'en', reason = 'preview', host = 'codex', reduced = false, assets = ASSETS, target = async () => ({ ready: true }), get, audio = true, audioFailure = false } = {}) {
   class Node {
     constructor() {
       this.listeners = new Map(); this.textContent = ''; this.attributes = new Map(); this.dataset = {};
@@ -18,7 +18,7 @@ function harness({ locale = 'en', reason = 'preview', reduced = false, assets = 
     setAttribute(key, value) { this.attributes.set(key, value); }
     removeAttribute(key) { this.attributes.delete(key); if (key === 'src') this.src = ''; }
   }
-  const nodes = Object.fromEntries(['scene', 'dragon', 'dragon-next', 'particles', 'skip', 'sound', 'ready-label', 'status', 'chapter-number'].map(id => [id, new Node()]));
+  const nodes = Object.fromEntries(['scene', 'dragon', 'dragon-next', 'particles', 'skip', 'sound', 'ready-label', 'startup-brand', 'status', 'chapter-number'].map(id => [id, new Node()]));
   const videos = [nodes.dragon, nodes['dragon-next']], stats = { ready: 0, finishes: 0, target: 0 }, timers = new Map(), frames = new Map(), audios = [];
   const window = new Node(), document = new Node(); let now = 0, id = 0;
   for (const video of videos) {
@@ -40,7 +40,7 @@ function harness({ locale = 'en', reason = 'preview', reduced = false, assets = 
     close() { this.closed++; return Promise.resolve(); }
   }
   if (audio) window.AudioContext = Audio;
-  const value = { video: ASSETS.idle, assets, durationMs: 14400, locale, reason, copy: { skip: locale === 'zh-CN' ? '跳过' : 'Skip' } };
+  const value = { video: ASSETS.idle, assets, durationMs: 14400, locale, reason, host, copy: { skip: locale === 'zh-CN' ? '跳过' : 'Skip' } };
   window.startupScene = { get: get || (async () => value), ready: async () => { stats.ready++; }, finish: async () => { stats.finishes++; }, target: async () => { stats.target++; return target(); } };
   const context = { window, document, innerWidth: 1280, innerHeight: 800, performance: { now: () => now }, Math, console,
     setTimeout: (fn, ms) => { const key = ++id; timers.set(key, { fn, due: now + ms, ms }); return key; }, clearTimeout: key => timers.delete(key),
@@ -151,6 +151,12 @@ test('真正启动在目标就绪后退场，预览不调用目标探测', async
   assert.equal(h.stats.target, 1); assert.equal(h.stats.finishes, 0); assert.equal(h.nodes.scene.classList.contains('departing'), false);
   ready = true; await h.advance(600); assert.equal(h.nodes.scene.classList.contains('departing'), true); await h.advance(1050); assert.equal(h.stats.finishes, 1);
   const preview = harness(); await preview.start(); await preview.advance(14400); assert.equal(preview.stats.target, 0); assert.equal(preview.stats.finishes, 1);
+});
+
+test('缺电影的WorkBuddy兼容Q演出显示正确宿主并等待它就绪', async () => {
+  let ready = false; const h = harness({ host: 'workbuddy', reason: 'workbuddy', target: async () => ({ ready }) }); await h.start();
+  assert.equal(h.document.title, 'Codex Pet · WorkBuddy'); assert.equal(h.nodes['startup-brand'].textContent, 'WorkBuddy'); assert.equal(h.nodes.scene.attributes.get('aria-label'), 'WorkBuddy');
+  await h.advance(13350); assert.equal(h.stats.target, 1); assert.equal(h.stats.finishes, 0); ready = true; await h.advance(1650); assert.equal(h.stats.finishes, 1);
 });
 
 test('目标一直未就绪或探测拒绝时仍有界退场', async () => {

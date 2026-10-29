@@ -9,7 +9,7 @@
 - 原仓库：[PC2005-cloud/dsh-pet](https://github.com/PC2005-cloud/dsh-pet)
 - 本项目使用版本：npm 包 `dsh-pet@0.3.8`，由 `package-lock.json` 锁定。
 - 代码许可：[MIT](https://github.com/PC2005-cloud/dsh-pet/blob/main/LICENSE)。
-- 本项目保留原角色、动画播放、物理互动和菜单实现，并增加 Codex 宿主、事件聚合、额度接入、CLI 聊天、通知及兼容性检查。`scripts/prepare-runtime.mjs` 对已安装的固定版本生成适配入口和局部补丁。
+- 本项目保留原角色、动画播放、物理互动和菜单实现，增加 Codex 与 WorkBuddy 宿主、事件聚合、Codex 额度和 CLI 聊天、通知及兼容性检查。`scripts/prepare-runtime.mjs` 对已安装的固定版本生成适配入口和局部补丁。
 
 上游 MIT 许可全文如下，版权归属保持原样：
 
@@ -63,6 +63,16 @@ SOFTWARE.
 角色及素材许可与项目代码的 MIT 许可分开，详见 [assets/white-dragon/NOTICE.md](assets/white-dragon/NOTICE.md)。本项目的 Codex 桌宠和 DeepSeek Harness 角色插件使用同一套 Q 版素材，并保留该说明。
 
 姐姐形象用于独立启动电影；新的关键画面由本项目根据获授权的形象生成，再经 MiniMax H3 制作连续角色镜头。软件窗口、揭幕和声音由本项目合成，不使用参考项目的视频或音轨。电影素材的单独说明见 [assets/startup/NOTICE.md](assets/startup/NOTICE.md)。桌宠角色仍为 Q 版。
+
+## 卷卷小羊角色与动画
+
+卷卷小羊 Curly 的 AI 参考图由 **Wxy545** 提供，并已授权本项目使用和公开分发。角色和动作参考图使用 OpenAI 图像生成工具制作，视频使用 MiniMax H3 生成，再剪辑并抠成透明动画。
+
+内置 7 段透明动画：待机、侧向行走、开心回应、思考、打字工作、等待和招呼。出错与低额度状态共用思考视频。素材许可与代码的 MIT 许可分开，见 [assets/curly-sheep/NOTICE.md](assets/curly-sheep/NOTICE.md)。
+
+## WorkBuddy 接入
+
+WorkBuddy 接入使用用户本机 Windows 客户端提供的插件与 Hook 接口，目前适配 5.9.3。仓库提供桌宠侧接入代码与事件插件，安装方法及接口资料来源见 [workbuddy/README.md](workbuddy/README.md)。
 
 ## 启动动画实现参考
 
