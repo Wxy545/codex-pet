@@ -1,0 +1,10 @@
+.custom-startup-active #scene{display:none}
+.custom-startup{position:fixed;inset:0;overflow:hidden;opacity:0;background:#101118;--custom-accent:#c0b1ef}
+.custom-startup[data-theme=deepseek]{background:#061526;--custom-accent:#9edbff}
+.custom-startup[data-theme=workbuddy]{background:#191723;--custom-accent:#e0c7f4}
+.custom-startup-video{width:100%;height:100%;object-fit:contain;display:block}
+.custom-startup-controls{position:absolute;right:24px;bottom:22px;display:flex;gap:10px;z-index:2}
+.custom-startup-controls button{font:500 13px/1.4 'Segoe UI','Microsoft YaHei UI',sans-serif;background:#131722b8;color:#fff;border:1px solid #ffffff50;border-radius:8px;padding:9px 15px;cursor:pointer;backdrop-filter:blur(12px)}
+.custom-startup-controls button:hover{border-color:var(--custom-accent);background:#252a3bd9}
+.custom-startup-controls button:focus-visible{outline:2px solid var(--custom-accent);outline-offset:3px}
+@media(prefers-reduced-motion:reduce){.custom-startup-controls button{backdrop-filter:none}}

@@ -6,7 +6,7 @@
     const english = value.locale !== 'zh-CN', reduced = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches === true;
     const keys = ['idle', 'working', 'greeting'], listeners = [], timers = new Set(), voices = [];
     let finished = false, started = false, frame = null, request = null, sequence = 0, front = -1, phase = -1, blend = null, closingAt = null, exitAt = null;
-    let audio = null, master = null, soundOn = false, targetReady = value.reason !== 'workbuddy', targetPending = false, nextProbe = 0;
+    let audio = null, master = null, soundOn = false, targetReady = !['codex','workbuddy'].includes(value.reason), targetPending = false, nextProbe = 0;
     const root = document.createElement('main'); root.className = 'sheep-startup'; root.setAttribute('aria-label', 'WorkBuddy');
     const fluff = document.createElement('div'); fluff.className = 'sheep-fluff'; fluff.setAttribute('aria-hidden', 'true');
     const hero = document.createElement('div'); hero.className = 'sheep-hero'; hero.setAttribute('aria-hidden', 'true');

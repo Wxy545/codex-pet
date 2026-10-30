@@ -148,9 +148,9 @@
   void api.get().then(result => {
     if (ended) return;
     // 旧helper不能把WorkBuddy继续送入龙娘兼容演出；缺卷卷场景时直接交还桌面。
-    if (result.host === 'workbuddy' && result.sheep !== true) { finish(); return; }
-    if (result.film === true || result.sheep === true) {
-      const player = result.sheep === true ? window.CodexStartupSheep : window.CodexStartupCinema;
+    if (result.host === 'workbuddy' && result.sheep !== true && !['chatgpt','deepseek','workbuddy'].includes(result.theme)) { finish(); return; }
+    if (result.film === true || result.sheep === true || result.custom === true || result.deepseek === true) {
+      const player = result.custom === true ? window.CodexStartupCustom : result.deepseek === true ? window.CodexStartupDeepseek : result.sheep === true ? window.CodexStartupSheep : window.CodexStartupCinema;
       if (typeof player?.play !== 'function') { finish(); return; }
       // 专用演出只接管同一次scene读取，先撤旧页监听，避免旧beforeunload误关新演出。
       ended = true;

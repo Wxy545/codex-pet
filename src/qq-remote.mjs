@@ -19,7 +19,7 @@ export function projectQQState(base,remote,locale='zh-CN'){
 }
 
 /** 一个本机配对拥有一个持久Codex会话；QQ输入只能成为任务正文，不拼接shell。 */
-export async function createQQBridge({dataRoot,codexPath,createTransport,createRemote,activityGate,onState=()=>{},seal=protectQQSecret,unseal=unprotectQQSecret,locale='zh-CN',now=Date.now}={}) {
+export async function createQQBridge({dataRoot,codexPath,createTransport,createRemote,activityGate,onState=()=>{},seal=protectQQSecret,unseal=unprotectQQSecret,locale='zh-CN',now=Date.now,canStart=()=>true}={}) {
   if(!isAbsolute(dataRoot||''))fail('invalid_directory');
   const zh=locale.startsWith('zh'),T=(cn,en)=>zh?cn:en;
   const dir=join(dataRoot,'qq-remote'),file=join(dir,'settings.json');
@@ -29,6 +29,8 @@ export async function createQQBridge({dataRoot,codexPath,createTransport,createR
   const serial=action=>{const next=requests.then(action);requests=next.catch(()=>{});return next;};
   let connection={state:'stopped'},task={state:'idle'},lastMsgId,connectionEpoch=0;
   const attempts=new Map();
+  const acceptsNew=()=>{try{return !disposed&&canStart()===true;}catch{return false;}};
+  const unavailable=()=>send(T('请先将桌宠联动应用切回 Codex，再发送新任务。','Select Codex as the companion app before sending a new task.'));
   async function safeFiles(){
     await mkdir(dir,{recursive:true,mode:0o700});
     for(const path of [dataRoot,dir,file])try{if((await lstat(path)).isSymbolicLink())fail('linked_settings');}catch(e){if(e.code!=='ENOENT')throw e;}
@@ -117,16 +119,19 @@ export async function createQQBridge({dataRoot,codexPath,createTransport,createR
   }
   async function askQuestion(){const q=input?.questions[input.index];if(!q)return;await send(String(q.question||q.header||'').slice(0,1000)+(q.options?.length?'\n'+q.options.map((o,i)=>`${i+1}. ${o.label}`).join('\n'):'')+T('\n回复：/回答 ','\nReply: /answer ')+input.code+T(' 您的回答',' your answer'));}
   async function run(text,id){
+    if(!acceptsNew()){await unavailable();return;}
     if(config.outbox.length>=10){await send(T('请先发送 /结果 取回之前的结果。','Send /result to retrieve previous results first.'));return;}
     releaseGate=activityGate?.acquire('qq-task');if(activityGate&&!releaseGate){await send(T('桌宠正在处理其它任务，请稍后再试。','Another pet task is running. Try again shortly.'));return;}
     const token=++generation;cancelRequested=false;config.job={messageId:id,state:'running'};
     try{await persist();}catch(e){config.job=null;releaseGate?.();releaseGate=null;throw e;}
     running=Promise.resolve().then(async()=>{
+      if(!acceptsNew()){await unavailable();return;}
       emit('thinking');await send(T('已交给 Codex。可发送 /状态 或 /取消。','Sent to Codex. Use /status or /cancel.'));
       if(cancelRequested){emit('idle');await send(T('任务已取消。','Task cancelled.'),{durable:true});return;}
       const factory=createRemote||(await import('./codex-remote.mjs')).createCodexRemote;
       remote=await factory({codexPath,cwd:config.cwd,permission:config.permission,onThread:async threadId=>{if(token!==generation||!identity(threadId))fail('invalid_thread');config.threadId=threadId;knownThreads.add(threadId);while(knownThreads.size>256)knownThreads.delete(knownThreads.values().next().value);config.threads=[...knownThreads];await persist();},onEvent:event=>handleEvent(event,token)});
       if(cancelRequested){emit('idle');await send(T('任务已取消。','Task cancelled.'),{durable:true});return;}
+      if(!acceptsNew()){emit('idle');await unavailable();return;}
       const result=await remote.prompt({text,...(config.threadId?{threadId:config.threadId}:{})});
       clearPending();
       if(token!==generation)return;
@@ -157,7 +162,7 @@ export async function createQQBridge({dataRoot,codexPath,createTransport,createR
       const saved=config.outbox[0];if(!saved){await send(T('没有待取回的结果。','No saved results.'));return;}return deliver(saved);
     }
     if(/^\/(?:取消|cancel)$/.test(text)){if(config.job){cancelRequested=true;clearPending();await remote?.cancel();}else await send(T('当前没有正在执行的任务。','No task is running.'));return;}
-    if(/^\/(?:新会话|new)$/.test(text)){if(running){await send(T('请先等待任务结束，或发送 /取消。','Wait for the task to finish or send /cancel.'));return;}config.threadId=null;await persist();emit('idle');await send(T('已开始新的 Codex 会话。','A new Codex conversation is ready.'));return;}
+    if(/^\/(?:新会话|new)$/.test(text)){if(!acceptsNew()){await unavailable();return;}if(running){await send(T('请先等待任务结束，或发送 /取消。','Wait for the task to finish or send /cancel.'));return;}config.threadId=null;await persist();emit('idle');await send(T('已开始新的 Codex 会话。','A new Codex conversation is ready.'));return;}
     const decision=text.match(/^\/(同意|拒绝|approve|deny) (\d{6})$/);
     if(decision){if(!approval||approval.expiresAt<=now()||!same(decision[2],approval.code)){await send(T('确认码已失效，请查询 /状态。','That approval code is no longer valid. Send /status.'));return;}const pending=approval;clearPending(false);await remote.approve({approvalId:pending.id,decision:['同意','approve'].includes(decision[1])?'accept':'decline'});emit('working');const next=decisionQueue.shift();if(next)await handleEvent(next,generation);return;}
     const answer=text.match(/^\/(?:回答|answer) (\d{6}) ([\s\S]+)$/);

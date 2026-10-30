@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="en">
+<head>
+ <meta charset="utf-8">
+ <meta name="viewport" content="width=device-width, initial-scale=1">
+ <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; media-src 'self' file:; connect-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'; frame-src 'none'">
+ <title>Codex Pet · Settings</title>
+ <link rel="stylesheet" href="panel-theme.css">
+ <link rel="stylesheet" href="control-window.css">
+ <script defer src="panel-navigation.js"></script>
+ <script defer src="control-window.js"></script>
+</head>
+<body data-panel="settings">
+ <main class="control-shell">
+  <div class="section-tabs" role="tablist" aria-label="Settings sections">
+   <button id="tab-character" type="button" role="tab" aria-selected="true" aria-controls="section-character" data-section="character" data-copy="character">Characters</button>
+   <button id="tab-interaction" type="button" role="tab" aria-selected="false" aria-controls="section-interaction" tabindex="-1" data-section="interaction" data-copy="interaction">Interactions</button>
+   <button id="tab-chatter" type="button" role="tab" aria-selected="false" aria-controls="section-chatter" tabindex="-1" data-section="chatter" data-copy="chatter">Chatter</button>
+   <button id="tab-startup" type="button" role="tab" aria-selected="false" aria-controls="section-startup" tabindex="-1" data-section="startup" data-copy="startup">Startup &amp; app</button>
+  </div>
+  <div id="loading" class="loading" role="status" data-copy="loading">Loading…</div>
+  <section id="section-character" class="settings-section" role="tabpanel" aria-labelledby="tab-character" hidden>
+   <div id="character-cards" class="character-cards"></div>
+  </section>
+  <section id="section-interaction" class="settings-section" role="tabpanel" aria-labelledby="tab-interaction" hidden>
+   <div class="settings-card"><label class="setting-toggle"><span data-system-monitor-label>System monitor</span><input id="system-monitor" type="checkbox" disabled></label></div>
+   <div class="settings-card visibility-card">
+    <label class="setting-toggle"><span data-copy="visible">Show pet</span><input id="pet-visible" type="checkbox" disabled></label>
+    <label class="setting-toggle"><span data-copy="auto-hide">Hide during fullscreen apps</span><input id="auto-hide" type="checkbox" disabled></label>
+    <p id="visibility-state" class="visibility-state" role="status"></p>
+   </div>
+   <form id="interaction-form" class="settings-form">
+    <div id="pet-field" class="field" hidden><label for="pet" data-copy="pet">Pet</label><select id="pet"></select></div>
+    <div class="settings-card">
+     <div class="field size-field"><label for="pet-size" data-copy="size">Size</label><div class="size-controls"><input id="size-range" type="range" min="120" max="640" step="10" aria-label="Pet size"><div class="number-unit"><input id="pet-size" type="number" min="1" max="4096" required><span>px</span></div></div></div>
+     <label class="setting-toggle"><span data-copy="roaming">Wander around the desktop</span><input id="roaming" type="checkbox"></label>
+     <label class="setting-toggle"><span data-copy="confine">Stay on the current screen</span><input id="confine" type="checkbox"></label>
+     <label class="setting-toggle"><span data-copy="work-status">React to task status</span><input id="work-status" type="checkbox"></label>
+     <label class="setting-toggle codex-only"><span data-copy="balance">Usage bubbles and reactions</span><input id="balance" type="checkbox"></label>
+     <label class="setting-toggle codex-only"><span data-copy="pet-chatter">Show automatic chatter</span><input id="pet-chatter" type="checkbox"></label>
+    </div>
+    <div class="settings-card position-fields">
+     <div class="field"><label for="corner" data-copy="corner">Starting corner</label><select id="corner"><option value="bottom-right" data-copy="bottom-right">Bottom right</option><option value="bottom-left" data-copy="bottom-left">Bottom left</option><option value="top-right" data-copy="top-right">Top right</option><option value="top-left" data-copy="top-left">Top left</option></select></div>
+     <div class="field"><label for="margin-x" data-copy="margin-x">Horizontal offset (px)</label><input id="margin-x" type="number" min="-100000" max="100000" required></div>
+     <div class="field"><label for="margin-y" data-copy="margin-y">Vertical offset (px)</label><input id="margin-y" type="number" min="-100000" max="100000" required></div>
+    </div>
+    <details class="settings-card physics"><summary data-copy="physics">Drag &amp; toss</summary>
+     <div class="physics-fields">
+      <div class="field"><label for="throw-power" data-copy="throw-power">Throw strength</label><input id="throw-power" type="number" min="0.01" step="any"></div>
+      <div class="field"><label for="gravity" data-copy="gravity">Gravity</label><input id="gravity" type="number" min="0" step="10"></div>
+      <div class="field"><label for="restitution" data-copy="restitution">Bounce</label><input id="restitution" type="number" min="0" max="1" step="0.01"></div>
+      <div class="field"><label for="ground-friction" data-copy="friction">Ground friction</label><input id="ground-friction" type="number" min="0" step="0.1"></div>
+     </div>
+     <label class="setting-toggle"><span data-copy="ceiling">Bounce off the top edge</span><input id="ceiling" type="checkbox"></label>
+     <label class="setting-toggle"><span data-copy="collision">Pets can collide</span><input id="collision" type="checkbox"></label>
+    </details>
+    <div class="form-actions"><button class="primary" type="submit" data-copy="save">Save changes</button><button id="reload" type="button" data-copy="reload">Reload settings</button></div>
+   </form>
+  </section>
+  <section id="section-chatter" class="settings-section" role="tabpanel" aria-labelledby="tab-chatter" hidden>
+   <form id="chatter-form" class="settings-form">
+    <div class="settings-card">
+     <label class="setting-toggle"><span data-copy="automatic-chatter">Automatic chatter</span><input id="automatic-chatter" type="checkbox"></label>
+     <div class="field interval-field"><label for="chatter-interval" data-copy="interval">Interval (minutes)</label><input id="chatter-interval" type="number" min="1" max="1440" step="any" required></div>
+    </div>
+    <div class="form-actions"><button class="primary" type="submit" data-copy="save">Save changes</button></div>
+   </form>
+  </section>
+  <section id="section-startup" class="settings-section" role="tabpanel" aria-labelledby="tab-startup" hidden>
+   <form id="startup-form" class="settings-form">
+    <fieldset id="startup-modes" class="settings-card startup-modes"><legend data-copy="startup-mode">On launch</legend>
+     <label class="mode-option"><input type="radio" name="startup-mode" value="pet"><span data-copy="pet-only">Pet only</span></label>
+     <label class="mode-option"><input type="radio" name="startup-mode" value="startup"><span data-copy="scene-only">Startup scene only</span></label>
+     <label class="mode-option"><input type="radio" name="startup-mode" value="both"><span data-copy="both">Pet and startup scene</span></label>
+     <div class="form-actions"><button class="primary" type="submit" data-copy="save">Save changes</button></div>
+    </fieldset>
+    <fieldset id="startup-appearance" class="settings-card standalone-startup"><legend data-copy="appearance">Theme &amp; video</legend>
+     <div class="appearance-fields">
+      <div class="field"><label for="startup-theme" data-copy="theme">Theme</label><select id="startup-theme" disabled><option value="auto" data-copy="theme-auto">Follow companion app</option><option value="chatgpt">ChatGPT · White Dragon Girl</option><option value="deepseek">DeepSeek Harness</option><option value="workbuddy">WorkBuddy · Curly</option></select></div>
+      <div class="field"><label for="startup-video" data-copy="video">Video</label><select id="startup-video" disabled><option value="builtin" data-copy="builtin">Built-in scene</option></select></div>
+     </div>
+     <p class="media-limits" data-copy="media-limits">MP4 / WebM · Up to 60 seconds · 4K · 256 MiB</p>
+     <div class="form-actions"><button id="import-startup-video" type="button" data-copy="import-video" disabled>Import video</button><button id="remove-startup-video" type="button" class="danger" data-copy="remove-video" disabled>Remove</button><button id="preview" type="button" data-copy="preview">Preview scene</button></div>
+     <p id="startup-media-status" class="media-status" role="status"></p>
+    </fieldset>
+    <fieldset class="settings-card companion-app"><legend data-copy="companion">Companion app</legend>
+     <div id="host-choices" class="host-choices"><button type="button" data-host="codex">Codex</button><button type="button" data-host="workbuddy">WorkBuddy</button><button type="button" data-host="harness" data-copy="harness">DeepSeek Harness (native plugin)</button></div>
+    </fieldset>
+   </form>
+  </section>
+  <div class="feedback-row"><p id="feedback" role="status" aria-live="polite"></p><button id="retry" type="button" data-copy="retry" hidden>Try again</button></div>
+ </main>
+</body>
+</html>

@@ -38,7 +38,7 @@ function imageMime(bytes) {
 }
 
 /** 图片路径只来自原生选择框；渲染端只能引用本窗口的附件ID。 */
-function createController({ hostRequest, electron, fileRoot = __dirname, fsImpl = {}, openTaskPanel }) {
+function createController({ hostRequest, electron, fileRoot = __dirname, fsImpl = {}, openTaskPanel, canUse = () => true }) {
   if (typeof hostRequest !== 'function') throw new TypeError('hostRequest is required');
   const { BrowserWindow, ipcMain, app, dialog, clipboard } = electron;
   const io = { open: fs.open, ...fsImpl };
@@ -55,6 +55,8 @@ function createController({ hostRequest, electron, fileRoot = __dirname, fsImpl 
   let selecting = null;
   let generation = 0;
   let disposed = false;
+  let opening = null;
+  const available = () => { try { return !disposed && canUse() === true; } catch { return false; } };
 
   const snapshot = () => ({
     busy, selecting: Boolean(selecting), locale: identity.locale, character: { ...identity }, revision: identityRevision,
@@ -64,7 +66,7 @@ function createController({ hostRequest, electron, fileRoot = __dirname, fsImpl 
   const withState = value => ({ ...value, state: snapshot() });
   function publish() {
     histories.set(identity.id, history);
-    if (disposed || !windowRef || windowRef.isDestroyed()) return;
+    if (!available() || !windowRef || windowRef.isDestroyed()) return;
     try { windowRef.webContents.send(CHANNELS.changed, snapshot()); } catch { /* 窗口退出时丢弃更新。 */ }
   }
   function onCharacterChanged(value) {
@@ -82,10 +84,11 @@ function createController({ hostRequest, electron, fileRoot = __dirname, fsImpl 
     return true;
   }
   async function refreshCharacter() {
+    if (!available()) return false;
     const revision = identityRevision;
     try {
       const response = await hostRequest('GET', '/dsh-pet-7340/codex-character');
-      if (response?.status !== 200) return false;
+      if (!available() || response?.status !== 200) return false;
       const value = typeof response.body === 'string' ? JSON.parse(response.body) : response.body;
       // 切换事件比在途读取更新，迟到的旧GET不能把当前角色改回去。
       return revision !== identityRevision || onCharacterChanged(value);
@@ -93,7 +96,7 @@ function createController({ hostRequest, electron, fileRoot = __dirname, fsImpl 
   }
   const owned = event => {
     const contents = windowRef?.webContents;
-    return !disposed && contents && !windowRef.isDestroyed() && event?.sender === contents
+    return available() && contents && !windowRef.isDestroyed() && event?.sender === contents
       && event.senderFrame === contents.mainFrame && Boolean(event.senderFrame) && contents.getURL() === panelUrl;
   };
   const petSender = event => {
@@ -150,36 +153,44 @@ function createController({ hostRequest, electron, fileRoot = __dirname, fsImpl 
   }
 
   async function open() {
-    if (disposed) return;
+    if (!available()) throw new Error('unavailable');
     await app.whenReady();
-    if (disposed) return;
-    await refreshCharacter();
-    if (disposed) return;
-    if (windowRef && !windowRef.isDestroyed()) {
-      if (windowRef.isMinimized()) windowRef.restore();
-      windowRef.show(); windowRef.focus(); return;
-    }
-    const win = new BrowserWindow({
-      width: 760, height: 780, minWidth: 520, minHeight: 560,
-      title: `Codex Pet · ${identity.name} · ${L.t('对话')}`, backgroundColor: '#f7f8fa', show: false, autoHideMenuBar: true,
-      webPreferences: {
-        preload: path.join(fileRoot, 'chat-preload.cjs'), nodeIntegration: false, contextIsolation: true,
-        sandbox: true, webSecurity: true, spellcheck: false, partition: 'codex-chat-panel',
-      },
-    });
-    windowRef = win;
-    win.setMenu?.(null);
-    win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
-    win.webContents.on('will-navigate', (event, url) => { if (url !== panelUrl) event.preventDefault(); });
-    win.webContents.on('will-attach-webview', event => event.preventDefault());
-    win.webContents.session?.setPermissionRequestHandler?.((_contents, _permission, callback) => callback(false));
-    win.once('ready-to-show', () => { if (!win.isDestroyed()) win.show(); });
-    win.once('closed', () => {
-      if (windowRef !== win) return;
-      windowRef = null; generation++; history = []; histories.clear(); attachments.clear(); selecting = null;
-      // 宿主桥接当前没有取消信号；保留busy直到旧请求结束，重开窗口也不能并发再发一轮。
-    });
-    try { await win.loadFile(panelFile); } catch { if (!win.isDestroyed()) win.destroy(); }
+    if (!available()) throw new Error('unavailable');
+    // 不把仍在加载的窗口当作打开成功；所有入口等待同一轮身份读取与页面加载。
+    if (opening) return opening;
+    opening = (async () => {
+      await refreshCharacter();
+      if (!available()) throw new Error('unavailable');
+      if (windowRef && !windowRef.isDestroyed()) {
+        if (windowRef.isMinimized()) windowRef.restore();
+        windowRef.show(); windowRef.focus(); return;
+      }
+      const win = new BrowserWindow({
+        width: 980, height: 800, minWidth: 520, minHeight: 560,
+        title: `Codex Pet · ${identity.name} · ${L.t('对话')}`, backgroundColor: '#15171c', show: false, autoHideMenuBar: true,
+        webPreferences: {
+          preload: path.join(fileRoot, 'chat-preload.cjs'), nodeIntegration: false, contextIsolation: true,
+          sandbox: true, webSecurity: true, spellcheck: false, partition: 'codex-chat-panel',
+        },
+      });
+      windowRef = win;
+      win.setMenu?.(null);
+      win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
+      win.webContents.on('will-navigate', (event, url) => { if (url !== panelUrl) event.preventDefault(); });
+      win.webContents.on('will-attach-webview', event => event.preventDefault());
+      win.webContents.session?.setPermissionRequestHandler?.((_contents, _permission, callback) => callback(false));
+      win.once('ready-to-show', () => { if (available() && !win.isDestroyed()) win.show(); });
+      win.once('closed', () => {
+        if (windowRef !== win) return;
+        windowRef = null; generation++; history = []; histories.clear(); attachments.clear(); selecting = null;
+        // 宿主桥接当前没有取消信号；保留busy直到旧请求结束，重开窗口也不能并发再发一轮。
+      });
+      try {
+        await win.loadFile(panelFile);
+        if (!available() || win.isDestroyed()) throw new Error('unavailable');
+      } catch { if (!win.isDestroyed()) win.destroy(); throw new Error('unavailable'); }
+    })();
+    try { await opening; } finally { opening = null; }
   }
 
   const handlers = {
@@ -196,7 +207,7 @@ function createController({ hostRequest, electron, fileRoot = __dirname, fsImpl 
         else {
           const values = [];
           for (const file of chosen.filePaths) values.push(await readImage(file));
-          if (generation !== epoch || disposed) result = failure('closed');
+          if (generation !== epoch || !owned(event)) result = failure('closed');
           else { addImages(values); result = { ok: true }; }
         }
       } catch (error) { result = failure(error.code === 'image_limit' || error.code === 'image_unsupported' ? error.code : 'invalid_image'); }
@@ -296,7 +307,9 @@ function createController({ hostRequest, electron, fileRoot = __dirname, fsImpl 
     windowRef = null;
   }
   app.once('before-quit', dispose);
-  return { open, dispose, onCharacterChanged };
+  // 原生移交仅隐藏观察窗口，保留正在进行的请求与会话历史。
+  const hide = () => { if (windowRef && !windowRef.isDestroyed()) windowRef.hide(); };
+  return { open, hide, dispose, onCharacterChanged };
 }
 
 function install(options) { return createController({ ...options, electron: options.electron || require('electron') }); }

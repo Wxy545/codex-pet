@@ -2,16 +2,16 @@
  'use strict';
  const api=window.qqRemote,$=id=>document.getElementById(id);
  const copy={
-  bot:['1 · 连接 QQ 机器人','1 · Connect a QQ bot'],
+  bot:['机器人','Bot'],
   'create-note':['在 QQ 开放平台创建机器人，复制 AppID 和 AppSecret。','Create a bot on the QQ Open Platform, then copy its AppID and AppSecret.'],
   platform:['创建 QQ 机器人','Create QQ bot'],
   'secret-new':['填写 QQ 开放平台提供的 AppSecret。','Enter the AppSecret from QQ Open Platform.'],
   'secret-saved':['已保存；留空可保留原密钥。','Saved. Leave blank to keep it.'],
-  project:['2 · 选择项目','2 · Choose a project'],folder:['项目文件夹','Project folder'],
+  project:['任务范围','Task access'],folder:['项目文件夹','Project folder'],
   'choose-folder':['选择文件夹','Choose folder'],'read-only':['只读查看','Read only'],'workspace-write':['允许修改这个文件夹','Allow edits in this folder'],
   save:['保存并连接','Save and connect'],disable:['停用连接','Disconnect'],refresh:['刷新','Refresh'],
   connection:['连接状态','Connection'],task:['任务状态','Task'],pending:['等待送达的回复','Replies awaiting delivery'],
-  pairing:['3 · 绑定本人 QQ','3 · Pair your QQ account'],
+  pairing:['本人绑定','Your QQ account'],
   'pair-note':['生成配对码后，用本人 QQ 私聊机器人，发送下面的配对消息。','Generate a code, then send the pairing message to your bot in a private QQ chat.'],
   'copy-pair':['复制配对消息','Copy message'],generate:['生成配对码','Generate pairing code'],unlink:['解绑','Unpair'],
   paired:['已绑定本人 QQ','Your QQ account is paired'],'not-paired':['尚未绑定','Not paired'],
@@ -62,6 +62,7 @@
   if(initialize){$('app-id').value=next.appId||'';$('directory').value=next.project.cwd||'';const permission=$('settings').querySelector(`input[name="permission"][value="${next.project.permission==='workspace-write'?'workspace-write':'read-only'}"]`);permission.checked=true;}
   $('secret-note').textContent=t(next.configured?'secret-saved':'secret-new');
   $('connection').textContent=t(next.connection.state);
+  $('connection').dataset.state=next.connection.state;
   const state=next.task?.state;$('task').textContent=state?t(state==='error'?'task-error':state):t('idle');
   $('pending-row').hidden=next.pendingReplies===0;$('pending').textContent=String(next.pendingReplies);
   $('pair-status').textContent=t(next.paired?'paired':'not-paired');
@@ -71,6 +72,7 @@
  function pollFailed(result){
   serviceAvailable=false;applyLocale(result?.locale);
   $('connection').textContent=t('unavailable');
+  $('connection').dataset.state='error';
   $('secret-note').textContent=t(snapshot?.configured?'secret-saved':'secret-new');
   controls();
   const code=result?.code||'host_unavailable';

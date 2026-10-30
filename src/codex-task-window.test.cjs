@@ -48,6 +48,7 @@ function fixture(options = {}) {
   const controller = createController({
     electron: { app, BrowserWindow, ipcMain, dialog: { showOpenDialog: async () => nextDialog }, clipboard: { writeText: text => copied.push(text) } },
     fsImpl: { realpath: async () => canonical, stat: async () => ({ isDirectory: () => true }), ...options.fsImpl },
+    canUse: options.canUse,
     hostRequest: async (method, route, body) => {
       calls.push({ method, route, body });
       if (options.hostRequest) return options.hostRequest(method, route, body);
@@ -61,6 +62,14 @@ function fixture(options = {}) {
   return { controller, windows, handlers, ipcMain, app, copied, calls, invoke, pet,
     setDialog: value => { nextDialog = value; }, setCanonical: value => { canonical = value; }, setView: value => { view = value; } };
 }
+
+test('原生移交发生在目录复核期间时，不启动旧面板的新Codex任务', async t => {
+  let allowed=true,release,blocking=false;
+  const f=fixture({canUse:()=>allowed,fsImpl:{stat:async()=>{if(blocking)await new Promise(resolve=>{release=resolve;});return{isDirectory:()=>true};}}});t.after(()=>f.controller.dispose());
+  await f.controller.open();await f.invoke(CHANNELS.directory);blocking=true;
+  const pending=f.invoke(CHANNELS.submit,{cwd:directory,task:'synthetic task',permission:'read-only',confirmed:true});await new Promise(setImmediate);
+  allowed=false;release();assert.equal((await pending).ok,false);assert.equal(f.calls.length,0);
+});
 
 test('面板单实例并隔离Node权限，阻止任意导航与新窗口', async t => {
   const f = fixture(); t.after(() => f.controller.dispose());

@@ -9,7 +9,7 @@
     form: element('task-form'), directory: element('directory'), choose: element('choose-directory'),
     task: element('task'), permissions: element('permissions'), confirmation: element('confirmation'),
     submit: element('submit-task'), cancel: element('cancel-task'), retry: element('retry-state'),
-    state: element('execution-state'), scope: element('active-scope'), progress: element('progress'),
+    state: element('execution-state'), scope: element('active-scope'), progress: element('progress'), output: element('result-content'), resultRegion: element('task-result'),
     result: element('result-text'), copy: element('copy-result'), message: element('message'), count: element('character-count'),
   };
   const STATE_TEXT = { idle: '尚未开始', running: '正在执行', cancelling: '正在取消', completed: '已返回结果', failed: '未完成', cancelled: '已取消', timed_out: '已超时' };
@@ -21,6 +21,9 @@
   let timer = null;
   let messageTimer = null;
   let revision = 0;
+  let renderedTask = '';
+  let renderedProgress = [];
+  let followingResult = true;
 
   const permission = () => fields.form.elements.permission.value;
   const active = () => ['running', 'cancelling'].includes(snapshot.state);
@@ -29,6 +32,30 @@
     fields.message.hidden = false;
     clearTimeout(messageTimer);
     messageTimer = setTimeout(() => { fields.message.hidden = true; }, 6000);
+  }
+  function renderOutput() {
+    const taskId = snapshot.id || '';
+    const progress = (snapshot.progress || []).map(item => item.text);
+    const result = snapshot.summary || snapshot.error?.message || '';
+    const progressChanged = progress.length !== renderedProgress.length || progress.some((text, index) => text !== renderedProgress[index]);
+    const resultChanged = fields.result.textContent !== result;
+    const changedTask = taskId !== renderedTask;
+    fields.resultRegion.dataset.empty = String(!progress.length && !result);
+    fields.resultRegion.setAttribute('aria-busy', String(active()));
+    if (!progressChanged && !resultChanged && !changedTask) return;
+    // 每秒状态检查不替换相同正文，也不把正在翻阅结果的用户拉回末尾。
+    const scrollTop = fields.output.scrollTop;
+    const follow = changedTask || followingResult;
+    renderedTask = taskId;
+    renderedProgress = progress;
+    if (progressChanged) fields.progress.replaceChildren(...progress.map(text => {
+      const li = document.createElement('li');
+      li.textContent = text;
+      return li;
+    }));
+    if (resultChanged) fields.result.textContent = result;
+    followingResult = follow;
+    fields.output.scrollTop = follow ? fields.output.scrollHeight : scrollTop;
   }
   function render() {
     window.CodexPanelLocale.apply(snapshot.locale);
@@ -48,14 +75,11 @@
       ? T(permission() === 'workspace-write' ? '确认后，按工作目录写入权限执行：' : '本次禁止写入，工作目录：') + fields.directory.value
       : T('选择目录并填写任务后，可确认执行。');
     fields.state.textContent = T(connected ? STATE_TEXT[snapshot.state] || '状态未知' : '暂时无法读取任务状态');
+    fields.state.dataset.state = connected ? snapshot.state : 'unavailable';
+    fields.directory.title = fields.directory.value;
     fields.scope.hidden = !snapshot.cwd;
     fields.scope.textContent = snapshot.cwd ? T(snapshot.permission === 'workspace-write' ? '工作目录读写 · ' : '只读，禁止写入 · ') + snapshot.cwd : '';
-    fields.progress.replaceChildren(...(snapshot.progress || []).map(item => {
-      const li = document.createElement('li');
-      li.textContent = item.text;
-      return li;
-    }));
-    fields.result.textContent = snapshot.summary || snapshot.error?.message || '';
+    renderOutput();
   }
   function receive(response, announce = false) {
     if (!response?.ok) {
@@ -103,6 +127,7 @@
   fields.retry.addEventListener('click', () => { void poll(); });
   fields.task.addEventListener('input', render);
   fields.permissions.addEventListener('change', render);
+  fields.output.addEventListener('scroll', () => { followingResult = fields.output.scrollHeight - fields.output.clientHeight - fields.output.scrollTop <= 48; });
   window.addEventListener('beforeunload', () => { stopped = true; clearInterval(timer); clearTimeout(messageTimer); });
   if (!api) { notify('任务面板未连接，请从桌宠右键菜单重新打开。'); render(); return; }
   render();

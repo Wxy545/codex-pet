@@ -8,7 +8,7 @@
 
   function play({ api, value }) {
     const english = value.locale !== 'zh-CN';
-    const brand = value.host === 'workbuddy' ? 'WorkBuddy' : 'ChatGPT';
+    const brand = ['ChatGPT','WorkBuddy','DeepSeek'].includes(value.brand) ? value.brand : value.host === 'workbuddy' ? 'WorkBuddy' : 'ChatGPT';
     const reduced = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches === true;
     const listeners = [], timers = new Set(), audioNodes = [], cues = new Set();
     let finished = false, started = false, beginning = false, buffering = false, frame = null;

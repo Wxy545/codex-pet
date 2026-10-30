@@ -42,17 +42,20 @@ function sanitizeState(value){
  return state;
 }
 
-function createController({electron,hostRequest,fileRoot=__dirname,fsImpl={}}){
+function createController({electron,hostRequest,fileRoot=__dirname,fsImpl={},canUse=()=>true}){
  if(typeof hostRequest!=='function')throw new TypeError('hostRequest is required');
  const {app,BrowserWindow,ipcMain,dialog,shell,clipboard}=electron;
  const io={realpath:fs.realpath,stat:fs.stat,...fsImpl};
  const panelFile=path.join(fileRoot,'qq-window.html'),panelUrl=pathToFileURL(panelFile).href,petUrl=pathToFileURL(path.join(fileRoot,'index.html')).href;
- let win=null,selectedDirectory='',pending=false,disposed=false;
- const owned=event=>Boolean(win&&!win.isDestroyed()&&event?.sender===win.webContents&&(!win.webContents.mainFrame||event.senderFrame===win.webContents.mainFrame)&&win.webContents.getURL()===panelUrl);
+ let win=null,selectedDirectory='',pending=false,disposed=false,opening=null;
+ const available=()=>{try{return !disposed&&canUse()===true;}catch{return false;}};
+ const owned=event=>Boolean(available()&&win&&!win.isDestroyed()&&event?.sender===win.webContents&&(!win.webContents.mainFrame||event.senderFrame===win.webContents.mainFrame)&&win.webContents.getURL()===panelUrl);
  const petSender=event=>{try{return Boolean(event?.sender&&!event.sender.isDestroyed?.()&&(!event.sender.mainFrame||event.senderFrame===event.sender.mainFrame)&&new URL(event.sender.getURL()).protocol==='file:'&&new URL(event.sender.getURL()).pathname===new URL(petUrl).pathname&&BrowserWindow.fromWebContents(event.sender));}catch{return false;}};
  async function request(method,body){
+  if(!available())return failure('unauthorized');
   try{
    const response=await hostRequest(method,API,body===undefined?undefined:JSON.stringify(body));
+   if(!available())return failure('unauthorized');
    const payload=typeof response?.body==='string'?JSON.parse(response.body):response?.body;
    if(!response||response.status<200||response.status>=300)return failure(payload?.error?.code);
    const snapshot=sanitizeState(payload);if(!snapshot)return failure('host_unavailable');
@@ -61,14 +64,18 @@ function createController({electron,hostRequest,fileRoot=__dirname,fsImpl={}}){
   }catch{return failure('host_unavailable');}
  }
  async function open(){
-  if(disposed)return;await app.whenReady();if(disposed)return;
+  if(!available())throw new Error('unavailable');await app.whenReady();if(!available())throw new Error('unavailable');
+  if(opening)return opening;
   if(win&&!win.isDestroyed()){if(win.isMinimized())win.restore();win.show();win.focus();return;}
-  const current=new BrowserWindow({width:730,height:790,minWidth:540,minHeight:600,title:text('Codex Pet · QQ 远程任务','Codex Pet · QQ remote tasks'),backgroundColor:'#f7f8fa',show:false,autoHideMenuBar:true,webPreferences:{preload:path.join(fileRoot,'qq-preload.cjs'),nodeIntegration:false,contextIsolation:true,sandbox:true,webSecurity:true,spellcheck:false}});win=current;
+  // 复用在途加载；页面没有成功打开时，导航不能把来源窗口隐藏。
+  opening=(async()=>{
+  const current=new BrowserWindow({width:940,height:820,minWidth:540,minHeight:600,title:text('Codex Pet · QQ 远程任务','Codex Pet · QQ remote tasks'),backgroundColor:'#15171c',show:false,autoHideMenuBar:true,webPreferences:{preload:path.join(fileRoot,'qq-preload.cjs'),nodeIntegration:false,contextIsolation:true,sandbox:true,webSecurity:true,spellcheck:false}});win=current;
   current.setMenu?.(null);current.webContents.setWindowOpenHandler(()=>({action:'deny'}));
   current.webContents.on('will-navigate',(event,url)=>{if(url!==panelUrl)event.preventDefault();});current.webContents.on('will-attach-webview',event=>event.preventDefault());
-  current.once('ready-to-show',()=>{if(!current.isDestroyed())current.show();});
+  current.once('ready-to-show',()=>{if(available()&&!current.isDestroyed())current.show();});
   current.once('closed',()=>{if(win===current)win=null;});
-  try{await current.loadFile(panelFile);}catch{if(!current.isDestroyed())current.destroy();}
+  try{await current.loadFile(panelFile);if(!available()||current.isDestroyed())throw new Error('unavailable');}catch{if(!current.isDestroyed())current.destroy();throw new Error('unavailable');}
+  })();try{await opening;}finally{opening=null;}
  }
  const handlers={
   [CHANNELS.state]:async event=>owned(event)?request('GET'):failure('unauthorized'),
@@ -84,7 +91,7 @@ function createController({electron,hostRequest,fileRoot=__dirname,fsImpl={}}){
     const chosen=await dialog.showOpenDialog(win,{title:text('选择 QQ 任务使用的项目','Choose a project for QQ tasks'),buttonLabel:text('使用这个文件夹','Use this folder'),properties:['openDirectory','dontAddToRecent'],...(selectedDirectory?{defaultPath:selectedDirectory}:{})});
     if(chosen.canceled||chosen.filePaths.length!==1)return{ok:true,cancelled:true,directory:selectedDirectory};
     const directory=await io.realpath(chosen.filePaths[0]);if(!path.isAbsolute(directory)||!(await io.stat(directory)).isDirectory())return failure('invalid_cwd');
-    if(pending)return failure('busy');selectedDirectory=directory;return{ok:true,directory};
+    if(!owned(event))return failure('unauthorized');if(pending)return failure('busy');selectedDirectory=directory;return{ok:true,directory};
    }catch{return failure('invalid_cwd');}
   },
   [CHANNELS.save]:async(event,body)=>{
@@ -113,7 +120,8 @@ function createController({electron,hostRequest,fileRoot=__dirname,fsImpl={}}){
  for(const [channel,handler]of Object.entries(handlers))ipcMain.handle(channel,handler);ipcMain.on(CHANNELS.open,openListener);
  function dispose(){if(disposed)return;disposed=true;for(const channel of Object.keys(handlers))ipcMain.removeHandler(channel);ipcMain.removeListener(CHANNELS.open,openListener);app.removeListener('before-quit',dispose);if(win&&!win.isDestroyed())win.destroy();win=null;}
  app.once('before-quit',dispose);
- return{open,dispose,trayItems:()=>[{label:text('QQ 远程任务','QQ remote tasks'),click:()=>{void open().catch(()=>{});}}]};
+ const hide=()=>{if(win&&!win.isDestroyed())win.hide();};
+ return{open,hide,dispose,trayItems:()=>available()?[{label:text('QQ 远程任务','QQ remote tasks'),click:()=>{void open().catch(()=>{});}}]:[]};
 }
 function install(options){return createController({...options,electron:options.electron||require('electron')});}
 /** 宠物窗口只获得打开设置的能力，配置操作只属于独立设置窗口。 */

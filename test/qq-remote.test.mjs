@@ -8,12 +8,12 @@ let createQQBridge;
 let projectQQState;
 try { ({createQQBridge,projectQQState}=await import('../src/qq-remote.mjs')); } catch(e) { if(e.code!=='ERR_MODULE_NOT_FOUND')throw e; }
 
-async function fixture(t,{delayRemote=false,replyText,approvalCount=1,activityGate,onPrompt}={}) {
+async function fixture(t,{delayRemote=false,replyText,approvalCount=1,activityGate,onPrompt,canStart}={}) {
   assert.equal(typeof createQQBridge,'function','QQ task bridge is missing');
   const root=await mkdtemp(join(tmpdir(),'pet-qq-'));
   t.after(()=>rm(root,{recursive:true,force:true}));
   const sent=[],prompts=[],states=[],approvals=[];let options,failSend=false,approval,resolveTurn,releaseRemote;
-  const factoryOptions={dataRoot:root,codexPath:'synthetic-codex',locale:'zh-CN',activityGate,
+  const factoryOptions={dataRoot:root,codexPath:'synthetic-codex',locale:'zh-CN',activityGate,canStart,
     seal:async s=>Buffer.from(s).toString('base64'),unseal:async s=>Buffer.from(s,'base64').toString(),
     onState:s=>states.push(s),
     createTransport:o=>{options=o;return{start(){o.onStatus({state:'connected'});},stop(){},async send(body){if(failSend)throw Object.assign(Error('offline'),{code:'offline'});sent.push(body.text);}};},
@@ -25,6 +25,25 @@ async function fixture(t,{delayRemote=false,replyText,approvalCount=1,activityGa
   const pair=async()=>{const p=await bridge.configure({action:'pair'});await receive('/配对 '+p.pairing.code,'pair-message');};
   return{bridge,root,sent,prompts,states,approvals,receive,pair,factoryOptions,get approval(){return approval;},set fail(v){failSend=v;},releaseRemote(){releaseRemote?.();},finish(){resolveTurn?.({threadId:'synthetic-thread',text:'done',status:'completed'});}};
 }
+
+test('native Harness admission blocks only new QQ tasks and conversations, keeping the paired owner and existing approval, cancel and result commands',async t=>{
+  let allowed=true;const f=await fixture(t,{canStart:()=>allowed});t.after(()=>f.bridge.dispose());await f.pair();
+  await f.receive('wait','existing-job');await new Promise(resolve=>setTimeout(resolve,5));
+  const approvalCode=f.sent.find(value=>value.includes('/同意 ')).match(/\/同意 (\d{6})/)[1];
+  allowed=false;await f.receive('/同意 '+approvalCode,'existing-approval');assert.equal(f.approvals.length,1);
+  await f.receive('/取消','existing-cancel');await f.bridge.idle();assert.equal(f.bridge.state().paired,true);assert.equal(f.bridge.state().connection.state,'connected');
+  const states=f.states.length;await f.receive('blocked task','blocked-job');await f.bridge.idle();await f.receive('/新会话','blocked-new');
+  assert.equal(f.prompts.length,1);assert.equal(f.states.length,states);assert.ok(f.sent.at(-1).includes('Codex'));
+  allowed=true;f.fail=true;await f.receive('retained result','retained-job');await f.bridge.idle();allowed=false;f.fail=false;await f.receive('/结果','existing-result');
+  assert.equal(f.bridge.state().pendingReplies,0);assert.equal(f.prompts[1].threadId,'synthetic-thread');
+  allowed=true;await f.receive('after restore','restored-job');await f.bridge.idle();assert.equal(f.prompts[2].threadId,'synthetic-thread');
+});
+
+test('a native handoff during remote startup prevents a new prompt without disconnecting or removing the QQ pairing',async t=>{
+  let allowed=true;const f=await fixture(t,{canStart:()=>allowed,delayRemote:true});t.after(()=>f.bridge.dispose());await f.pair();
+  await f.receive('late startup','late-job');await new Promise(resolve=>setTimeout(resolve,5));allowed=false;f.releaseRemote();await f.bridge.idle();
+  assert.equal(f.prompts.length,0);assert.equal(f.bridge.state().paired,true);assert.equal(f.bridge.state().connection.state,'connected');assert.equal(f.states.at(-1).state,'idle');
+});
 
 test('only the locally paired QQ identity can run tasks and replayed messages never run twice',async t=>{
   const f=await fixture(t);t.after(()=>f.bridge.dispose());

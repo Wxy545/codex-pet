@@ -5,15 +5,23 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'; frame-src 'none'">
   <title>Codex Pet · Chat</title>
+  <link rel="stylesheet" href="panel-theme.css">
   <link rel="stylesheet" href="chat-window.css">
   <script defer src="locale-en.cjs"></script>
   <script defer src="codex-locale.cjs"></script>
   <script defer src="panel-locale.js"></script>
+  <script defer src="panel-navigation.js"></script>
   <script defer src="chat-window.js"></script>
 </head>
-<body>
+<body data-panel="chat">
   <main>
-    <div class="toolbar"><div class="toolbar-actions"><button id="new-conversation" type="button" data-i18n="新对话">New chat</button><button id="open-tasks" type="button" data-i18n="操作任务">Tasks</button></div><span id="status" role="status" data-i18n="就绪">Ready</span></div>
+    <div class="toolbar">
+      <div class="chat-identity">
+        <span class="character-mark" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M7 4 5 2v6a7 7 0 1 0 14 0V2l-2 2M8 10h.01M16 10h.01M10 15h4"/></svg></span>
+        <div class="identity-copy"><span id="character-name" data-i18n="桌宠">Companion</span><span id="status" role="status" data-i18n="就绪">Ready</span></div>
+      </div>
+      <div class="toolbar-actions"><button id="new-conversation" type="button" data-i18n="新对话">New chat</button><button id="open-tasks" type="button" data-i18n="操作任务">Tasks</button></div>
+    </div>
     <section id="messages" class="messages" role="log" aria-label="Chat messages" data-i18n-aria="对话消息" aria-live="polite"></section>
     <form id="chat-form" class="composer">
       <div id="attachments" class="attachments" aria-label="Images to send" data-i18n-aria="待发送图片" hidden></div>

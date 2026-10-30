@@ -1,6 +1,11 @@
 'use strict';
 
 const PATHS = new Map([
+  ['/dsh-pet-7340/config/editable', new Set(['GET'])],
+  ['/dsh-pet-7340/config', new Set(['PUT'])],
+  ['/dsh-pet-7340/reload', new Set(['POST'])],
+  ['/dsh-pet-7340/control-resume', new Set(['POST'])],
+  ['/standalone-ai/settings', new Set(['GET', 'POST'])],
   ['/dsh-pet-7340/pet-host', new Set(['GET', 'POST'])],
   ['/dsh-pet-7340/qq-remote', new Set(['GET', 'POST'])],
   ['/dsh-pet-7340/codex-character', new Set(['GET'])],
@@ -19,7 +24,7 @@ function createHostRequest({ baseUrl = process.env.CODEX_PET_API_URL, token = pr
     if (!PATHS.get(route)?.has(method) || (body !== undefined && (typeof body !== 'string' || Buffer.byteLength(body) > 17 * 1024 * 1024))) throw new Error('unsupported local request');
     const response = await fetchImpl(new URL(route, base), {
       method, body, redirect: 'error', signal: AbortSignal.timeout(route.endsWith('/codex-chat') ? 130000 : 10000),
-      headers: { 'x-dsh-pet-token': token, ...(body === undefined ? {} : { 'content-type': 'application/json' }) },
+      headers: { 'x-dsh-pet-token': token, ...((route==='/dsh-pet-7340/config'&&method==='PUT'||route==='/dsh-pet-7340/reload'&&method==='POST')?{'x-codex-pet-control':'1'}:{}), ...(body === undefined ? {} : { 'content-type': 'application/json' }) },
     });
     return { status: response.status, body: await response.text() };
   };

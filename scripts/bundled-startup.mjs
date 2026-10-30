@@ -11,11 +11,13 @@ async function stat(file) { try { return await lstat(file); } catch (error) { if
 export async function seedBundledStartup({projectRoot, dataRoot = join(projectRoot, 'data'), host = Host.readHost(dataRoot)}) {
   if (!isAbsolute(projectRoot) || !isAbsolute(dataRoot)) throw new Error('absolute-startup-root-required');
   if (!Host.validHost(host)) throw new Error('invalid-startup-host');
+  // 外观可独立选择，各宿主都准备同一份内置电影；默认播放仍由当前主题决定。
+  const film = await seedBundledFilm({projectRoot, dataRoot});
   if (host === 'workbuddy') {
-    // 卷卷直接引用已安装角色包，不能再复制一套视频或套用龙娘电影。
+    // 卷卷直接引用已安装角色包，不重复复制视频。
     const directory = join(dataRoot, 'skins', 'curly-sheep');
     const manifestInfo = await stat(join(directory, 'manifest.json'));
-    if (!manifestInfo) return {status: 'not-bundled', character: 'curly-sheep'};
+    if (!manifestInfo) return {status: 'not-bundled', character: 'curly-sheep', film};
     if (!manifestInfo.isFile() || manifestInfo.isSymbolicLink()) throw new Error('invalid-startup-role-manifest');
     if ((await stat(dataRoot))?.isSymbolicLink() || (await stat(directory))?.isSymbolicLink()) return {status: 'preserved', reason: 'linked-role-directory'};
     if (relative(await realpath(dataRoot), await realpath(directory)) !== join('skins', 'curly-sheep')) throw new Error('invalid-startup-role-directory');
@@ -27,8 +29,12 @@ export async function seedBundledStartup({projectRoot, dataRoot = join(projectRo
       if (!head.subarray(0, 4).equals(Buffer.from('1a45dfa3', 'hex')) || !head.includes(Buffer.from('4282847765626d', 'hex'))) throw new Error('invalid-startup-role-media');
       files.push(profile.file);
     }
-    return {status: 'reused', character: 'curly-sheep', files};
+    return {status: 'reused', character: 'curly-sheep', files, film};
   }
+  return film;
+}
+
+async function seedBundledFilm({projectRoot, dataRoot}) {
   const name = 'white-dragon-cinematic.webm', source = join(projectRoot, 'assets', 'startup', name);
   const sourceStat = await stat(source);
   if (!sourceStat) return {status: 'not-bundled'};

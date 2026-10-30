@@ -22,8 +22,10 @@ app.on('window-all-closed', () => {
 test('运行时实际入口按模式门控宠物，原托盘项保留且模式切换可恢复窗口',async()=>{
  assert.equal(typeof patcher.patchStartupMain,'function');
  const calls=[];let ready,options;const controller={petEnabled:()=>false,trayItems:()=>[{label:'Startup scene'}]};
- const context={calls,process:{env:{DSH_HOME:'test-data'}},app:{whenReady:()=>({then:fn=>{ready=fn;}}),on(){},quit(){}},Menu:{buildFromTemplate:items=>items},isDesktopDisplay:()=>true,traySetPetDisplay(){},toggleDisplay(){},require:name=>{assert.equal(name,'./codex-startup.cjs');return{install:value=>{options=value;return controller;}};}};
+ let preview;const media={setPreview:fn=>{preview=fn;}};
+ const context={calls,__dirname:'synthetic-helper',electronApi:{},codexPetHost:{get:()=>({host:'codex'})},process:{env:{DSH_HOME:'test-data'}},app:{whenReady:()=>({then:fn=>{ready=fn;}}),on(){},quit(){}},Menu:{buildFromTemplate:items=>items},isDesktopDisplay:()=>true,traySetPetDisplay(){},toggleDisplay(){},require:name=>{if(name==='./startup-media.cjs')return{install:value=>{assert.equal(value.electron,context.electronApi);assert.equal(value.host(),'codex');return media;}};assert.equal(name,'./codex-startup.cjs');return{install:value=>{options=value;return controller;}};}};
  const once=patcher.patchStartupMain(fixture);assert.equal(patcher.patchStartupMain(once),once);vm.runInNewContext(once,context);await ready();
+ assert.equal(options.media,media);assert.equal(typeof preview,'function');
  assert.equal(calls.includes('pet'),false);const menu=calls.find(Array.isArray);assert.equal(menu[0].label,'Dragon Girl');assert.equal(menu.at(-1).label,'Startup scene');
  controller.petEnabled=()=>true;options.onPetEnabled(true);assert.equal(calls.filter(value=>value==='pet').length,1);
  vm.runInNewContext('windows.set("main",{isDestroyed(){return false;},destroy(){calls.push("destroy-pet")}})',context);options.onPetEnabled(false);assert.equal(calls.at(-1),'destroy-pet');
@@ -33,7 +35,8 @@ test('运行时实际入口按模式门控宠物，原托盘项保留且模式�
 test('仅演出模式在托盘异步重建期间关闭最后窗口仍常驻，桌宠模式保留原退出语义',()=>{
  const calls=[],events=new Map();let enabled=false;
  const controller={petEnabled:()=>enabled,trayItems:()=>[]};
- const context={calls,process:{env:{DSH_HOME:'test-data'}},app:{whenReady:()=>({then(){}}),on:(event,fn)=>events.set(event,fn),quit:()=>calls.push('quit')},require:()=>({install:()=>controller})};
+ const media={setPreview(){}};
+ const context={calls,__dirname:'synthetic-helper',electronApi:{},codexPetHost:{get:()=>({host:'codex'})},process:{env:{DSH_HOME:'test-data'}},app:{whenReady:()=>({then(){}}),on:(event,fn)=>events.set(event,fn),quit:()=>calls.push('quit')},require:name=>({install:()=>name==='./startup-media.cjs'?media:controller})};
  vm.runInNewContext(patcher.patchStartupMain(fixture),context);
  events.get('window-all-closed')();assert.deepEqual(calls,[]);
  enabled=true;events.get('window-all-closed')();assert.deepEqual(calls,['quit']);

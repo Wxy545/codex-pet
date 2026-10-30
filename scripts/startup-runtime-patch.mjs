@@ -9,14 +9,16 @@ const trayPets = `pets.map((pet) => ({
           click: () => traySetPetDisplay(pet.id, toggleDisplay(pet.display)),
         })),`;
 const hook = `// codex-startup-main-v1
+const startupMedia = require('./startup-media.cjs').install({electron:electronApi,dataRoot:process.env.DSH_HOME,fileRoot:__dirname,host:()=>codexPetHost.get().host});
 const codexStartup = require('./codex-startup.cjs').install({
-  hostRequest: codexPanelRequest, dataRoot: process.env.DSH_HOME, disabled: DPI_PROBE,
+  hostRequest: codexPanelRequest, dataRoot: process.env.DSH_HOME, media:startupMedia, disabled: DPI_PROBE,
   onPetEnabled: enabled => {
     if (enabled) { if (!windows.size) createPetWindows(); }
     else { for (const win of [...windows.values()]) if (!win.isDestroyed()) win.destroy(); }
   },
   onModeChanged: async () => { if (tray) { tray.destroy(); tray = null; } await startTray(); },
 });
+startupMedia.setPreview(()=>codexStartup.open('preview'));
 // codex-startup-main-end`;
 
 /** 只在原宿主的建窗与托盘入口接线；动画、物理、显示配置不改。 */

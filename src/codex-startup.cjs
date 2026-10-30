@@ -64,7 +64,7 @@ function createLaunchQueue() {
   return queue;
 }
 
-function createController({ electron, dataRoot, fileRoot = __dirname, timers = globalThis, hostRequest, host = process.env.CODEX_PET_HOST || 'codex', targetRequest, onPetEnabled = () => {}, onModeChanged = () => {} }) {
+function createController({ electron, dataRoot, fileRoot = __dirname, timers = globalThis, hostRequest, host = process.env.CODEX_PET_HOST || 'codex', targetRequest, media, onPetEnabled = () => {}, onModeChanged = () => {} }) {
   if (!dataRoot || !path.isAbsolute(dataRoot)) throw new Error('startup-data-root-required');
   const currentHost = () => (typeof host === 'function' ? host() : host) === 'workbuddy' ? 'workbuddy' : 'codex';
   const targetRequests = { codex: createTargetRequest({ fileRoot, host: 'codex' }), workbuddy: createTargetRequest({ fileRoot, host: 'workbuddy' }) };
@@ -76,7 +76,7 @@ function createController({ electron, dataRoot, fileRoot = __dirname, timers = g
   catch { /* 新安装默认同时启用桌宠和演出；已有有效选择保持原样。 */ }
   let windowRef = null, scene = null, timeout = null, disposed = false, pollTimer = null, polling = false;
   let writes = Promise.resolve();
-  let opening = false, generation = 0, handoffPending = Promise.resolve();
+  let opening = false, generation = 0, handoffPending = Promise.resolve(), suspended = false;
   const targets = new Map();
   const locale = () => L.getLocale();
   const state = () => ({ mode, locale: locale() });
@@ -175,18 +175,26 @@ function createController({ electron, dataRoot, fileRoot = __dirname, timers = g
     return target.pending;
   }
   const targetView = value => ({ ok: value.ok, ready: value.ready });
-  const allowed = (reason, selectedHost = currentHost()) => ['preview', selectedHost, 'manual'].includes(reason) && !(reason === selectedHost && mode === 'pet' || reason === 'manual' && mode !== 'startup');
+  const allowed = (reason, selectedHost = currentHost()) => !suspended && ['preview', selectedHost, 'manual'].includes(reason) && !(reason === selectedHost && mode === 'pet' || reason === 'manual' && mode !== 'startup');
   async function open(reason) {
     if (disposed || opening || windowRef || !allowed(reason)) return false;
     const selectedHost = currentHost();
-    const sheep = selectedHost === 'workbuddy';
-    const film = sheep ? null : cinematicVideo();
-    const assets = sheep ? videoAssets('curly-sheep', SHEEP_PROFILES) : film ? {} : videoAssets();
-    if (sheep && SHEEP_PROFILES.some(key => !assets[key])) return false;
-    if (!film && !assets.idle) return false;
     opening = true;
     const epoch = generation;
     try {
+      const appearance = media ? await media.resolveScene(selectedHost) : {theme:selectedHost === 'workbuddy' ? 'workbuddy' : 'chatgpt',custom:null};
+      const theme = appearance?.theme;
+      if (!['chatgpt','deepseek','workbuddy'].includes(theme)) return false;
+      const custom = appearance.custom;
+      if (custom) {
+        let url; try { url = new URL(custom.url); } catch { return false; }
+        if (url.protocol !== 'file:' || url.host || !Number.isFinite(custom.durationMs) || custom.durationMs < 250 || custom.durationMs > 60000) return false;
+      }
+      const sheep = !custom && theme === 'workbuddy', deepseek = !custom && theme === 'deepseek';
+      const film = custom || sheep || deepseek ? null : cinematicVideo();
+      const assets = custom || deepseek ? {} : sheep ? videoAssets('curly-sheep', SHEEP_PROFILES) : film ? {} : videoAssets();
+      if (sheep && SHEEP_PROFILES.some(key => !assets[key])) return false;
+      if (!custom && !deepseek && !film && !assets.idle) return false;
       await handoffPending;
       const located = await probeTarget(selectedHost);
       if (disposed || generation !== epoch || currentHost() !== selectedHost || !allowed(reason, selectedHost)) return false;
@@ -207,9 +215,9 @@ function createController({ electron, dataRoot, fileRoot = __dirname, timers = g
       });
       windowRef = win;
       const copy = COPY[locale()] || COPY.en;
-      scene = { video: film || assets.idle, assets, film: Boolean(film), sheep, character: sheep ? 'curly-sheep' : 'white-dragon', reason, host: selectedHost, brand: sheep ? 'WorkBuddy' : 'ChatGPT', target: targetView(located), durationMs: sheep ? 14000 : film ? FILM_DURATION_MS : DURATION_MS, locale: locale(), copy: sheep ? { skip: copy.skip, subject: locale() === 'zh-CN' ? '卷卷' : 'Curly' } : copy };
+      scene = { video: custom?.url || film || assets.idle, assets, film: Boolean(film), sheep, deepseek, custom: Boolean(custom), theme, character: sheep ? 'curly-sheep' : 'white-dragon', reason, host: selectedHost, brand: theme === 'workbuddy' ? 'WorkBuddy' : theme === 'deepseek' ? 'DeepSeek' : 'ChatGPT', target: targetView(located), durationMs: custom ? custom.durationMs : deepseek ? 7200 : sheep ? 14000 : film ? FILM_DURATION_MS : DURATION_MS, locale: locale(), copy: sheep ? { skip: copy.skip, subject: locale() === 'zh-CN' ? '卷卷' : 'Curly' } : copy };
       // 主进程超时独立于渲染器；视频加载失败或页面卡住也不会留下遮挡窗口。
-      timeout = timers.setTimeout(finish, WATCHDOG_MS);
+      timeout = timers.setTimeout(finish, custom ? custom.durationMs + 14000 : WATCHDOG_MS);
       timeout?.unref?.();
       win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
       win.webContents.on('will-navigate', event => event.preventDefault());
@@ -219,6 +227,9 @@ function createController({ electron, dataRoot, fileRoot = __dirname, timers = g
       try { await win.loadFile(path.join(fileRoot, 'startup-window.html')); }
       catch { if (windowRef === win) finish(); return false; }
       return !win.isDestroyed();
+    } catch {
+      // 自定义片缺失、被改动或清单不可用时不盖住真实应用，也不套用另一段片子的节点。
+      return false;
     } finally { opening = false; }
   }
   const requirePet = event => { if (!trustedPet(event)) throw new Error('startup-sender-denied'); };
@@ -268,7 +279,7 @@ function createController({ electron, dataRoot, fileRoot = __dirname, timers = g
     app.removeListener('before-quit', dispose);
   }
   app.once('before-quit', dispose);
-  return { state, petEnabled, setMode, open, start, trayItems, dispose };
+  return { state, petEnabled, setMode, open, start, trayItems, dispose, setSuspended(value){if(typeof value!=='boolean')throw new Error('invalid-startup-state');suspended=value;if(value)finish({handoff:false});} };
 }
 
 function install({ electronApi, reason = process.env.CODEX_PET_LAUNCH_REASON || 'manual', disabled = false, ...options }) {

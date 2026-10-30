@@ -5,11 +5,14 @@
  <meta name="viewport" content="width=device-width, initial-scale=1">
  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'; frame-src 'none'">
  <title>Codex Pet · QQ remote tasks</title>
+ <link rel="stylesheet" href="panel-theme.css">
  <link rel="stylesheet" href="qq-window.css">
+ <script defer src="panel-navigation.js"></script>
  <script defer src="qq-window.js"></script>
 </head>
-<body>
+<body data-panel="qq">
  <main>
+  <dl class="status connection-strip"><div><dt data-copy="connection">Connection</dt><dd id="connection" role="status">Loading…</dd></div><div><dt data-copy="task">Task</dt><dd id="task">—</dd></div><div id="pending-row" hidden><dt data-copy="pending">Replies awaiting delivery</dt><dd id="pending">0</dd></div></dl>
   <form id="settings">
    <fieldset>
     <legend data-copy="bot">1 · Connect a QQ bot</legend>
@@ -27,7 +30,6 @@
      <label class="permission"><input type="radio" name="permission" value="workspace-write"><span data-copy="workspace-write">Allow edits in this folder</span></label>
     </div>
     <div class="actions"><button id="save" type="submit" class="primary" data-copy="save">Save and connect</button><button id="disable" type="button" data-copy="disable" disabled>Disconnect</button><button id="refresh" type="button" data-copy="refresh">Refresh</button></div>
-    <dl class="status"><div><dt data-copy="connection">Connection</dt><dd id="connection" role="status">Loading…</dd></div><div><dt data-copy="task">Task</dt><dd id="task">—</dd></div><div id="pending-row" hidden><dt data-copy="pending">Replies awaiting delivery</dt><dd id="pending">0</dd></div></dl>
    </fieldset>
    <fieldset>
     <legend data-copy="pairing">3 · Pair your QQ account</legend>

@@ -86,7 +86,9 @@ WorkBuddy 接入使用用户本机 Windows 客户端提供的插件与 Hook 接�
 
 其安装器下载的第三方配音和音效不属于代码的 MIT 授权范围。本项目不会将这些声音视为已获授权的素材，新增演出使用自制或取得明确授权的声音。
 
-本次启动窗口交接还参考了 [yushua0808-cpu/dragon-codex-boot](https://github.com/yushua0808-cpu/dragon-codex-boot)（核对提交 `c63a203e5857e85fb3c8a9891eddb570e7a27b54`）等待真实主窗口、按目标屏幕播放和结束后交还焦点的做法。其代码采用 MIT，版权声明为 `Copyright (c) 2026 Dragon Codex Boot contributors`；媒体另有说明。本项目独立实现接线与页面，不复制其代码、视频、角色或声音，不接管快捷方式。
+启动窗口交接与本地视频导入还参考了 [yushua0808-cpu/dragon-codex-boot](https://github.com/yushua0808-cpu/dragon-codex-boot)（核对提交 `c63a203e5857e85fb3c8a9891eddb570e7a27b54`）等待真实主窗口、按目标屏幕播放和结束后交还焦点的做法。其代码采用 [MIT](https://github.com/yushua0808-cpu/dragon-codex-boot/blob/main/LICENSE)，版权声明为 `Copyright (c) 2026 Dragon Codex Boot contributors`；媒体另有说明。本项目独立实现接线与页面，不复制其代码、视频、角色或声音，不接管快捷方式。
+
+本地视频库、解码检查、过渡与超时退出的设计参考了 [linke-e/dsh-opening-animation](https://github.com/linke-e/dsh-opening-animation)。其代码采用 [MIT](https://github.com/linke-e/dsh-opening-animation/blob/main/LICENSE)，版权声明为 `Copyright (c) 2026 dsh-opening-animation contributors`。本项目仅借鉴实现思路，视频管理、探针与播放器独立编写，未复制该项目源码或素材。用户自行导入的视频只保存在本机，不纳入本仓库分发。
 
 桌宠交互参考 [jingh12312-rgb/bailong-desktop-pet](https://github.com/jingh12312-rgb/bailong-desktop-pet) 的公开说明及 v0.4.1 随包源码。该源码和素材没有另授开放许可，本项目仅借鉴交互思路，未纳入其代码、美术或声音；截图与新版发布说明不作为本项目已经支持某项功能的依据。
 

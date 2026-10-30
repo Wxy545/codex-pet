@@ -39,7 +39,15 @@ New Codex installations start with White Dragon Girl. Both options enable launch
 
 The default folder is `%LOCALAPPDATA%\codex-pet`; Git is optional. The interface follows your Windows display language: Chinese for Chinese-language systems, English for all others.
 
-The pet starts with your selected app after installation. Use **Companion app** in the right-click menu to switch between Codex and WorkBuddy. You can also double-click `Start Codex Pet.vbs` or `Stop Codex Pet.vbs` in the installation folder. After a manual stop, it stays stopped until the next launch of the selected app. See [INSTALL.md](INSTALL.md) for WorkBuddy setup, custom paths, and manual installation.
+The pet starts with your selected app after installation. Use **Companion app** in the right-click menu to switch between Codex and WorkBuddy, or connect the [native DeepSeek Harness pet](#deepseek-harness). You can also double-click `Start Codex Pet.vbs` or `Stop Codex Pet.vbs` in the installation folder. After a manual stop, it stays stopped until the next launch of the selected app. See [INSTALL.md](INSTALL.md) for WorkBuddy setup, custom paths, and manual installation.
+
+## Control center
+
+Right-click the pet and open **Control center** to preview characters and adjust size, wandering, drag and bounce, chatter, and startup scenes. Light and dark colors follow your system. Chat, Tasks, and QQ connection share a sidebar. Tasks still start read-only; image chat and copying results work as before.
+
+Turn off **Show pet** in **Interactions**, or use **Hide pet** in the tray menu to hide her. Fullscreen apps, including games, hide the pet automatically by default; turn this off with **Hide during fullscreen apps**. The tray's **Show pet** brings her back. Chat, tasks, and notifications keep running while she is hidden.
+
+The usage bar now sits directly below the character. Click it to expand the available usage windows and reset times. A second row shows CPU, memory, and GPU usage; unavailable readings show **—**. You can turn off **System monitor** in **Interactions**.
 
 ## Give her a poke
 
@@ -53,18 +61,18 @@ The pet starts with your selected app after installation. Use **Companion app** 
 ### Codex
 
 - **Session status:** react to thinking, working, waiting for confirmation, completion, and errors, including across multiple local sessions.
-- **Usage bubbles:** check Codex usage and reset times from the right-click menu. A missing reset time shows as unknown. If no data is available after installation, finish a reply in the main Codex chat and check again.
+- **Usage:** check remaining usage below the character, or open the details from the right-click menu. A missing reset time shows as unknown. If no data is available after installation, finish a reply in the main Codex chat and check again.
 - **Chat and images:** open Chat from the right-click menu and send text, PNG, JPEG, or WebP images. Replies use your signed-in Codex CLI.
 - **Project tasks:** open Tasks, choose a folder, describe the job, and confirm it. Tasks start in read-only mode; choose “Allow edits in this folder” when you want files changed.
 - **Notifications:** switch to another app and let Windows tell you when Codex finishes, hits an error, or needs your attention.
 
-Chat and idle chatter count toward your Codex usage. Chatter runs every ten minutes by default; change the interval or turn it off in AI settings.
+Chat and idle chatter count toward your Codex usage. Chatter runs every ten minutes by default; change the interval or turn it off under **Chatter** in the control center.
 
 ### WorkBuddy
 
 The pet follows WorkBuddy 5.9.3 task events: thinking, using tools, waiting for confirmation, and finishing a turn. It starts with WorkBuddy and sends completion or confirmation notifications when you are in another app.
 
-Send chats and new tasks from WorkBuddy itself. The pet's Chat (including image input), Tasks, usage, and AI chatter controls are hidden in this mode.
+Send chats and new tasks from WorkBuddy itself. The pet's Chat (including image input), Tasks, usage, AI chatter, and QQ controls are hidden in this mode.
 
 ## Codex from QQ
 
@@ -98,11 +106,15 @@ The original blue whale maid retains her **106 transparent animations**. These p
 
 ## Startup and updates
 
-New installations enable the pet and a startup scene. WorkBuddy opens with Curly: a blink, a little typing, then a wave before the WorkBuddy window is revealed. Codex keeps its dragon-girl cinematic: eyes opening, wings unfolding, glass panels sweeping past, then a window reveal into Codex. The Codex intro lasts about 11 seconds. Both scenes have original sound effects. Use **Skip** or Esc to leave early; the sound button toggles audio.
+New installations enable the pet and a startup scene. By default, WorkBuddy opens with Curly: a blink, a little typing, then a wave. Codex opens with the dragon-girl cinematic: eyes opening, wings unfolding, glass panels sweeping past, then a window reveal. The dragon intro lasts about 11 seconds. Both scenes have original sound effects. Use **Skip** or Esc to leave early; the sound button toggles audio.
 
 The cinematic uses her full-size form. The desktop companions stay chibi, with no random transformations.
 
 Open **Startup scene** in the right-click or tray menu to choose **Pet only**, **Startup scene only**, or **Pet and startup scene**. **Preview scene** plays it immediately. Updates keep your saved mode.
+
+In **Control center → Startup & app → Theme & video**, choose **Follow companion app**, **ChatGPT**, **DeepSeek**, or **WorkBuddy**. DeepSeek has a blue tech-themed animation; WorkBuddy uses Curly. The theme changes the visuals; the selected companion app still receives focus when the scene ends.
+
+Use **Import video** to add your own MP4 or WebM, then select it and preview. Videos can be up to **60 seconds, 4K, and 256 MiB**. Imported copies stay on your computer. Removing a video from the library leaves your original file untouched.
 
 <img src="docs/assets/startup-scene.jpg" width="720" alt="White Dragon Girl and the window reveal in the startup cinematic">
 
@@ -125,7 +137,9 @@ After updating the source, run `node scripts/prepare-runtime.mjs` to prepare the
 
 ## DeepSeek Harness
 
-The dragon girl's 23 clips are also available as a [DeepSeek Harness plugin](harness/README.md). It uses Harness sessions, balance and chat through dsh-pet. Follow that guide to install it in your Harness profile.
+Choose **Companion app → DeepSeek Harness (native plugin)** to select an installed Harness and its profile, then install the dragon girl's 23 clips into its native dsh-pet. For Harness Desktop, open it once to initialize the profile, then fully quit it before installation. Reopen that profile afterward.
+
+Harness uses its own account, sessions, balance, and chat. Switch back to Codex or WorkBuddy from the tray or control center to restore the standalone pet and your saved character. Startup themes and imported videos currently apply to the standalone pet, not Harness's native startup page. See the [Harness guide](harness/README.md) for supported versions and manual installation.
 
 ## Buy me a coffee
 
@@ -142,7 +156,7 @@ Want to see more dragon-girl animations? You can help fund the video work throug
 
 Thanks to [PC2005-cloud/dsh-pet](https://github.com/PC2005-cloud/dsh-pet) for the desktop pet, animations, and interactions. This adaptation uses `dsh-pet@0.3.8`.
 
-Startup scenes draw on [884048454/codex-startup-animation](https://github.com/884048454/codex-startup-animation) and [yushua0808-cpu/dragon-codex-boot](https://github.com/yushua0808-cpu/dragon-codex-boot). Thanks also to [jingh12312-rgb/bailong-desktop-pet](https://github.com/jingh12312-rgb/bailong-desktop-pet) for desktop interaction ideas. This project uses its own dragon clips and startup visuals.
+Startup scenes draw on ideas from [884048454/codex-startup-animation](https://github.com/884048454/codex-startup-animation), [yushua0808-cpu/dragon-codex-boot](https://github.com/yushua0808-cpu/dragon-codex-boot), and [linke-e/dsh-opening-animation](https://github.com/linke-e/dsh-opening-animation). Thanks also to [jingh12312-rgb/bailong-desktop-pet](https://github.com/jingh12312-rgb/bailong-desktop-pet) for desktop interaction ideas. This project uses its own dragon clips and startup visuals.
 
 The original “溟月” character is by [上善无形](https://space.bilibili.com/4456176); the DeepSeek whale-maid design is by [ZipZipPipe](https://space.bilibili.com/4168597).
 

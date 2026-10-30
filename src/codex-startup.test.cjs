@@ -22,6 +22,19 @@ function fixture(t,mode){
  const flush=async()=>{for(let i=0;i<8;i++)await new Promise(resolve=>setImmediate(resolve));};
  return{root,electron,windows,handlers,timers,timerApi,flush,Window,targetRequest:async()=>({ok:false,ready:false})};
 }
+
+test('自定义视频不套内置电影节点，主题与真实交还宿主独立且60秒有独立硬上限',async t=>{
+ const f=fixture(t,'both'),focused=[];const c=Startup.createController({electron:f.electron,dataRoot:f.root,fileRoot:__dirname,timers:f.timerApi,host:'workbuddy',targetRequest:async(action,host)=>{if(action==='focus')focused.push(host);return{ok:true,ready:false};},media:{resolveScene:async()=>({theme:'deepseek',custom:{url:'file:///verified-custom.mp4',durationMs:60000,width:1920,height:1080}})}});t.after(()=>c.dispose());
+ assert.equal(await c.open('preview'),true);let win=f.windows.at(-1),scene=await f.handlers.get('codex-startup:scene')({sender:win.webContents});assert.equal(scene.custom,true);assert.equal(scene.film,false);assert.equal(scene.sheep,false);assert.equal(scene.theme,'deepseek');assert.equal(scene.host,'workbuddy');assert.equal(scene.video,'file:///verified-custom.mp4');assert.ok([...f.timers.values()].some(timer=>timer.ms>60000&&timer.ms<=75000));await f.handlers.get('codex-startup:finish')({sender:win.webContents});assert.deepEqual(focused,[]);
+ await c.open('workbuddy');win=f.windows.at(-1);await f.handlers.get('codex-startup:finish')({sender:win.webContents});await f.flush();assert.deepEqual(focused,['workbuddy']);
+});
+test('DeepSeek内置科技演出无需角色视频，WorkBuddy主题可在Codex宿主使用且不改实际宿主',async t=>{
+ const f=fixture(t,'both');let theme='deepseek';const c=Startup.createController({electron:f.electron,dataRoot:f.root,fileRoot:__dirname,timers:f.timerApi,targetRequest:f.targetRequest,media:{resolveScene:async()=>({theme,custom:null})}});t.after(()=>c.dispose());
+ assert.equal(await c.open('preview'),true);let win=f.windows.at(-1),scene=await f.handlers.get('codex-startup:scene')({sender:win.webContents});assert.equal(scene.deepseek,true);assert.equal(scene.theme,'deepseek');assert.equal(scene.host,'codex');await f.handlers.get('codex-startup:finish')({sender:win.webContents});theme='workbuddy';await c.open('preview');win=f.windows.at(-1);scene=await f.handlers.get('codex-startup:scene')({sender:win.webContents});assert.equal(scene.sheep,true);assert.equal(scene.host,'codex');assert.equal(scene.brand,'WorkBuddy');
+});
+test('自定义媒体缺失时不开空窗，失败后仍可重新预览内置演出',async t=>{
+ const f=fixture(t,'both');let broken=true;const c=Startup.createController({electron:f.electron,dataRoot:f.root,fileRoot:__dirname,timers:f.timerApi,targetRequest:f.targetRequest,media:{resolveScene:async()=>{if(broken)throw new Error('media-unavailable');return{theme:'chatgpt',custom:null};}}});t.after(()=>c.dispose());assert.equal(await c.open('preview'),false);assert.equal(f.windows.length,0);broken=false;assert.equal(await c.open('preview'),true);
+});
 test('新安装默认双模式，演出偏好只接受三个模式且真实落盘恢复',async t=>{
  const f=fixture(t);assert.equal(typeof Startup.createController,'function');
  const enabled=[];const c=Startup.createController({electron:f.electron,dataRoot:f.root,fileRoot:__dirname,timers:f.timerApi,targetRequest:f.targetRequest,onPetEnabled:value=>enabled.push(value)});t.after(()=>c.dispose());
@@ -143,6 +156,27 @@ test('仅真实启动结束交还焦点，预览、取消和退出均不聚焦Co
  await c.open('codex');f.handlers.get('codex-startup:finish')({sender:f.windows.at(-1).webContents});await f.flush();assert.equal(calls.filter(value=>value==='focus').length,1);
  await c.open('codex');await c.setMode('pet');await f.flush();assert.equal(calls.filter(value=>value==='focus').length,1);
  await c.setMode('both');await c.open('codex');c.dispose();await f.flush();assert.equal(calls.filter(value=>value==='focus').length,1);
+});
+
+test('原生移交暂停启动演出并关闭当前片段，不交还旧宿主焦点或改变模式',async t=>{
+ const f=fixture(t,'both'),calls=[];
+ const c=Startup.createController({electron:f.electron,dataRoot:f.root,fileRoot:__dirname,timers:f.timerApi,targetRequest:async action=>{calls.push(action);return{ok:false,ready:false};}});t.after(()=>c.dispose());
+ await c.open('codex');c.setSuspended(true);await f.flush();assert.equal(f.windows[0].isDestroyed(),true);assert.equal(calls.includes('focus'),false);
+ assert.equal(await c.open('preview'),false);assert.equal(await c.open('codex'),false);assert.equal(c.state().mode,'both');
+ c.setSuspended(false);assert.equal(await c.open('preview'),true);assert.equal(c.state().mode,'both');
+});
+
+test('等待媒体或目标探测时移交Harness，迟到结果不能重建演出或聚焦旧宿主',async t=>{
+ for(const stage of ['media','probe'])await t.test(stage,async child=>{
+  const f=fixture(child,'both');let release,first=true;const calls=[];
+  const pending=new Promise(resolve=>{release=resolve;});
+  const c=Startup.createController({electron:f.electron,dataRoot:f.root,fileRoot:__dirname,timers:f.timerApi,
+   media:{resolveScene:async()=>{if(stage==='media'&&first){first=false;return pending;}return{theme:'chatgpt',custom:null};}},
+   targetRequest:async action=>{calls.push(action);if(stage==='probe'&&first){first=false;return pending;}return{ok:false,ready:false};}});child.after(()=>c.dispose());
+  const opening=c.open('codex');await f.flush();c.setSuspended(true);release(stage==='media'?{theme:'chatgpt',custom:null}:{ok:false,ready:false});
+  assert.equal(await opening,false);assert.equal(f.windows.length,0);assert.equal(calls.includes('focus'),false);
+  c.setSuspended(false);assert.equal(await c.open('preview'),true);assert.equal(f.windows.length,1);
+ });
 });
 
 test('探测期间去重并取消过期建窗，旧交还完成后才允许新覆盖层显示',async t=>{

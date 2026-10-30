@@ -55,7 +55,7 @@ function sanitizeSnapshot(value) {
 }
 
 /** 主进程拥有目录选择与固定宿主路由，渲染端不能传任意 IPC 或替换已选目录。 */
-function createController({ hostRequest, electron, fileRoot = __dirname, fsImpl = {} }) {
+function createController({ hostRequest, electron, fileRoot = __dirname, fsImpl = {}, canUse = () => true }) {
   if (typeof hostRequest !== 'function') throw new TypeError('hostRequest is required');
   const { BrowserWindow, ipcMain, app, dialog, clipboard } = electron;
   const io = { realpath: fs.realpath, stat: fs.stat, ...fsImpl };
@@ -66,10 +66,12 @@ function createController({ hostRequest, electron, fileRoot = __dirname, fsImpl 
   let selectedDirectory = '';
   let submitPending = false;
   let disposed = false;
+  let opening = null;
+  const available = () => { try { return !disposed && canUse() === true; } catch { return false; } };
 
   const owned = event => {
     const contents = windowRef?.webContents;
-    if (!contents || windowRef.isDestroyed() || event?.sender !== contents) return false;
+    if (!available() || !contents || windowRef.isDestroyed() || event?.sender !== contents) return false;
     if (contents.mainFrame && event.senderFrame !== contents.mainFrame) return false;
     return contents.getURL() === panelUrl;
   };
@@ -85,8 +87,10 @@ function createController({ hostRequest, electron, fileRoot = __dirname, fsImpl 
   };
 
   async function request(method, route, body) {
+    if (!available()) return failure('unauthorized');
     try {
       const response = await hostRequest(method, route, body === undefined ? undefined : JSON.stringify(body));
+      if (!available()) return failure('unauthorized');
       const payload = typeof response?.body === 'string' ? JSON.parse(response.body) : response?.body;
       if (!response || response.status < 200 || response.status >= 300) return failure(payload?.error?.code);
       const snapshot = sanitizeSnapshot(payload);
@@ -95,30 +99,38 @@ function createController({ hostRequest, electron, fileRoot = __dirname, fsImpl 
   }
 
   async function open() {
-    if (disposed) return;
+    if (!available()) throw new Error('unavailable');
     await app.whenReady();
-    if (disposed) return;
+    if (!available()) throw new Error('unavailable');
+    if (opening) return opening;
     if (windowRef && !windowRef.isDestroyed()) {
       if (windowRef.isMinimized()) windowRef.restore();
       windowRef.show(); windowRef.focus(); return;
     }
-    const win = new BrowserWindow({
-      width: 760, height: 760, minWidth: 560, minHeight: 580,
-      title: `Codex Pet · ${L.t('操作任务')}`, backgroundColor: '#f7f8fa', show: false, autoHideMenuBar: true,
-      webPreferences: {
-        preload: path.join(fileRoot, 'task-preload.cjs'), nodeIntegration: false,
-        contextIsolation: true, sandbox: true, webSecurity: true, spellcheck: false,
-      },
-    });
-    windowRef = win;
-    win.setMenu?.(null);
-    win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
-    win.webContents.on('will-navigate', (event, url) => { if (url !== panelUrl) event.preventDefault(); });
-    win.webContents.on('will-attach-webview', event => event.preventDefault());
-    win.once('ready-to-show', () => { if (!win.isDestroyed()) win.show(); });
-    // 关面板只关观察窗口；任务是否取消由面板的取消按钮明确决定。
-    win.once('closed', () => { if (windowRef === win) windowRef = null; });
-    try { await win.loadFile(panelFile); } catch { if (!win.isDestroyed()) win.destroy(); }
+    // 首次加载期间的重复入口共同等待，不提前隐藏发起导航的旧面板。
+    opening = (async () => {
+      const win = new BrowserWindow({
+        width: 1040, height: 800, minWidth: 560, minHeight: 580,
+        title: `Codex Pet · ${L.t('操作任务')}`, backgroundColor: '#15171c', show: false, autoHideMenuBar: true,
+        webPreferences: {
+          preload: path.join(fileRoot, 'task-preload.cjs'), nodeIntegration: false,
+          contextIsolation: true, sandbox: true, webSecurity: true, spellcheck: false,
+        },
+      });
+      windowRef = win;
+      win.setMenu?.(null);
+      win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
+      win.webContents.on('will-navigate', (event, url) => { if (url !== panelUrl) event.preventDefault(); });
+      win.webContents.on('will-attach-webview', event => event.preventDefault());
+      win.once('ready-to-show', () => { if (available() && !win.isDestroyed()) win.show(); });
+      // 关面板只关观察窗口；任务是否取消由面板的取消按钮明确决定。
+      win.once('closed', () => { if (windowRef === win) windowRef = null; });
+      try {
+        await win.loadFile(panelFile);
+        if (!available() || win.isDestroyed()) throw new Error('unavailable');
+      } catch { if (!win.isDestroyed()) win.destroy(); throw new Error('unavailable'); }
+    })();
+    try { await opening; } finally { opening = null; }
   }
 
   const handlers = {
@@ -132,6 +144,7 @@ function createController({ hostRequest, electron, fileRoot = __dirname, fsImpl 
         const directory = await io.realpath(chosen.filePaths[0]);
         if (!path.isAbsolute(directory) || !(await io.stat(directory)).isDirectory()) return failure('invalid_cwd');
         // 文件夹对话框可能早于提交打开；异步返回后也不能改掉正在确认的目录。
+        if (!owned(event)) return failure('unauthorized');
         if (submitPending) return failure('busy');
         selectedDirectory = directory;
         return { ok: true, directory };
@@ -159,6 +172,7 @@ function createController({ hostRequest, electron, fileRoot = __dirname, fsImpl 
       if (!current.ok) return current;
       if (typeof id !== 'string' || current.snapshot.id !== id || !ACTIVE.has(current.snapshot.state)) return failure('stale_task');
       try {
+        if (!available()) return failure('unauthorized');
         const response = await hostRequest('POST', TASK_PATH + '/cancel', JSON.stringify({ id }));
         if (!response || response.status < 200 || response.status >= 300) return failure('stale_task');
       } catch { return failure('host_unavailable'); }
@@ -186,7 +200,8 @@ function createController({ hostRequest, electron, fileRoot = __dirname, fsImpl 
     windowRef = null;
   }
   app.once('before-quit', dispose);
-  return { open, dispose };
+  const hide = () => { if (windowRef && !windowRef.isDestroyed()) windowRef.hide(); };
+  return { open, hide, dispose };
 }
 
 function install(options) { return createController({ ...options, electron: options.electron || require('electron') }); }

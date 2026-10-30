@@ -140,8 +140,8 @@ function install({ hostRequest, dataRoot = process.env.DSH_HOME, electronApi, on
   const { app, ipcMain, BrowserWindow } = electronApi ?? require('electron');
   const store = createSkinStore({ hostRequest, dataRoot });
   const get = async event => { if (!trustedSender(event)) throw new Error('skin-sender-denied'); return store.readModel(); };
-  const select = async (event, value) => {
-    if (!trustedSender(event)) throw new Error('skin-sender-denied');
+  // 菜单与控制中心复用同一选择流程，清气泡、广播和聊天身份更新不能分叉。
+  const selectAndPublish = async value => {
     const previousCharacter = readCharacter(dataRoot).id;
     const model = await store.select(value);
     if (previousCharacter !== model.selection.character) {
@@ -154,10 +154,14 @@ function install({ hostRequest, dataRoot = process.env.DSH_HOME, electronApi, on
     await onSelectionChanged?.(model);
     return model;
   };
+  const select = async (event, value) => {
+    if (!trustedSender(event)) throw new Error('skin-sender-denied');
+    return selectAndPublish(value);
+  };
   ipcMain.handle('codex-skin:get', get);
   ipcMain.handle('codex-skin:select', select);
   app.once('before-quit', () => { ipcMain.removeHandler('codex-skin:get'); ipcMain.removeHandler('codex-skin:select'); });
-  return store;
+  return { ...store, select: selectAndPublish };
 }
 
 function installPreload() {

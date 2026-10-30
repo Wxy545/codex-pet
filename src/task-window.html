@@ -5,23 +5,25 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self'; connect-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'; frame-src 'none'">
   <title>Codex Pet · Tasks</title>
+  <link rel="stylesheet" href="panel-theme.css">
   <link rel="stylesheet" href="task-window.css">
   <script defer src="locale-en.cjs"></script>
   <script defer src="codex-locale.cjs"></script>
   <script defer src="panel-locale.js"></script>
+  <script defer src="panel-navigation.js"></script>
   <script defer src="task-window.js"></script>
 </head>
-<body>
+<body data-panel="tasks">
   <main>
     <form id="task-form">
-      <div class="field">
+      <div class="field directory-field">
         <label for="directory" data-i18n="工作目录">Working folder</label>
         <div class="directory-row"><input id="directory" readonly aria-describedby="directory-note"><button id="choose-directory" type="button" data-i18n="选择文件夹">Choose folder</button></div>
         <span id="directory-note" class="field-note" data-i18n="任务从此工作目录开始执行。">The task starts in this folder.</span>
       </div>
-      <div class="field">
+      <div class="field task-field">
         <div class="field-label"><label for="task" data-i18n="任务">Task</label><span id="character-count" class="field-note">0 / 12000</span></div>
-        <textarea id="task" rows="5" maxlength="12000" required></textarea>
+        <textarea id="task" rows="4" maxlength="12000" required></textarea>
       </div>
       <fieldset id="permissions">
         <legend data-i18n="本次权限">Permissions for this task</legend>
@@ -31,11 +33,13 @@
       <div class="confirmation" id="confirmation" aria-live="polite" data-i18n="选择目录并填写任务后，可确认执行。">Choose a folder and enter a task to continue.</div>
       <div class="actions"><button id="submit-task" class="primary" type="submit" disabled data-i18n="确认执行">Run task</button><button id="cancel-task" class="danger" type="button" hidden data-i18n="取消本次任务">Cancel task</button><button id="retry-state" type="button" hidden data-i18n="重新连接">Reconnect</button></div>
     </form>
-    <section class="result" aria-label="Task result" data-i18n-aria="执行结果">
+    <section id="task-result" class="result" aria-label="Task result" data-i18n-aria="执行结果">
       <div class="result-bar"><span id="execution-state" role="status" data-i18n="尚未开始">Not started</span><button id="copy-result" type="button" disabled data-i18n="复制结果">Copy result</button></div>
       <div id="active-scope" class="active-scope" hidden></div>
-      <ol id="progress" aria-label="Task progress" data-i18n-aria="执行进度"></ol>
-      <pre id="result-text" tabindex="0"></pre>
+      <div id="result-content" class="result-content" tabindex="0" aria-label="Task result" data-i18n-aria="执行结果">
+        <ol id="progress" aria-label="Task progress" data-i18n-aria="执行进度"></ol>
+        <pre id="result-text"></pre>
+      </div>
     </section>
     <div id="message" class="message" role="alert" hidden></div>
   </main>

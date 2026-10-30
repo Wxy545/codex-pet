@@ -108,11 +108,11 @@ test('设置页轮询失败显示不可达且同错误只提示一次，恢复�
  const settle=()=>new Promise(resolve=>setImmediate(resolve));
  const poll=async()=>{[...intervals.values()].find(item=>item.ms===2500).fn();await settle();};
  try{
-  await settle();assert.equal(element('connection').textContent,'Connected');assert.equal(element('pair').disabled,false);
-  offline=true;await poll();assert.match(element('connection').textContent,/unavailable/i);assert.equal(element('pair').disabled,true);assert.equal(shown,1);
+  await settle();assert.equal(element('connection').textContent,'Connected');assert.equal(element('connection').dataset.state,'connected');assert.equal(element('pair').disabled,false);
+  offline=true;await poll();assert.match(element('connection').textContent,/unavailable/i);assert.equal(element('connection').dataset.state,'error');assert.equal(element('pair').disabled,true);assert.equal(shown,1);
   for(const timer of timeouts.values())timer.fn();assert.equal(element('message').hidden,true);
   await poll();assert.equal(shown,1);assert.equal(element('message').hidden,true);
-  offline=false;await poll();assert.equal(element('connection').textContent,'Connected');assert.equal(element('pair').disabled,false);
+  offline=false;await poll();assert.equal(element('connection').textContent,'Connected');assert.equal(element('connection').dataset.state,'connected');assert.equal(element('pair').disabled,false);
   offline=true;await poll();assert.equal(shown,2);assert.doesNotMatch(element('message').textContent,/private transport/);
  }finally{windowEvents.get('beforeunload')();}
 });
