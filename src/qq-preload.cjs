@@ -5,6 +5,8 @@ contextBridge.exposeInMainWorld('petPanels',Object.freeze({host:process.env.CODE
 contextBridge.exposeInMainWorld('qqRemote',Object.freeze({
  getState:()=>ipcRenderer.invoke('codex-qq:state'),
  chooseDirectory:()=>ipcRenderer.invoke('codex-qq:directory'),
+ selectProject:projectId=>ipcRenderer.invoke('codex-qq:project',{action:'select',projectId}),
+ removeProject:projectId=>ipcRenderer.invoke('codex-qq:project',{action:'remove',projectId}),
  save:body=>ipcRenderer.invoke('codex-qq:save',body),
  pair:()=>ipcRenderer.invoke('codex-qq:action','pair'),
  unpair:()=>ipcRenderer.invoke('codex-qq:action','unlink'),

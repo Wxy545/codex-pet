@@ -25,9 +25,9 @@ function fixture(options={}){
  }
  let state={enabled:false,configured:true,appId:'12345678',connection:{state:'stopped'},paired:false,project:{cwd:folder,permission:'read-only'},pairing:null,task:null,pendingReplies:0};
  let selected=folder;
- const controller=QQ.createController({electron:{BrowserWindow,ipcMain,app,clipboard:{writeText:value=>copied.push(value)},shell:{openExternal:async url=>links.push(url)},dialog:{showOpenDialog:async()=>({canceled:false,filePaths:[selected]}),showMessageBox:async()=>({response:1})}},fsImpl:{realpath:async target=>target,stat:async()=>({isDirectory:()=>true}),...options.fsImpl},hostRequest:async(method,route,body)=>{
+ const controller=QQ.createController({electron:{BrowserWindow,ipcMain,app,clipboard:{writeText:value=>copied.push(value)},shell:{openExternal:async url=>links.push(url)},dialog:{showOpenDialog:async()=>({canceled:false,filePaths:[selected]}),showMessageBox:async()=>({response:options.confirm??1})}},fsImpl:{realpath:async target=>target,stat:async()=>({isDirectory:()=>true}),...options.fsImpl},hostRequest:async(method,route,body)=>{
   calls.push({method,route,body});if(options.hostRequest)return options.hostRequest(method,route,body);
-  if(method==='POST'){const value=JSON.parse(body);if(value.action==='save')state={...state,appId:value.appId,enabled:value.enabled,project:{cwd:value.cwd,permission:value.permission}};if(value.action==='disable')state={...state,enabled:false,connection:{state:'stopped'}};if(value.action==='pair')state={...state,pairing:{code:'123456',expiresAt:'2026-10-30T11:00:00.000Z'}};}
+  if(method==='POST'){const value=JSON.parse(body);if(value.action==='save')state={...state,appId:value.appId,enabled:value.enabled,project:{cwd:value.cwd,permission:value.permission}};if(value.action==='disable')state={...state,enabled:false,connection:{state:'stopped'}};if(value.action==='pair')state={...state,pairing:{code:'123456',expiresAt:'2026-10-30T11:00:00.000Z'}};if(value.action==='project-select')state={...state,project:state.projects.find(item=>item.id===value.projectId)};if(value.action==='project-remove'){const projects=state.projects.filter(item=>item.id!==value.projectId);state={...state,projects,project:projects[0]||{cwd:'',permission:'read-only'}};}}
   return{status:200,body:JSON.stringify(state)};
  }});
  const event=()=>({sender:windows.at(-1).webContents,senderFrame:windows.at(-1).webContents.mainFrame});
@@ -39,7 +39,7 @@ test('QQ设置拒绝其他页面和子frame，打开窗口不给渲染器Node权
  const win=f.windows[0];assert.equal(win.settings.webPreferences.nodeIntegration,false);assert.equal(win.settings.webPreferences.contextIsolation,true);assert.equal(win.settings.webPreferences.sandbox,true);
  assert.deepEqual(win.newWindow({url:'https://example.com'}),{action:'deny'});
  const foreign={sender:{getURL:()=>win.url},senderFrame:{}};
- for(const key of ['state','directory','save','action','platform'])assert.equal((await f.invoke(key,{},foreign)).code,'unauthorized');
+ for(const key of ['state','directory','save','action','project','platform'])assert.equal((await f.invoke(key,{},foreign)).code,'unauthorized');
  assert.equal((await f.invoke('state',undefined,{sender:win.webContents,senderFrame:{}})).code,'unauthorized');assert.equal(f.calls.length,0);
 });
 
@@ -67,6 +67,40 @@ test('空密钥保存保留原密钥，配对和停用只发送固定动作',asy
  const disabled=await f.invoke('action','disable');assert.equal(disabled.snapshot.enabled,false);
  assert.equal((await f.invoke('action','shell-command')).code,'invalid_input');
  assert.deepEqual(f.calls.filter(c=>c.method==='POST').map(c=>JSON.parse(c.body)),[{action:'save',appId:'12345678',cwd:folder,permission:'read-only',enabled:true},{action:'pair'},{action:'disable'}]);
+});
+
+test('授权项目只按服务白名单切换，任意路径、未知项目和额外字段不能形成写请求',async t=>{
+ const f=fixture();t.after(()=>f.controller.dispose());await f.controller.open();
+ const first={id:'project-a',label:'Alpha',cwd:folder,permission:'read-only',maxPermission:'workspace-write'},second={id:'project-b',label:'Beta',cwd:other,permission:'read-only',maxPermission:'read-only'};
+ f.setState({enabled:true,configured:true,appId:'12345678',connection:{state:'connected'},paired:true,project:first,projects:[first,second],pendingReplies:0});
+ const selected=await f.invoke('project',{action:'select',projectId:second.id});assert.equal(selected.ok,true);assert.equal(selected.snapshot.project.cwd,other);assert.equal(selected.selectedDirectory,other);assert.equal(selected.snapshot.project.maxPermission,'read-only');
+ const post=f.calls.find(item=>item.method==='POST');assert.deepEqual(JSON.parse(post.body),{action:'project-select',projectId:'project-b'});
+ const count=f.calls.filter(item=>item.method==='POST').length;
+ assert.equal((await f.invoke('project',{action:'select',projectId:'unknown'})).code,'invalid_project');
+ for(const body of [{action:'shell',projectId:first.id},{action:'select',projectId:first.id,cwd:folder},{action:'select',projectId:'../other'}])assert.equal((await f.invoke('project',body)).code,'invalid_input');
+ assert.equal(f.calls.filter(item=>item.method==='POST').length,count);
+ assert.equal((await f.invoke('save',{appId:'12345678',cwd:other,permission:'read-only',enabled:true})).ok,true,'switching a saved project must not require selecting the directory or entering the secret again');
+});
+
+test('项目移除只发固定授权动作，取消确认不写入，公开项目不带隐藏内容',async t=>{
+ const first={id:'project-a',label:'Alpha',cwd:folder,permission:'read-only',maxPermission:'workspace-write',token:'private-project-token',sessions:['private-session']};
+ for(const confirm of [0,1]){
+  const f=fixture({confirm});t.after(()=>f.controller.dispose());await f.controller.open();f.setState({enabled:true,configured:true,appId:'12345678',connection:{state:'connected'},paired:true,project:first,projects:[first],pendingReplies:0});
+  const state=await f.invoke('state');assert.equal(state.snapshot.projects[0].maxPermission,'workspace-write');assert.doesNotMatch(JSON.stringify(state),/private-project-token|private-session/);
+  const result=await f.invoke('project',{action:'remove',projectId:first.id});assert.equal(result.ok,true);
+  assert.deepEqual(f.calls.filter(item=>item.method==='POST').map(item=>JSON.parse(item.body)),confirm?[{action:'project-remove',projectId:first.id}]:[]);
+  if(confirm){assert.equal(result.selectedDirectory,'');assert.equal(result.snapshot.projects.length,0);}else assert.equal(result.cancelled,true);
+ }
+});
+
+test('QQ远端切换项目时同步本机保存范围，未保存的原生文件选择不被后台状态覆盖',async t=>{
+ const f=fixture();t.after(()=>f.controller.dispose());await f.controller.open();
+ const first={id:'project-a',label:'Alpha',cwd:folder,permission:'read-only'},second={id:'project-b',label:'Beta',cwd:other,permission:'read-only'};
+ const state=project=>({enabled:true,configured:true,appId:'12345678',connection:{state:'connected'},paired:true,project,projects:[first,second],pendingReplies:0});
+ f.setState(state(first));await f.invoke('state');f.setState(state(second));await f.invoke('state');
+ assert.equal((await f.invoke('save',{appId:'12345678',cwd:other,permission:'read-only',enabled:true})).ok,true);
+ f.setDirectory(folder);await f.invoke('directory');f.setState(state(second));assert.equal((await f.invoke('state')).selectedDirectory,folder);
+ assert.equal((await f.invoke('save',{appId:'12345678',cwd:folder,permission:'read-only',enabled:true})).ok,true);
 });
 
 test('平台按钮仅打开固定QQ官方地址，关闭面板不停止连接',async t=>{
@@ -97,11 +131,11 @@ test('设置页轮询失败显示不可达且同错误只提示一次，恢复�
  const controlIds=['app-id','app-secret','directory','save','disable','refresh','pair','unlink','copy-pair','choose-directory','platform'];
  function element(id){
   if(elements.has(id))return elements.get(id);
-  let hidden=false;const item={value:'',disabled:false,textContent:'',dataset:{},setAttribute(){},addEventListener(){},select(){},querySelector:()=>radio,querySelectorAll:()=>controlIds.map(element)};
+  let hidden=false;const item={value:'',disabled:false,textContent:'',dataset:{},setAttribute(){},addEventListener(){},select(){},replaceChildren(){},appendChild(){},querySelector:()=>radio,querySelectorAll:()=>controlIds.map(element)};
   Object.defineProperty(item,'hidden',{get:()=>hidden,set:value=>{hidden=value;if(id==='message'&&value===false)shown++;}});
   elements.set(id,item);return item;
  }
- const document={hidden:false,title:'',documentElement:{lang:''},getElementById:element,querySelectorAll:()=>[],addEventListener(){}};
+ const document={hidden:false,title:'',documentElement:{lang:''},getElementById:element,createElement:()=>({}),querySelectorAll:()=>[],addEventListener(){}};
  const state={enabled:true,configured:true,appId:'123456',connection:{state:'connected'},paired:false,project:{cwd:'C:/synthetic-project',permission:'read-only'},pairing:null,task:{state:'idle'},pendingReplies:0,locale:'en'};
  const window={qqRemote:{getState:async()=>{if(offline)throw Error('private transport details');return{ok:true,snapshot:structuredClone(state)};}},addEventListener:(name,fn)=>windowEvents.set(name,fn)};
  vm.runInNewContext(readFileSync(new URL('../src/qq-window.js',import.meta.url),'utf8'),{window,document,navigator:{language:'en-US'},Date,setInterval:(fn,ms)=>{const id=++sequence;intervals.set(id,{fn,ms});return id;},clearInterval:id=>intervals.delete(id),setTimeout:(fn,ms)=>{const id=++sequence;timeouts.set(id,{fn,ms});return id;},clearTimeout:id=>timeouts.delete(id)});
@@ -114,5 +148,40 @@ test('设置页轮询失败显示不可达且同错误只提示一次，恢复�
   await poll();assert.equal(shown,1);assert.equal(element('message').hidden,true);
   offline=false;await poll();assert.equal(element('connection').textContent,'Connected');assert.equal(element('connection').dataset.state,'connected');assert.equal(element('pair').disabled,false);
   offline=true;await poll();assert.equal(shown,2);assert.doesNotMatch(element('message').textContent,/private transport/);
+ }finally{windowEvents.get('beforeunload')();}
+});
+
+test('页面切换已授权项目无需密钥，新增目录保留草稿并保存本机权限上限',async()=>{
+ const nodes=new Map(),listeners=new Map(),windowEvents=new Map(),intervals=[],calls=[],radios=new Map();
+ let appState={enabled:true,configured:true,appId:'123456',paired:true,connection:{state:'connected'},task:{state:'idle'},pendingReplies:0,locale:'en',project:{id:'alpha',label:'Alpha',cwd:folder,permission:'read-only',maxPermission:'workspace-write'},projects:[{id:'alpha',label:'Alpha',cwd:folder,permission:'read-only',maxPermission:'workspace-write'},{id:'beta',label:'Beta',cwd:other,permission:'read-only',maxPermission:'read-only'}]};
+ for(const value of ['read-only','workspace-write']){let checked=false;radios.set(value,{value,get checked(){return checked;},set checked(next){if(next)for(const [other,radio]of radios)if(other!==value)radio.checked=false;checked=next;}});}
+ function node(id){
+  if(nodes.has(id))return nodes.get(id);
+  const n={value:'',disabled:false,hidden:false,textContent:'',dataset:{},children:[],setAttribute(){},select(){},reportValidity:()=>true,
+   replaceChildren(){this.children=[];},appendChild(child){this.children.push(child);},
+   addEventListener(type,fn){listeners.set(id+':'+type,fn);},
+   querySelector(selector){if(selector.includes(':checked'))return[...radios.values()].find(item=>item.checked);return radios.get(/value="([^"]+)"/.exec(selector)?.[1]);},
+   querySelectorAll:()=>[...nodes.values()].filter(item=>item!==n),
+  };nodes.set(id,n);return n;
+ }
+ const document={hidden:false,title:'',documentElement:{lang:''},getElementById:node,createElement:()=>({value:'',textContent:''}),querySelectorAll:()=>[],addEventListener(){}};
+ const response=()=>({ok:true,snapshot:structuredClone(appState)});
+ const api={getState:async()=>response(),
+  selectProject:async id=>{calls.push({action:'select',id});appState.project=appState.projects.find(item=>item.id===id);return response();},
+  chooseDirectory:async()=>({ok:true,directory:resolve('synthetic-new-project')}),
+  save:async body=>{calls.push({action:'save',body});const p={id:'new',label:'New',cwd:body.cwd,permission:'read-only',maxPermission:body.permission};appState={...appState,project:p,projects:[...appState.projects,p]};return response();},
+ };
+ const window={qqRemote:api,addEventListener:(name,fn)=>windowEvents.set(name,fn)};
+ vm.runInNewContext(readFileSync(new URL('../src/qq-window.js',import.meta.url),'utf8'),{window,document,navigator:{language:'en'},Date,setInterval:(fn,ms)=>{intervals.push({fn,ms});return intervals.length;},clearInterval(){},setTimeout:()=>1,clearTimeout(){}});
+ const settle=()=>new Promise(resolve=>setImmediate(resolve));
+ const fire=async(id,type)=>{listeners.get(id+':'+type)({preventDefault(){}});await settle();};
+ try{
+  await settle();assert.equal(node('project-select').value,'alpha');assert.equal(radios.get('workspace-write').checked,true,'the desktop form edits the local ceiling, not the currently reduced QQ permission');
+  node('project-select').value='beta';await fire('project-select','change');assert.equal(node('directory').value,other);assert.equal(node('app-secret').value,'');assert.equal(radios.get('read-only').checked,true);assert.equal(node('save').disabled,false);
+  await fire('choose-directory','click');assert.equal(node('project-select').value,'');assert.equal(node('project-select').children[0].textContent,'New project (not saved)');const draft=node('directory').value;
+  intervals.find(item=>item.ms===2500).fn();await settle();assert.equal(node('directory').value,draft);
+  radios.get('workspace-write').checked=true;await fire('settings','submit');
+  const save=calls.find(item=>item.action==='save').body;assert.equal(save.cwd,draft);assert.equal(save.permission,'workspace-write');assert.equal(save.appSecret,'');assert.equal(node('project-select').value,'new');assert.equal(node('app-secret').value,'');
+  appState.task={state:'working'};intervals.find(item=>item.ms===2500).fn();await settle();assert.equal(node('project-select').disabled,true);assert.equal(node('remove-project').disabled,true);assert.equal(node('save').disabled,true);
  }finally{windowEvents.get('beforeunload')();}
 });

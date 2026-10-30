@@ -24,8 +24,10 @@
    </fieldset>
    <fieldset>
     <legend data-copy="project">2 · Choose a project</legend>
-    <div class="field"><label for="directory" data-copy="folder">Project folder</label><div class="directory-row"><input id="directory" type="text" readonly><button id="choose-directory" type="button" data-copy="choose-folder">Choose folder</button></div></div>
-    <div class="permissions">
+    <div class="field"><label for="project-select" data-copy="authorized-projects">Authorized projects</label><div class="project-row"><select id="project-select"></select><button id="choose-directory" type="button" data-copy="add-project">Add folder</button><button id="remove-project" class="danger" type="button" data-copy="remove-project" disabled>Remove access</button></div></div>
+    <div class="field"><label for="directory" data-copy="folder">Project folder</label><input id="directory" type="text" readonly></div>
+    <div id="maximum-permission-label" class="permission-label" data-copy="maximum-permission">Maximum permission allowed</div>
+    <div class="permissions" role="radiogroup" aria-labelledby="maximum-permission-label">
      <label class="permission"><input type="radio" name="permission" value="read-only" checked><span data-copy="read-only">Read only</span></label>
      <label class="permission"><input type="radio" name="permission" value="workspace-write"><span data-copy="workspace-write">Allow edits in this folder</span></label>
     </div>

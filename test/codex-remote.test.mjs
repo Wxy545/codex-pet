@@ -23,7 +23,7 @@ function rig(t,options={}) {
     let buffer='';child.stdin=new Writable({write(bytes,_encoding,done){buffer+=bytes.toString();let cut;while((cut=buffer.indexOf('\n'))>=0){const m=JSON.parse(buffer.slice(0,cut));buffer=buffer.slice(cut+1);calls.push(m);queueMicrotask(()=>{
       if(options.dispatch?.(m,{send,reply,notify,cwd})===false)return;
       if(m.method==='initialize')reply(m,{userAgent:'synthetic-codex/1'});
-      if(m.method==='thread/start'||m.method==='thread/resume')reply(m,{thread:{id:m.params.threadId??'synthetic-thread',cwd,status:{type:'idle'},turns:[]}});
+      if(['thread/start','thread/resume','thread/read'].includes(m.method))reply(m,{thread:{id:m.params.threadId??'synthetic-thread',cwd,source:'appServer',name:'Synthetic conversation',updatedAt:1000,path:join(cwd,'synthetic-rollout.jsonl'),status:{type:'idle'},turns:[]}});
       if(m.method==='turn/start')reply(m,{turn:{id:'synthetic-turn',status:'inProgress',items:[]}});
       if(m.method==='turn/interrupt'){reply(m,{});notify('turn/completed',{threadId:'synthetic-thread',turn:{id:'synthetic-turn',status:'interrupted',items:[]}});}
     });}done();}});
@@ -55,6 +55,96 @@ test('ready只握手不创建任务，stdio隔离父执行环境且不开放权�
   assert.ok(spawn.args.includes('stdio://'));assert.ok(!spawn.args.some(x=>x.includes('danger-full-access')));
   assert.equal(spawn.options.env.CODEX_THREAD_ID,undefined);assert.equal(spawn.options.env.CODEX_PET_HOST,undefined);
   assert.equal((await r.remote.probe()).supported,true);assert.equal(r.spawns.length,1);
+});
+
+test('会话列表仅查询当前项目交互源的十条元数据，正文、日志路径和回合不外传',async t=>{
+  const r=rig(t,{dispatch(m,{reply,cwd}){if(m.method==='thread/list'){reply(m,{data:[{id:'listed-thread',name:'Existing desktop',cwd,source:'vscode',updatedAt:1001,status:{type:'notLoaded'},preview:'private first message',path:join(cwd,'private-rollout.jsonl'),turns:[{items:['private content']}]},{id:'subagent-thread',name:'Hidden worker',cwd,source:{subAgent:{other:'worker'}},updatedAt:1002,status:{type:'idle'}}],nextCursor:'opaque-next'});return false;}}});
+  const result=await r.remote.listThreads({cursor:'opaque-previous',search:'desktop'});
+  assert.deepEqual(result,{items:[{id:'listed-thread',title:'Existing desktop',cwd:r.cwd,status:'notLoaded',updatedAt:1001}],nextCursor:'opaque-next'});
+  const call=r.calls.find(m=>m.method==='thread/list');assert.deepEqual(call.params,{cwd:r.cwd,limit:10,cursor:'opaque-previous',searchTerm:'desktop',sortKey:'updated_at',sortDirection:'desc',sourceKinds:['cli','vscode','appServer','exec'],archived:false,useStateDbOnly:true});
+  assert.doesNotMatch(JSON.stringify(result),/private|preview|turns|path/);assert.equal(r.calls.some(m=>m.method==='thread/start'||m.method==='turn/start'),false);
+});
+
+test('会话读取重新核对目录与身份，未命名不会取首条正文作标题',async t=>{
+  const r=rig(t,{dispatch(m,{reply,cwd}){if(m.method==='thread/read'){reply(m,{thread:{id:m.params.threadId,cwd,source:'cli',updatedAt:2000,status:{type:'idle'},name:null,preview:'do not show this prompt',path:'private-log',turns:[]}});return false;}}});
+  assert.deepEqual(await r.remote.readThread({threadId:'desktop-thread'}),{id:'desktop-thread',title:'',cwd:r.cwd,status:'idle',updatedAt:2000});
+  assert.deepEqual(r.calls.find(m=>m.method==='thread/read').params,{threadId:'desktop-thread',includeTurns:false});
+  for(const which of ['cwd','id','source']){
+    const bad=rig(t,{dispatch(m,{reply,cwd}){if(m.method==='thread/read'){reply(m,{thread:{id:which==='id'?'another-thread':m.params.threadId,cwd:which==='cwd'?tmpdir():cwd,source:which==='source'?{subAgent:{other:'worker'}}:'appServer',updatedAt:1,status:{type:'idle'}}});return false;}}});
+    await assert.rejects(bad.remote.readThread({threadId:'desktop-thread'}),e=>['thread_scope_mismatch','thread_source_unavailable'].includes(e.code));
+  }
+});
+
+test('立即创建受限持久会话并等待映射，但不提交模型回合',async t=>{
+  let release;const saved=new Promise(resolve=>{release=resolve;}),mapped=[];
+  const r=rig(t,{onThread:async(id,info)=>{mapped.push({id,info});await saved;}});
+  const creation=r.remote.createThread();await until(()=>mapped.length===1);
+  let finished=false;creation.then(()=>{finished=true;});await pause();assert.equal(finished,false);release();
+  assert.deepEqual(await creation,{id:'synthetic-thread',title:'Synthetic conversation',cwd:r.cwd,status:'idle',updatedAt:1000});
+  assert.deepEqual(mapped,[{id:'synthetic-thread',info:{created:true}}]);
+  const params=r.calls.find(m=>m.method==='thread/start').params;assert.equal(params.ephemeral,false);assert.equal(params.cwd,r.cwd);assert.equal(params.config.default_permissions,':workspace');assert.equal(params.approvalPolicy.granular.sandbox_approval,false);assert.equal(r.calls.some(m=>m.method==='turn/start'),false);
+});
+
+test('新建会话名称通过正式元数据接口保存，名称不是发给模型的提示词',async t=>{
+  const r=rig(t,{dispatch(m,{reply}){if(m.method==='thread/name/set'){reply(m,{});return false;}}});
+  const thread=await r.remote.createThread({title:'README 整理'});assert.equal(thread.title,'README 整理');assert.deepEqual(r.calls.find(m=>m.method==='thread/name/set').params,{threadId:'synthetic-thread',name:'README 整理'});assert.equal(r.calls.some(m=>m.method==='turn/start'),false);
+  for(const input of [{title:''},{title:'a'.repeat(81)},{title:'ok',cwd:'/other'}])await assert.rejects(r.remote.createThread(input),e=>e.code==='invalid_input');
+});
+
+test('模型目录只返回可选择模型和实际思考档位，每轮model与effort走正式turn参数',async t=>{
+  const r=rig(t,{dispatch(m,{reply}){if(m.method==='model/list'){reply(m,{data:[{id:'gpt-6-luna',model:'gpt-6-luna',displayName:'Luna',hidden:false,isDefault:false,defaultReasoningEffort:'low',supportedReasoningEfforts:[{reasoningEffort:'low',description:'not exported'},{reasoningEffort:'high',description:'not exported'}],description:'not exported',account:'not exported'}],nextCursor:null});return false;}}});
+  const list=await r.remote.listModels();assert.deepEqual(list,[{id:'gpt-6-luna',model:'gpt-6-luna',displayName:'Luna',isDefault:false,defaultReasoningEffort:'low',supportedReasoningEfforts:['low','high']}]);assert.doesNotMatch(JSON.stringify(list),/account|description|not exported/);
+  const {promise}=await r.start({model:list[0].model,effort:'low'});const sent=r.calls.find(m=>m.method==='turn/start').params;assert.equal(sent.model,'gpt-6-luna');assert.equal(sent.effort,'low');assert.equal(sent.sandboxPolicy.type,'workspaceWrite');r.complete();await promise;
+  await assert.rejects(r.remote.prompt({text:'bad',model:'--config evil'}),e=>e.code==='invalid_input');await assert.rejects(r.remote.prompt({text:'bad',effort:'unlimited'}),e=>e.code==='invalid_input');
+});
+
+test('目录方法限制分页和搜索输入，活动任务或目录请求不能被另一操作交叉占用',async t=>{
+  const r=rig(t),{promise}=await r.start();
+  for(const invoke of [()=>r.remote.listThreads(),()=>r.remote.readThread({threadId:'desktop-thread'}),()=>r.remote.createThread()])await assert.rejects(invoke(),e=>e.code==='busy');
+  r.complete();await promise;
+  for(const input of [{limit:100},{cursor:'x'.repeat(2049)},{cursor:'bad\nline'},{search:'x'.repeat(121)},null])await assert.rejects(r.remote.listThreads(input),e=>e.code==='invalid_input');
+  for(const input of [{threadId:'../outside'},{threadId:'ok',includeTurns:true},null])await assert.rejects(r.remote.readThread(input),e=>e.code==='invalid_input');
+  assert.equal(r.calls.some(m=>m.method==='thread/list'),false);
+  const pending=rig(t,{dispatch(m){if(m.method==='thread/read')return false;}}),read=pending.remote.readThread({threadId:'desktop-thread'});read.catch(()=>{});await until(()=>pending.calls.some(m=>m.method==='thread/read'));
+  await assert.rejects(pending.remote.prompt({text:'cannot race metadata'}),e=>e.code==='busy');await assert.rejects(pending.remote.createThread(),e=>e.code==='busy');await pending.remote.close();await assert.rejects(read,e=>['closed','process_exited'].includes(e.code));
+});
+
+test('目录响应不接受跨项目、超大分页、非法状态或游标，也不会输出原响应正文',async t=>{
+  for(const kind of ['cwd','size','state','cursor']){
+    const r=rig(t,{dispatch(m,{reply,cwd}){if(m.method==='thread/list'){const item={id:'listed-thread',cwd:kind==='cwd'?tmpdir():cwd,source:'appServer',updatedAt:1,status:{type:kind==='state'?'private raw state':'idle'},name:'Title',preview:'private response'};reply(m,{data:kind==='size'?Array(11).fill(item):[item],nextCursor:kind==='cursor'?{private:'response'}:null});return false;}}});
+    await assert.rejects(r.remote.listThreads(),e=>['thread_scope_mismatch','invalid_protocol'].includes(e.code)&&!/private/.test(e.message));
+  }
+});
+
+test('恢复已有会话前后都经外部活动检查，日志路径仅交给私有guard',async t=>{
+  const checks=[],mapped=[],r=rig(t,{beforeResume:async(id,metadata)=>{checks.push({id,metadata});return true;},onThread:async(id,info)=>mapped.push({id,info})}),{promise}=await r.start({threadId:'synthetic-thread'});
+  assert.equal(checks.length,2);for(const check of checks)assert.deepEqual(check,{id:'synthetic-thread',metadata:{logPath:join(r.cwd,'synthetic-rollout.jsonl'),cwd:r.cwd,status:'idle'}});
+  assert.equal(r.calls.filter(m=>m.method==='thread/read').length,1);assert.deepEqual(mapped,[{id:'synthetic-thread',info:{created:false}}]);r.complete();await promise;
+  for(const verdict of [false,undefined,'unknown']){
+    const denied=rig(t,{beforeResume:async()=>verdict});await assert.rejects(denied.remote.prompt({text:'existing thread',threadId:'synthetic-thread'}),e=>e.code===(verdict===false?'thread_busy':'thread_state_unknown'));assert.equal(denied.calls.some(m=>m.method==='thread/resume'||m.method==='turn/start'),false);
+  }
+  let check=0;const changed=rig(t,{beforeResume:async()=>++check===1});await assert.rejects(changed.remote.prompt({text:'became busy',threadId:'synthetic-thread'}),e=>e.code==='thread_busy');assert.equal(changed.calls.some(m=>m.method==='thread/resume'),true);assert.equal(changed.calls.some(m=>m.method==='turn/start'),false);
+});
+
+test('外部guard异常视为未知，取消不等待在途guard，也不在晚到后提交回合',async t=>{
+  const bad=rig(t,{beforeResume:async()=>{throw Error('private guard detail');}});await assert.rejects(bad.remote.prompt({text:'guard failed',threadId:'synthetic-thread'}),e=>e.code==='thread_state_unknown'&&!/private/.test(e.message));
+  let release,entered=false;const waiting=new Promise(resolve=>{release=resolve;}),r=rig(t,{beforeResume:async()=>{entered=true;await waiting;return true;}});
+  const prompt=r.remote.prompt({text:'cancel while checking',threadId:'synthetic-thread'});await until(()=>entered);await r.remote.cancel();assert.equal((await prompt).status,'cancelled');release();await pause();assert.equal(r.calls.some(m=>m.method==='thread/resume'||m.method==='turn/start'),false);
+});
+
+test('第二次恢复检查使用最新官方路径，缺省或空值才沿用第一次路径，路径不进入公共结果',async t=>{
+  for(const fresh of [undefined,'','new-rollout.jsonl']){
+    const checks=[],r=rig(t,{beforeResume:async(_id,metadata)=>{checks.push(metadata);return true;},dispatch(m,{reply,cwd}){if(m.method==='thread/resume'){reply(m,{thread:{id:m.params.threadId,cwd,source:'appServer',updatedAt:1,status:{type:'idle'},...(fresh===undefined?{}:{path:fresh?join(cwd,fresh):''})}});return false;}}});
+    const {promise}=await r.start({threadId:'synthetic-thread'});assert.equal(checks[1].logPath,join(r.cwd,fresh||'synthetic-rollout.jsonl'));r.complete();assert.doesNotMatch(JSON.stringify(await promise),/rollout|path/);
+  }
+});
+
+test('创建元数据或映射失败不提交模型，存储错误使用固定原因且关闭自有连接',async t=>{
+  const r=rig(t,{onThread:async()=>{throw Error('private settings path and storage detail');}});
+  await assert.rejects(r.remote.createThread(),e=>e.code==='thread_storage_failed'&&!/private/.test(e.message));assert.equal(r.calls.some(m=>m.method==='turn/start'),false);await r.remote.close();assert.equal(r.child.exitCode,0);
+  let mapped=false;const outside=rig(t,{onThread:async()=>{mapped=true;},dispatch(m,{reply}){if(m.method==='thread/start'){reply(m,{thread:{id:'outside-thread',cwd:tmpdir(),source:'appServer',updatedAt:1,status:{type:'idle'}}});return false;}}});
+  await assert.rejects(outside.remote.createThread(),e=>e.code==='thread_scope_mismatch');assert.equal(mapped,false);assert.equal(outside.calls.some(m=>m.method==='turn/start'),false);
+  const invalid=rig(t,{dispatch(m,{reply}){if(m.method==='thread/list'){reply(m,{data:[{}]});return false;}}});await assert.rejects(invalid.remote.listThreads(),e=>e.code==='thread_scope_mismatch');
 });
 
 test('持久thread逐轮限定权限，只返回最终答复并等待真实完成通知',async t=>{
@@ -94,6 +184,29 @@ test('thread创建后必须等映射持久化成功才提交turn',async t=>{
   const promise=r.remote.prompt({text:'先保存映射'});await until(()=>r.calls.some(m=>m.method==='thread/start'));
   await pause();assert.equal(r.calls.some(m=>m.method==='turn/start'),false);
   release();await until(()=>r.calls.some(m=>m.method==='turn/start'));r.complete();await promise;
+});
+
+test('权威回合身份保存完成前缓冲早到审批，保存后才发布',async t=>{
+  let release,recorded=false;const stored=new Promise(resolve=>{release=resolve;}),seen=[];
+  const r=rig(t,{onTurn:async(threadId,turnId)=>{seen.push({threadId,turnId});await stored;recorded=true;},dispatch(m,{reply,notify,cwd}){if(m.method==='turn/start'){reply(m,{turn:{id:'synthetic-turn',status:'inProgress',items:[]}});notify('item/started',{threadId:'synthetic-thread',turnId:'synthetic-turn',item:{id:'synthetic-item',type:'commandExecution'}});queueMicrotask(()=>r.request(701,'item/commandExecution/requestApproval',{command:'npm test',cwd}));return false;}}});
+  const {promise}=await r.start();await until(()=>seen.length===1);await pause();
+  assert.deepEqual(seen,[{threadId:'synthetic-thread',turnId:'synthetic-turn'}]);assert.equal(r.events.some(event=>event.type==='approval'),false);assert.equal(recorded,false);
+  release();await until(()=>r.events.some(event=>event.type==='approval'));assert.equal(recorded,true);await r.remote.approve({approvalId:r.events.find(event=>event.type==='approval').id,decision:'decline'});r.complete();assert.equal((await promise).status,'completed');
+});
+
+test('保存已启动回合失败必须发送interrupt，不能留后台继续执行或泄漏存储错误',async t=>{
+  const r=rig(t,{onTurn:async()=>{throw Error('private turn storage detail');}}),prompt=r.remote.prompt({text:'start then fail recording'});
+  await assert.rejects(prompt,e=>e.code==='thread_storage_failed'&&!/private/.test(e.message));assert.equal(r.calls.filter(m=>m.method==='turn/interrupt').length,1);assert.equal(r.events.some(event=>event.type==='state'&&event.state==='success'),false);
+});
+
+test('取消或超时不等待回合存储回调，晚到回调不能发布缓存审批或恢复执行',async t=>{
+  for(const timeout of [false,true]){
+    let release,entered=false;const stored=new Promise(resolve=>{release=resolve;}),r=rig(t,{turnTimeoutMs:timeout?30:600000,onTurn:async()=>{entered=true;await stored;}});
+    const prompt=r.remote.prompt({text:'recording held'});prompt.catch(()=>{});await until(()=>entered);
+    r.request(702,'item/commandExecution/requestApproval',{command:'npm test',cwd:r.cwd});await pause();assert.equal(r.events.some(event=>event.type==='approval'),false);
+    if(timeout)await assert.rejects(prompt,e=>e.code==='turn_timeout');else{await r.remote.cancel();assert.equal((await prompt).status,'cancelled');}
+    release();await pause();assert.equal(r.calls.filter(m=>m.method==='turn/start').length,1);assert.equal(r.calls.filter(m=>m.method==='turn/interrupt').length,1);assert.equal(r.events.some(event=>event.type==='approval'||event.type==='state'&&event.state==='success'),false);
+  }
 });
 
 test('命令审批携带实际有界内容，未回答挂起，单次同意不可重放',async t=>{

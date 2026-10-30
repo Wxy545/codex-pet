@@ -8,6 +8,8 @@
   'secret-new':['填写 QQ 开放平台提供的 AppSecret。','Enter the AppSecret from QQ Open Platform.'],
   'secret-saved':['已保存；留空可保留原密钥。','Saved. Leave blank to keep it.'],
   project:['任务范围','Task access'],folder:['项目文件夹','Project folder'],
+  'authorized-projects':['已授权项目','Authorized projects'],'add-project':['添加文件夹','Add folder'],'remove-project':['移除授权','Remove access'],
+  'maximum-permission':['允许的最高权限','Maximum permission allowed'],'choose-project':['选择项目','Choose a project'],'new-project':['新项目（未保存）','New project (not saved)'],
   'choose-folder':['选择文件夹','Choose folder'],'read-only':['只读查看','Read only'],'workspace-write':['允许修改这个文件夹','Allow edits in this folder'],
   save:['保存并连接','Save and connect'],disable:['停用连接','Disconnect'],refresh:['刷新','Refresh'],
   connection:['连接状态','Connection'],task:['任务状态','Task'],pending:['等待送达的回复','Replies awaiting delivery'],
@@ -27,7 +29,7 @@
   'task-error':['执行失败','Failed'],
  };
  let locale=/^zh(?:[-_]|$)/i.test(navigator.language)?'zh-CN':'en';
- let snapshot=null,busy=false,serviceAvailable=false,lastPollError='',readGeneration=0,toastTimer=null,pollTimer=null,clockTimer=null,disposed=false;
+ let snapshot=null,busy=false,serviceAvailable=false,lastPollError='',readGeneration=0,toastTimer=null,pollTimer=null,clockTimer=null,disposed=false,directoryDraft=false;
  const t=key=>copy[key]?.[locale==='zh-CN'?0:1]||key;
  function applyLocale(next){
   if(next)locale=next==='zh-CN'?'zh-CN':'en';
@@ -47,20 +49,35 @@
   $('copy-pair').disabled=busy||!serviceAvailable||!pairing||remaining<=0;
  }
  function controls(){
-  for(const control of $('settings').querySelectorAll('input,button'))control.disabled=busy;
+  for(const control of $('settings').querySelectorAll('input,button,select'))control.disabled=busy;
   if(busy)return;
+  const taskBusy=['thinking','working','waiting','result','running','cancelling'].includes(snapshot?.task?.state);
   const appId=$('app-id').value.trim(),hasSecret=Boolean($('app-secret').value);
-  $('save').disabled=!serviceAvailable||!/^\d{3,32}$/.test(appId)||!$('directory').value||(!snapshot?.configured&&!hasSecret);
+  $('save').disabled=taskBusy||!serviceAvailable||!/^\d{3,32}$/.test(appId)||!$('directory').value||(!snapshot?.hasSecret&&!snapshot?.configured&&!hasSecret);
+  $('project-select').disabled=taskBusy||!serviceAvailable||!snapshot?.projects?.length;
+  $('choose-directory').disabled=taskBusy||!serviceAvailable;
+  $('remove-project').disabled=taskBusy||!serviceAvailable||!$('project-select').value;
   $('disable').disabled=!serviceAvailable||!snapshot?.enabled;
   $('pair').disabled=!serviceAvailable||!snapshot?.configured||snapshot.connection.state!=='connected'||snapshot.paired;
   $('unlink').disabled=!serviceAvailable;
   $('unlink').hidden=!snapshot?.paired;
   updatePairing();
  }
+ function renderProjects(next){
+  const select=$('project-select');select.replaceChildren();
+  const empty=document.createElement('option');empty.value='';empty.textContent=t(directoryDraft?'new-project':'choose-project');select.appendChild(empty);
+  for(const project of next.projects||[]){const option=document.createElement('option');option.value=project.id;option.textContent=project.label||project.cwd;select.appendChild(option);}
+  select.value=directoryDraft?'':next.project.id||'';
+ }
+ function fillProject(next){
+  directoryDraft=false;$('directory').value=next.project.cwd||'';
+  const permission=$('settings').querySelector(`input[name="permission"][value="${(next.project.maxPermission??next.project.permission)==='workspace-write'?'workspace-write':'read-only'}"]`);permission.checked=true;
+ }
  function render(next,initialize=false){
-  snapshot=next;applyLocale(next.locale);
-  if(initialize){$('app-id').value=next.appId||'';$('directory').value=next.project.cwd||'';const permission=$('settings').querySelector(`input[name="permission"][value="${next.project.permission==='workspace-write'?'workspace-write':'read-only'}"]`);permission.checked=true;}
-  $('secret-note').textContent=t(next.configured?'secret-saved':'secret-new');
+  const changedProject=snapshot?.project?.id!==next.project.id;snapshot=next;applyLocale(next.locale);
+  if(initialize){$('app-id').value=next.appId||'';fillProject(next);}else if(changedProject&&!directoryDraft)fillProject(next);
+  renderProjects(next);
+  $('secret-note').textContent=t(next.hasSecret||next.configured?'secret-saved':'secret-new');
   $('connection').textContent=t(next.connection.state);
   $('connection').dataset.state=next.connection.state;
   const state=next.task?.state;$('task').textContent=state?t(state==='error'?'task-error':state):t('idle');
@@ -73,7 +90,7 @@
   serviceAvailable=false;applyLocale(result?.locale);
   $('connection').textContent=t('unavailable');
   $('connection').dataset.state='error';
-  $('secret-note').textContent=t(snapshot?.configured?'secret-saved':'secret-new');
+  $('secret-note').textContent=t(snapshot?.hasSecret||snapshot?.configured?'secret-saved':'secret-new');
   controls();
   const code=result?.code||'host_unavailable';
   // 后台轮询同类失败只提醒一次；恢复后再出现才开始新一轮提示。
@@ -102,9 +119,11 @@
  $('settings').addEventListener('submit',event=>{
   event.preventDefault();
   const body={appId:$('app-id').value.trim(),appSecret:$('app-secret').value,cwd:$('directory').value,permission:$('settings').querySelector('input[name="permission"]:checked').value,enabled:true};
-  void run(async()=>{try{return await api.save(body);}finally{$('app-secret').value='';}},()=>toast(t('saved')));
+  void run(async()=>{try{return await api.save(body);}finally{$('app-secret').value='';}},result=>{if(result.snapshot){fillProject(result.snapshot);renderProjects(result.snapshot);}toast(t('saved'));});
  });
- $('choose-directory').addEventListener('click',()=>{void run(()=>api.chooseDirectory(),result=>{if(!result.cancelled)$('directory').value=result.directory||'';});});
+ $('choose-directory').addEventListener('click',()=>{void run(()=>api.chooseDirectory(),result=>{if(!result.cancelled){directoryDraft=true;$('directory').value=result.directory||'';if(snapshot)renderProjects(snapshot);}});});
+ $('project-select').addEventListener('change',()=>{const id=$('project-select').value;if(!id)return;void run(()=>api.selectProject(id),result=>{if(result.snapshot){fillProject(result.snapshot);renderProjects(result.snapshot);}});});
+ $('remove-project').addEventListener('click',()=>{const id=$('project-select').value;if(id)void run(()=>api.removeProject(id),result=>{if(result.snapshot){fillProject(result.snapshot);renderProjects(result.snapshot);}});});
  $('platform').addEventListener('click',()=>{void run(()=>api.openPlatform());});
  $('disable').addEventListener('click',()=>{void run(()=>api.disable());});
  $('pair').addEventListener('click',()=>{void run(()=>api.pair());});

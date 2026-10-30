@@ -4,7 +4,10 @@ fieldset { min-width: 0; margin: 0; padding: var(--ui-space-5) 0 0; border: 0; b
 legend { padding: 0 var(--ui-space-3) 0 0; font-size: var(--ui-text-sm); font-weight: 650; color: var(--ui-text); }
 p { margin: 0 0 var(--ui-space-3); }
 .note { color: var(--ui-muted); font-size: var(--ui-text-sm); font-weight: 400; line-height: 1.65; }
-.platform-row, .directory-row, .actions, .pair-code-row { display: flex; align-items: center; gap: var(--ui-space-2); }
+.platform-row, .project-row, .actions, .pair-code-row { display: flex; align-items: center; gap: var(--ui-space-2); }
+.project-row select { flex: 1 1 auto; min-width: 0; }
+.project-row button { flex: 0 0 auto; }
+.permission-label { color: var(--ui-muted); font-size: var(--ui-text-sm); margin-bottom: var(--ui-space-2); }
 .platform-row { margin-bottom: var(--ui-space-4); }
 .platform-row p { flex: 1; margin: 0; }
 .credentials { display: grid; grid-template-columns: minmax(0,.8fr) minmax(0,1.2fr); gap: var(--ui-space-4); }
@@ -31,4 +34,5 @@ input[readonly] { color: var(--ui-muted); }
 .pair-code-row .note { flex-basis: 100%; }
 .message { position: fixed; inset-inline-start: 50%; bottom: var(--ui-space-5); transform: translateX(-50%); max-width: calc(100vw - var(--ui-space-7)); width: max-content; background: var(--ui-raised); color: var(--ui-text); border: 1px solid var(--ui-line); border-radius: var(--ui-radius-md); padding: var(--ui-space-3) var(--ui-space-5); box-shadow: var(--ui-shadow); z-index: 8; }
 @media (max-width: 680px) { main { padding: var(--ui-space-5); } .credentials { grid-template-columns: 1fr; gap: 0; } .platform-row { flex-wrap: wrap; } .platform-row p { flex-basis: 100%; } }
-@media (max-width: 440px) { .directory-row { flex-wrap: wrap; } .directory-row input { flex-basis: 100%; } .status { gap: var(--ui-space-2); } }
+@media (max-width: 680px) { .project-row { flex-wrap: wrap; } .project-row select { flex-basis: 100%; } }
+@media (max-width: 440px) { .status { gap: var(--ui-space-2); } }

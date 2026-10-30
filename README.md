@@ -89,15 +89,36 @@ Send chats and new tasks from WorkBuddy itself. The pet's Chat (including image 
 
 ## Codex from QQ
 
-Send Codex a task from a private QQ chat, continue the same conversation, approve an operation once, or cancel it. The desktop pet follows the task while the result comes back to QQ. Keep your computer online with Codex CLI signed in and Codex Pet running.
+Continue Codex conversations, choose a project, and send tasks from a private QQ chat. The pet follows the task while the result comes back to QQ. Regular messages get the actual answer; approvals and questions appear when needed. Keep your computer online with Codex CLI signed in and Codex Pet running.
 
 1. Right-click the pet and open **QQ remote tasks**, then choose **Create QQ bot**. Sign in to QQ Open Platform and create a bot.
-2. Paste its AppID and AppSecret into the local settings window. Choose a project folder and read-only or edit access, then select **Save and connect**.
+2. Paste its AppID and AppSecret into the local settings window. Add a project folder, set its **Maximum permission allowed**, and select **Save and connect**. You can authorize more than one project.
 3. Generate a pairing code and send the copied message to your bot in a **private chat**. Once paired, send your task in plain language.
 
-Use `/status` to check progress, `/cancel` to stop, `/result` to retrieve a saved result, and `/new` to start a fresh conversation. Approval and question messages include their own reply instructions. Replies that fail delivery are kept locally; retrieving them does not run the task again.
+| Command | Action |
+| --- | --- |
+| `/projects`, `/project 2` | List authorized projects or switch by number |
+| `/sessions`, `/session 2` | List desktop and QQ conversations in the current project or switch by number |
+| `/sessions search name`, `/sessions next` | Find a conversation by name or open the next page |
+| `/new name` | Create and name a persistent Codex conversation |
+| `/task 2 your request` | Send a task to the second conversation in the list |
+| `/mode auto`, `/mode chat`, `/mode task` | Switch automatically or keep one profile selected |
+| `/models`, `/models next`, `/model chat 2`, `/model task 1` | List available models and choose each profile's model by number or full ID |
+| `/effort chat low`, `/effort task high` | Set a reasoning effort supported by the selected model |
+| `/as-chat`, `/as-task` | Run the message waiting for your choice once |
+| `/permissions`, `/permissions read-only`, `/permissions edit` | View or change access within the limit set on your computer |
+| `/current`, `/status` | Show the project, conversation, permissions, progress, and last model and effort actually used |
+| `/cancel`, `/result`, `/help` | Cancel, retrieve a saved result, or show commands |
 
-The connection accepts only the paired QQ identity. AppSecret is encrypted for your Windows account and is never shown again. This first version handles text in private chats, with a dedicated persistent Codex conversation. QQ remote tasks are available in Codex mode.
+Auto mode is the default. Everyday chat prefers a Luna model available to your account at `low` effort, or your account's default model when Luna is unavailable. File changes, code, and execution requests use your default model at `high`; if that default is Luna, an available Astra or Sol model takes priority. The effort is adjusted to what the model supports. Local rules choose the profile without another model call. Ambiguous messages with no prior context wait for `/as-chat` or `/as-task`.
+
+Choose a fixed mode when automatic selection does not fit, or use `/task` to specify a task in auto mode. An unavailable model catalog or manually selected model prompts you to choose again. Model and effort settings do not change file permissions.
+
+Choosing an existing conversation continues that same conversation. Busy conversations, or those whose idle state cannot be confirmed, reject new tasks. You cannot switch projects, conversations, or permissions during a task. QQ explicitly sets the model, effort, and permissions for each remote turn; those settings also affect the conversation's defaults for later turns.
+
+Approval messages show the operation and a one-time code. Questions include reply instructions. Failed deliveries are kept locally and show their source when retrieved from another conversation; retrieving them does not run the task again.
+
+The connection accepts only the paired QQ identity and handles private text chats in Codex mode. Authorize project folders on your computer, then select them by list number in QQ. Conversation lists show names and states only. AppSecret is encrypted for your Windows account and is never shown again.
 
 ## Characters and animations
 

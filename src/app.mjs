@@ -143,7 +143,7 @@ async function start() {
   let processTimer = null;
   let processChecking = false;
   let qq, qqView=null, qqTerminalTimer;
-  if(isCodex)try{qq=await createQQBridge({dataRoot:home,codexPath,activityGate,canStart:canStartCodex,locale:Locale.getLocale(),onState:view=>{
+  if(isCodex)try{qq=await createQQBridge({dataRoot:home,codexPath,codexHome,activityGate,canStart:canStartCodex,locale:Locale.getLocale(),onState:view=>{
     const previousState=qqView?.state;qqView=view;clearTimeout(qqTerminalTimer);
     if(['success','error'].includes(view.state)){
       qqTerminalTimer=setTimeout(()=>{qqView=null;if(eventReady)updateDisplay();},10000);qqTerminalTimer.unref();
@@ -349,7 +349,7 @@ async function start() {
     updateDisplay();
   };
   // 桌宠跟随用户聊天，内部子代理的中间完成不作为整项任务完成提醒。
-  const watcher = isCodex ? createCodexWatcher({ codexHome, excludeThreadSources: ['pet-chat', 'pet-task', 'subagent'],excludeThread:id=>qq?.ownsThread(id)===true, onChange: (next, event) => {
+  const watcher = isCodex ? createCodexWatcher({ codexHome, excludeThreadSources: ['pet-chat', 'pet-task', 'subagent'],excludeThread:(id,turnId)=>qq?.ownsTurn(id,turnId)===true, onChange: (next, event) => {
     mainSnapshot = next;
     if (event) {
       // 多会话并行时，通知跳转跟随事件来源，而不是当前显示工作动画的会话。

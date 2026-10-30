@@ -84,7 +84,7 @@ function usageSnapshot(quota) {
   return result;
 }
 
-function transitionFor(record) {
+export function transitionFor(record) {
   const payload = record.payload;
   if (!payload || typeof payload !== 'object') return undefined;
   if (record.type === 'event_msg') {
@@ -148,7 +148,7 @@ export function createCodexWatcher({ codexHome = process.env.CODEX_HOME || join(
   let published;
 
   function snapshot() {
-    const all = [...threads.values()].filter(thread=>!excludeThread(thread.threadId));
+    const all = [...threads.values()].filter(thread=>!excludeThread(thread.threadId,thread.turnId));
     const active = all.filter(thread => thread.active);
     const ordered = active.length
       ? active.sort((a, b) => (ACTIVE_PRIORITY[b.state] ?? 0) - (ACTIVE_PRIORITY[a.state] ?? 0) || b.updatedAt - a.updatedAt || b.sequence - a.sequence)
@@ -183,19 +183,25 @@ export function createCodexWatcher({ codexHome = process.env.CODEX_HOME || join(
       cursor.excluded = excludedSources.has(cursor.source);
     }
     if (cursor.excluded) return;
-    // QQ会话另有实时审批和终态通道；仍读取其额度，避免重复工作状态与通知。
-    const separatelyTracked=excludeThread(cursor.threadId);
+    // QQ只接管具体回合；同一会话随后在桌面开始的新回合继续正常跟随。
+    const explicitTurn=payload?.turn_id??payload?.turnId??payload?.turn?.id??payload?.root_turn_id;
+    const validTurn=typeof explicitTurn==='string'&&/^[\w-]{1,160}$/.test(explicitTurn)?explicitTurn:undefined;
+    const startsTurn=record.type==='turn_context'||record.type==='event_msg'&&payload?.type==='task_started';
+    if(validTurn&&(startsTurn||!cursor.turnId))cursor.turnId=validTurn;
+    const turnId=validTurn??cursor.turnId;
+    const separatelyTracked=excludeThread(cursor.threadId,turnId);
     const updatedAt = timestampOf(record, cursor.mtimeMs);
     if (record.type === 'event_msg' && payload?.type === 'token_count') {
       const next = usageFrom(payload.rate_limits, locale);
       if (next && updatedAt >= quotaTimestamp) { quota = next; quotaTimestamp = updatedAt; publish(); }
     }
     const transition = transitionFor(record);
-    if(separatelyTracked)return;
+    // 旧回合迟到的工具/终态不能覆盖同一会话已经开始的新回合。
+    if(turnId&&cursor.turnId&&turnId!==cursor.turnId&&!startsTurn)return;
     if (!transition) return;
     const previous = threads.get(cursor.threadId);
     if (!previous || updatedAt >= previous.updatedAt) {
-      threads.set(cursor.threadId, { threadId: cursor.threadId, state: transition.state, active: transition.active, updatedAt, observedAt: Date.now(), sequence: ++sequence, sourcePath: cursor.path });
+      threads.set(cursor.threadId, { threadId: cursor.threadId, turnId, state: transition.state, active: transition.active, updatedAt, observedAt: Date.now(), sequence: ++sequence, sourcePath: cursor.path });
       // 只保存归约后的状态；不积累原始日志、工具结果和对话正文。
       if (threads.size > MAX_THREADS) {
         const oldest = [...threads.values()].sort((a, b) => Number(a.active) - Number(b.active) || a.updatedAt - b.updatedAt)[0];
@@ -203,8 +209,8 @@ export function createCodexWatcher({ codexHome = process.env.CODEX_HOME || join(
       }
     }
     let notification;
-    if (transition.notice) {
-      const turn = payload.turn_id ?? payload.root_turn_id ?? '';
+    if (transition.notice&&!separatelyTracked) {
+      const turn = turnId ?? '';
       const discriminator = transition.notice === 'approval'
         ? payload.id ?? payload.call_id ?? record.timestamp ?? linePosition
         : turn || record.timestamp || linePosition;

@@ -27,14 +27,14 @@ function terminate(child) {
 }
 
 /** V2 stdio适配；正文只走协议管道，诊断不透传服务端stderr、工具输出或鉴权信息。 */
-export function createCodexRemote({cwd,codexPath,permission='read-only',onEvent=()=>{},onThread=async()=>{},spawnImpl=spawn,requestTimeoutMs=15000,turnTimeoutMs=600000,approvalTimeoutMs=120000}={}) {
+export function createCodexRemote({cwd,codexPath,permission='read-only',onEvent=()=>{},onThread=async()=>{},onTurn=async()=>{},beforeResume=async()=>true,spawnImpl=spawn,requestTimeoutMs=15000,turnTimeoutMs=600000,approvalTimeoutMs=120000}={}) {
   if(typeof cwd!=='string'||!isAbsolute(cwd))throw failure('invalid_cwd');
   if(!['read-only','workspace-write'].includes(permission))throw failure('invalid_permission');
-  if(typeof onEvent!=='function'||typeof onThread!=='function'||typeof spawnImpl!=='function')throw failure('invalid_callback');
+  if(typeof onEvent!=='function'||typeof onThread!=='function'||typeof onTurn!=='function'||typeof beforeResume!=='function'||typeof spawnImpl!=='function')throw failure('invalid_callback');
   for(const timeout of [requestTimeoutMs,turnTimeoutMs,approvalTimeoutMs])if(!Number.isFinite(timeout)||timeout<=0)throw failure('invalid_timeout');
   let root;try{root=realpathSync(cwd);if(!statSync(root).isDirectory())throw failure('invalid_cwd');}catch{throw failure('invalid_cwd');}
   if(codexPath!==undefined&&(typeof codexPath!=='string'||!isAbsolute(codexPath)))throw failure('invalid_codex_path');
-  let child,readyPromise,closed=false,active,state='idle',sequence=0;
+  let child,readyPromise,closed=false,active,catalogBusy=false,state='idle',sequence=0;
   const pending=new Map(),decisions=new Map(),seenRequests=new Set();
   const emit=event=>{try{Promise.resolve(onEvent(event)).catch(()=>{});}catch{/* 同步或异步显示失败均不改变执行与权限。 */}};
   const setState=next=>{if(state!==next){state=next;emit({type:'state',state:next});}};
@@ -143,8 +143,8 @@ export function createCodexRemote({cwd,codexPath,permission='read-only',onEvent=
     if(!line.trim())return;let message;try{message=JSON.parse(line);}catch{disconnect('invalid_protocol');return;}
     if(!object(message)){disconnect('invalid_protocol');return;}
     if(typeof message.method==='string'){
-      // turn/start响应才是回合身份的权威；早到审批/通知先有界暂存，不能被上一轮迟到帧抢占。
-      if(active?.turnStarting&&!active.turnId&&message.params?.threadId===active.threadId){
+      // 权威turn/start响应及回合存储完成前，早到审批/通知先有界暂存，不能被上一轮迟到帧抢占。
+      if(active?.turnStarting&&!active.cancelRequested&&message.params?.threadId===active.threadId){
         if(active.beforeStart.length>=128){disconnect('output_limit');return;}active.beforeStart.push(message);return;
       }
       try{if(has(message,'id'))serverRequest(message);else notification(message);}catch{disconnect('invalid_protocol');}return;
@@ -173,9 +173,80 @@ export function createCodexRemote({cwd,codexPath,permission='read-only',onEvent=
     if(!run.interrupting){run.interrupting=true;run.cancelTimer=setTimeout(()=>disconnect(error??'cancel_timeout'),requestTimeoutMs);try{await request('turn/interrupt',{threadId:run.threadId,turnId:run.turnId});}catch{disconnect(error??'cancel_timeout');}}
     return true;
   }
-  async function prompt({text,threadId}={}) {
-    if(closed)throw failure('closed');if(active)throw failure('busy');
-    if(typeof text!=='string'||!text.trim()||text.length>12000||threadId!==undefined&&!identifier(threadId))throw failure('invalid_input');
+  const interactiveSources=new Set(['cli','vscode','appServer','exec']);
+  const threadStates=new Set(['notLoaded','idle','active','systemError']);
+  const opaque=value=>typeof value==='string'&&value.length>0&&value.length<=2048&&!/[\u0000-\u001f\u007f]/.test(value);
+  function threadMetadata(thread,expectedId) {
+    if(!object(thread)||!identifier(thread.id)||expectedId&&thread.id!==expectedId||!boundedPath(thread.cwd,{directory:true})||realpathSync(thread.cwd)!==root)throw failure('thread_scope_mismatch');
+    if(!interactiveSources.has(thread.source)||thread.parentThreadId)throw failure('thread_source_unavailable');
+    if(!threadStates.has(thread.status?.type)||!Number.isSafeInteger(thread.updatedAt)||thread.updatedAt<0)throw failure('invalid_protocol');
+    // name是会话标题；preview可能是首条用户正文，不能拿它补标题或对外返回。
+    const title=typeof thread.name==='string'&&reviewable(thread.name,512)?Array.from(thread.name.trim().replace(/\s+/g,' ')).slice(0,120).join(''):'';
+    return{id:thread.id,title,cwd:root,status:thread.status.type,updatedAt:thread.updatedAt};
+  }
+  async function catalog(action) {
+    if(closed)throw failure('closed');if(active||catalogBusy)throw failure('busy');catalogBusy=true;
+    try{await ready();if(closed)throw failure('closed');return await action();}finally{catalogBusy=false;}
+  }
+  async function readThreadRecord(threadId) {
+    const response=await request('thread/read',{threadId,includeTurns:false});
+    const metadata=threadMetadata(response?.thread,threadId);
+    return{thread:response.thread,metadata};
+  }
+  async function listThreads(input={}) {
+    if(!object(input)||Object.keys(input).some(key=>!['cursor','search'].includes(key))||input.cursor!==undefined&&!opaque(input.cursor)||input.search!==undefined&&(!reviewable(input.search,120)||!input.search.trim()))throw failure('invalid_input');
+    return catalog(async()=>{
+      const response=await request('thread/list',{cwd:root,limit:10,...(input.cursor===undefined?{}:{cursor:input.cursor}),...(input.search===undefined?{}:{searchTerm:input.search.trim()}),sortKey:'updated_at',sortDirection:'desc',sourceKinds:[...interactiveSources],archived:false,useStateDbOnly:true});
+      if(!object(response)||!Array.isArray(response.data)||response.data.length>10||response.nextCursor!=null&&!opaque(response.nextCursor))throw failure('invalid_protocol');
+      const items=[];
+      for(const thread of response.data){
+        // 服务端过滤之外再挡子代理；其他目录或坏元数据必须明确失败，不能混入列表。
+        if(object(thread)&&(object(thread.source)||thread.source==='unknown'||thread.parentThreadId))continue;
+        items.push(threadMetadata(thread));
+      }
+      return{items,nextCursor:response.nextCursor??null};
+    });
+  }
+  async function readThread(input={}) {
+    if(!object(input)||Object.keys(input).length!==1||!identifier(input.threadId))throw failure('invalid_input');
+    return catalog(async()=> (await readThreadRecord(input.threadId)).metadata);
+  }
+  async function listModels(){
+    return catalog(async()=>{
+      const items=[],seen=new Set();let cursor;
+      const efforts=new Set(['none','minimal','low','medium','high','xhigh','max','ultra']);
+      for(let page=0;page<4;page++){
+        const response=await request('model/list',{limit:50,includeHidden:false,...(cursor?{cursor}:{})});
+        if(!object(response)||!Array.isArray(response.data)||response.data.length>50)throw failure('invalid_protocol');
+        for(const value of response.data){
+          const name=value?.model;
+          if(!object(value)||typeof value.id!=='string'||!reviewable(value.id,100)||typeof name!=='string'||!modelName(name)||typeof value.displayName!=='string'||!reviewable(value.displayName,100)||!Array.isArray(value.supportedReasoningEfforts)||value.supportedReasoningEfforts.length>16||!efforts.has(value.defaultReasoningEffort))throw failure('invalid_protocol');
+          const supported=value.supportedReasoningEfforts.map(e=>e?.reasoningEffort);if(supported.some(e=>!efforts.has(e)))throw failure('invalid_protocol');
+          if(value.hidden===true||seen.has(name))continue;seen.add(name);items.push({id:value.id,model:name,displayName:value.displayName,isDefault:value.isDefault===true,supportedReasoningEfforts:[...new Set(supported)],defaultReasoningEffort:value.defaultReasoningEffort});
+        }
+        if(response.nextCursor==null)return items;if(!opaque(response.nextCursor)||response.nextCursor===cursor)throw failure('invalid_protocol');cursor=response.nextCursor;
+      }
+      throw failure('model_catalog_limit');
+    });
+  }
+  async function createThread(input={}) {
+    if(!object(input)||Object.keys(input).some(key=>key!=='title')||input.title!==undefined&&(!reviewable(input.title,80)||!input.title.trim()))throw failure('invalid_input');
+    return catalog(async()=>{
+      const config={default_permissions:permission==='workspace-write'?':workspace':':read-only','web_search':'disabled'};
+      const response=await request('thread/start',{ephemeral:false,cwd:root,approvalPolicy:APPROVAL_POLICY,approvalsReviewer:'user',developerInstructions:RULES,config});
+      const metadata=threadMetadata(response?.thread);if(metadata.status==='active')throw failure('thread_busy');if(metadata.status==='systemError')throw failure('thread_failed');
+      if(input.title){await request('thread/name/set',{threadId:metadata.id,name:input.title.trim()});metadata.title=input.title.trim();}
+      try{await onThread(metadata.id,{created:true});}catch{throw failure('thread_storage_failed');}if(closed)throw failure('closed');return metadata;
+    });
+  }
+  async function checkResume(threadId,thread,fallbackPath) {
+    let allowed;try{allowed=await beforeResume(threadId,{logPath:typeof thread.path==='string'&&thread.path?thread.path:fallbackPath??null,cwd:root,status:threadStates.has(thread.status?.type)?thread.status.type:'unknown'});}catch{throw failure('thread_state_unknown');}
+    if(allowed!==true)throw failure(allowed===false?'thread_busy':'thread_state_unknown');
+  }
+  const modelName=value=>typeof value==='string'&&/^[A-Za-z0-9][A-Za-z0-9._:/-]{0,99}$/.test(value);
+  async function prompt({text,threadId,model,effort}={}) {
+    if(closed)throw failure('closed');if(active||catalogBusy)throw failure('busy');
+    if(typeof text!=='string'||!text.trim()||text.length>12000||threadId!==undefined&&!identifier(threadId)||model!==undefined&&!modelName(model)||effort!==undefined&&!['none','minimal','low','medium','high','xhigh','max','ultra'].includes(effort))throw failure('invalid_input');
     let resolveRun,rejectRun;const result=new Promise((accept,reject)=>{resolveRun=accept;rejectRun=reject;});
     const run={resolve:resolveRun,reject:rejectRun,items:new Map(),deltas:new Map(),beforeStart:[],answer:'',threadId:null,turnId:null,done:false,cancelRequested:false};active=run;setState('thinking');
     run.timer=setTimeout(()=>{void stopRun(run,'turn_timeout');},turnTimeoutMs);
@@ -183,6 +254,11 @@ export function createCodexRemote({cwd,codexPath,permission='read-only',onEvent=
     result.catch(()=>{});
     try{
       await ready();if(active!==run)return await result;
+      let previousThread;
+      if(threadId){
+        const read=await readThreadRecord(threadId);previousThread=read.thread;if(active!==run)return await result;
+        await Promise.race([checkResume(threadId,previousThread),result.then(()=>{},()=>{})]);if(active!==run)return await result;
+      }
       const config={default_permissions:permission==='workspace-write'?':workspace':':read-only','web_search':'disabled'};
       const response=await request(threadId?'thread/resume':'thread/start',{...(threadId?{threadId,excludeTurns:true}:{ephemeral:false}),cwd:root,approvalPolicy:APPROVAL_POLICY,approvalsReviewer:'user',developerInstructions:RULES,config});
       const thread=response?.thread;
@@ -191,12 +267,17 @@ export function createCodexRemote({cwd,codexPath,permission='read-only',onEvent=
       if(thread.status?.type==='active')throw failure('thread_busy');if(thread.status?.type==='systemError')throw failure('thread_failed');
       run.threadId=thread.id;
       // 取消或超时不等待外部存储回调；回调晚到也不能重新提交已终止的任务。
-      await Promise.race([Promise.resolve().then(()=>onThread(thread.id)),result.then(()=>{},()=>{})]);if(active!==run)return await result;
+      await Promise.race([Promise.resolve().then(()=>onThread(thread.id,{created:!threadId})),result.then(()=>{},()=>{})]);if(active!==run)return await result;
+      if(threadId){await Promise.race([checkResume(threadId,thread,previousThread?.path),result.then(()=>{},()=>{})]);if(active!==run)return await result;}
       const sandboxPolicy=permission==='read-only'?{type:'readOnly',networkAccess:false}:{type:'workspaceWrite',writableRoots:[root],networkAccess:false,excludeTmpdirEnvVar:true,excludeSlashTmp:true};
       run.turnStarting=true;
-      const started=await request('turn/start',{threadId:thread.id,input:[{type:'text',text}],cwd:root,approvalPolicy:APPROVAL_POLICY,approvalsReviewer:'user',sandboxPolicy});
+      const started=await request('turn/start',{threadId:thread.id,input:[{type:'text',text}],cwd:root,approvalPolicy:APPROVAL_POLICY,approvalsReviewer:'user',sandboxPolicy,...(model?{model}:{}),...(effort?{effort}:{})});
       if(active===run){
         if(!identifier(started?.turn?.id))throw failure('invalid_protocol');run.turnId=started.turn.id;
+        // 回合身份落盘后才交付早到审批和结果；失败时中断已经启动的自有回合。
+        try{await Promise.race([Promise.resolve().then(()=>onTurn(thread.id,run.turnId)),result.then(()=>{},()=>{})]);}
+        catch{await stopRun(run,'thread_storage_failed');}
+        if(active!==run)return await result;run.turnStarting=false;
         for(const frame of run.beforeStart.splice(0)){try{if(has(frame,'id'))serverRequest(frame);else notification(frame);}catch{disconnect('invalid_protocol');break;}}
       }
     }catch(error){if(active===run){if(error.code==='invalid_protocol')disconnect('invalid_protocol');else finish(run,{error:error.code??'remote_failed'});}}
@@ -221,5 +302,5 @@ export function createCodexRemote({cwd,codexPath,permission='read-only',onEvent=
       owned.once('close',()=>{clearTimeout(timer);accept();});try{owned.stdin.end();}catch{clearTimeout(timer);disconnect('closed',owned);accept();}
     });
   }
-  return{ready,probe:async()=>{try{return await ready();}catch(error){return{supported:false,reason:error.code??'remote_failed'};}},prompt,approve,answer,cancel:()=>stopRun(active),close};
+  return{ready,probe:async()=>{try{return await ready();}catch(error){return{supported:false,reason:error.code??'remote_failed'};}},listModels,listThreads,readThread,createThread,prompt,approve,answer,cancel:()=>stopRun(active),close};
 }
