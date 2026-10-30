@@ -1,13 +1,14 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {mkdtemp,mkdir,readFile,rename,rm,symlink,writeFile} from 'node:fs/promises';
+import {mkdtemp,mkdir,readFile,realpath,rename,rm,symlink,writeFile} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import {join,parse,relative,isAbsolute} from 'node:path';
 import {createQQCatalog,cleanTitle} from '../src/qq-catalog.mjs';
 
 async function fixture(t){
- const root=await mkdtemp(join(tmpdir(),'pet-qq-catalog-'));
- t.after(async()=>{const rel=relative(tmpdir(),root);assert.ok(rel&&!isAbsolute(rel)&&!rel.startsWith('..'));await rm(root,{recursive:true,force:true});});
+ // Windows运行器的TEMP可能是8.3别名；持久项目路径与生产登记一样使用真实路径。
+ const parent=await realpath(tmpdir()),root=await realpath(await mkdtemp(join(parent,'pet-qq-catalog-')));
+ t.after(async()=>{const rel=relative(parent,root);assert.ok(rel&&!isAbsolute(rel)&&!rel.startsWith('..'));await rm(root,{recursive:true,force:true});});
  const a=join(root,'alpha'),b=join(root,'beta');await mkdir(a);await mkdir(b);
  return{root,a,b};
 }

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {mkdtemp,readFile,writeFile,rm,mkdir,rename} from 'node:fs/promises';
+import {mkdtemp,readFile,writeFile,rm,mkdir,rename,realpath} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {createCodexActivityGate} from '../src/codex-tasks.mjs';
@@ -10,7 +10,8 @@ try { ({createQQBridge,projectQQState}=await import('../src/qq-remote.mjs')); } 
 
 async function fixture(t,{delayRemote=false,replyText,approvalCount=1,activityGate,onPrompt,canStart,now,threads=[],onRead,mode='task',availableModels}={}) {
   assert.equal(typeof createQQBridge,'function','QQ task bridge is missing');
-  const root=await mkdtemp(join(tmpdir(),'pet-qq-'));
+  // Windows 的临时目录可能带 8.3 别名，合成元数据与本机登记同样使用规范路径。
+  const root=await realpath(await mkdtemp(join(tmpdir(),'pet-qq-')));
   t.after(()=>rm(root,{recursive:true,force:true}));
   const sent=[],packets=[],prompts=[],states=[],approvals=[],catalogCalls=[],factories=[];let options,failSend=false,approval,resolveTurn,releaseRemote,newThreads=0;
   const factoryOptions={dataRoot:root,codexPath:'synthetic-codex',codexHome:join(root,'synthetic-codex-home'),locale:'zh-CN',activityGate,canStart,now,
@@ -185,7 +186,7 @@ test('QQ waiting takes display priority, while a remote completion never hides a
 });
 
 test('disconnect during secret decryption prevents a late connection from reviving the bot',async t=>{
-  const root=await mkdtemp(join(tmpdir(),'pet-qq-connect-'));t.after(()=>rm(root,{recursive:true,force:true}));
+  const root=await realpath(await mkdtemp(join(tmpdir(),'pet-qq-connect-')));t.after(()=>rm(root,{recursive:true,force:true}));
   let release,starts=0;
   const bridge=await createQQBridge({dataRoot:root,codexPath:'synthetic',seal:async s=>s,unseal:()=>new Promise(r=>{release=r;}),createTransport:()=>({start(){starts++;},stop(){}})});t.after(()=>bridge.dispose());
   await bridge.configure({action:'save',appId:'123456',appSecret:'synthetic-secret',cwd:root,permission:'read-only',enabled:true});
@@ -265,7 +266,7 @@ test('closing during a failed result save still disposes the remote task without
 
 // 目录合并用独立协议替身：新空会话可read，但刻意不加入官方list，复现真实CLI行为。
 async function mergedSessionFixture(t){
-  const root=await mkdtemp(join(tmpdir(),'pet-qq-merged-sessions-'));t.after(()=>rm(root,{recursive:true,force:true}));
+  const root=await realpath(await mkdtemp(join(tmpdir(),'pet-qq-merged-sessions-')));t.after(()=>rm(root,{recursive:true,force:true}));
   const sent=[],reads=[],lists=[],records=new Map();let pages=[],bridge,created=0,sequence=0,modelTurns=0;
   const options={dataRoot:root,codexPath:'synthetic-codex',codexHome:join(root,'synthetic-home'),locale:'zh-CN',seal:async value=>Buffer.from(value).toString('base64'),unseal:async value=>Buffer.from(value,'base64').toString(),
     createTransport:o=>({start(){o.onStatus({state:'connected'});},stop(){},async send(value){sent.push(value.text);}}),
