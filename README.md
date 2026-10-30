@@ -60,6 +60,8 @@ The pet starts with your selected app after installation. Use **Companion app** 
 
 Chat and idle chatter count toward your Codex usage. Chatter runs every ten minutes by default; change the interval or turn it off in AI settings.
 
+AI settings support OpenAI-compatible, OpenAI Responses, and Anthropic endpoints. After entering the base URL and API key, use **Fetch models** to choose from the provider's `/models` list or enter a model ID manually.
+
 ### WorkBuddy
 
 The pet follows WorkBuddy 5.9.3 task events: thinking, using tools, waiting for confirmation, and finishing a turn. It starts with WorkBuddy and sends completion or confirmation notifications when you are in another app.

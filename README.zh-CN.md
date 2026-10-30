@@ -60,6 +60,8 @@ Codex 新安装默认白龙娘。两种安装方式都会开启跟随启动，�
 
 聊天和碎碎念会使用你的 Codex 额度。碎碎念默认十分钟一次，可在 AI 设置里调整或关闭。
 
+AI 设置支持 OpenAI 兼容、OpenAI Responses 和 Anthropic 协议。填写接口地址与 API 密钥后，可点「获取模型」从服务商的 `/models` 列表中选择，也可以手动填写模型 ID。
+
 ### WorkBuddy
 
 桌宠接收 WorkBuddy 5.9.3 的思考、工具执行、等待确认和完成事件，跟随 WorkBuddy 启动；切到其他应用时，任务完成或需要确认会弹 Windows 通知。

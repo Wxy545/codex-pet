@@ -9,6 +9,7 @@ import { seedBundledSheep } from './bundled-sheep.mjs';
 import { seedBundledStartup } from './bundled-startup.mjs';
 import { patchStartupMain } from './startup-runtime-patch.mjs';
 import { patchHostOpenTarget } from './runtime-host-patch.mjs';
+import { patchStandaloneResponses } from './standalone-responses-patch.mjs';
 
 const root=resolve(dirname(fileURLToPath(import.meta.url)),'..');
 const pkg=resolve(root,'node_modules/dsh-pet');
@@ -24,6 +25,7 @@ function quotaPatch(text){
 }
 let source=await readFile(resolve(pkg,'lib/standalone.js'),'utf8');
 source=patchHostAssets(source);
+source=patchStandaloneResponses(source);
 function patchOnce(text,anchor,replacement,label){
   if(text.split(anchor).length!==2) throw new Error(`${label}补丁定位失败。`);
   return text.replace(anchor,replacement);
