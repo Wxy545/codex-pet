@@ -82,7 +82,7 @@ function Get-CimInstance {
  // 本例验证真实PowerShell的空值/零值转换；CIM已替身，不加载无关模块或测宿主冷启动速度。
  // 生产5秒采样上限另有虚拟时钟回归，这里只给原生测试进程独立的启动余量。
  const traceRoot=mkdtempSync(join(tmpdir(),'codex-pet-gpu-test-')),traceFile=join(traceRoot,'stages.txt');
- const stages=new Set(['entry','encoding','ready','read','emit','exit']);
+ const stages=new Set(['entry','ready','read','emit','exit']);
  const workers=[];let frames=0,failed=false;
  const readStages=()=>{try{return readFileSync(traceFile,'utf8').split(/\r?\n/).filter(value=>stages.has(value)).slice(-64);}catch{return[];}};
  const prelude=String.raw`
@@ -98,8 +98,6 @@ Write-TestStage 'entry'
   let traced=script;
   const inject=(anchor,replacement)=>{assert.equal(traced.split(anchor).length,2,'诊断注入锚点必须唯一');traced=traced.replace(anchor,replacement);};
   inject(moduleLine,fake);
-  const encoding='$OutputEncoding = [Console]::OutputEncoding = New-Object System.Text.UTF8Encoding($false)';
-  inject(encoding,encoding+"\nWrite-TestStage 'encoding'");
   const loop='while (($line = [Console]::ReadLine()) -ne $null) {';
   inject(loop,"Write-TestStage 'ready'\n"+loop+"\n Write-TestStage 'read'");
   const output=' [Console]::WriteLine((@{ engines = $engines; memory = $memory } | ConvertTo-Json -Compress -Depth 4))';
@@ -121,7 +119,7 @@ Write-TestStage 'entry'
  finally {
   // 只输出固定阶段与退出码；不输出临时路径、原始stderr、环境或账户信息。
   probe.close();await Promise.all(workers.map(worker=>worker.done));
-  if(failed)t.diagnostic('gpu-native-trace '+JSON.stringify({frames,stages:readStages(),workers:workers.map(worker=>({spawned:worker.spawned,exit:worker.exit,closed:worker.closed,closeCode:worker.closeCode,closeSignal:worker.closeSignal,errorCode:worker.errorCode,stderrStages:[...worker.stderr.matchAll(/gpu-test:(entry|encoding|ready|read|emit|exit)\b/g)].map(match=>match[1])}))}));
+  if(failed)t.diagnostic('gpu-native-trace '+JSON.stringify({frames,stages:readStages(),workers:workers.map(worker=>({spawned:worker.spawned,exit:worker.exit,closed:worker.closed,closeCode:worker.closeCode,closeSignal:worker.closeSignal,errorCode:worker.errorCode,stderrStages:[...worker.stderr.matchAll(/gpu-test:(entry|ready|read|emit|exit)\b/g)].map(match=>match[1])}))}));
   try{unlinkSync(traceFile);}catch{}rmdirSync(traceRoot);
  }
 });

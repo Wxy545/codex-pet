@@ -7,7 +7,7 @@ const {spawn}=require('node:child_process');
 const GPU_SCRIPT=String.raw`
 $ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue'
-$OutputEncoding = [Console]::OutputEncoding = New-Object System.Text.UTF8Encoding($false)
+# 输出仅包含固定JSON字段、数值和ASCII适配器编号，无需修改宿主控制台编码。
 Import-Module (Join-Path $PSHOME 'Modules\CimCmdlets\CimCmdlets.psd1') -ErrorAction Stop
 $warmed = $false
 while (($line = [Console]::ReadLine()) -ne $null) {
