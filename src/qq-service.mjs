@@ -1,10 +1,11 @@
 import {mkdir,lstat,stat,realpath,readFile,writeFile,rename,unlink} from 'node:fs/promises';
-import {join,isAbsolute,parse} from 'node:path';
+import {join,isAbsolute,parse,basename} from 'node:path';
 import {randomUUID} from 'node:crypto';
 import {homedir} from 'node:os';
 import {locateCodex} from './codex-path.mjs';
 import {createQQBridge} from './qq-remote.mjs';
 import {createNapCatRuntime} from './napcat-runtime.mjs';
+import {normalizeRemoteToolPolicy,remoteToolScope} from './remote-tool-policy.mjs';
 
 const APPLICATIONS=['codex','workbuddy','harness'],PROVIDERS=['official','onebot'];
 const busy=state=>['thinking','working','waiting','result','running','cancelling'].includes(state?.task?.state);
@@ -13,7 +14,7 @@ const keyOf=(application,provider)=>application+':'+provider;
 
 /** 连接方式与目标应用分别保存；旧 Codex 官方机器人保留原文件及配对。 */
 export async function createQQService({dataRoot,projectRoot,codexPath,codexHome,activityGate,locale='zh-CN',initialApplication='codex',canStart=()=>true,onState=()=>{},
- createBridgeImpl=createQQBridge,createRuntimeImpl=createNapCatRuntime,resolveTargetImpl,createRemoteImpl,runtimeOptions={},bridgeOptions={}}={}){
+ createBridgeImpl=createQQBridge,createRuntimeImpl=createNapCatRuntime,resolveTargetImpl,createRemoteImpl,readMcpCatalogImpl,now=Date.now,runtimeOptions={},bridgeOptions={}}={}){
  if(!isAbsolute(dataRoot||'')||!isAbsolute(projectRoot||''))fail('invalid_directory');
  const file=join(dataRoot,'qq-service.json');
  await mkdir(dataRoot,{recursive:true});
@@ -35,23 +36,54 @@ export async function createQQService({dataRoot,projectRoot,codexPath,codexHome,
   }).catch(()=>{pendingActivity=null;}).finally(()=>{activityWrite=null;});
  }
  const heartbeat=setInterval(()=>{if(!disposed&&currentActivity?.activeCount>0)publishActivity(currentActivity);},10000);heartbeat.unref?.();
- const bridges=new Map(),nativeTargets=new Map();
+ const bridges=new Map(),nativeTargets=new Map(),mcpSources=new Map(),draftSources=new Map();
  const runtime=await createRuntimeImpl({dataRoot,...runtimeOptions});
  const active=()=>bridges.get(keyOf(selection.application,selection.provider));
  const serial=action=>{const next=queue.then(action);queue=next.catch(()=>{});return next;};
  async function persist(value){const temp=file+'.tmp-'+randomUUID();await writeFile(temp,JSON.stringify({schemaVersion:1,...value})+'\n',{flag:'wx',mode:0o600});await rename(temp,file);}
- async function resolveTarget(application,{cwd,permission,prepare=false}={}){
-  if(resolveTargetImpl)return resolveTargetImpl(application,{cwd,permission,prepare});
+ async function resolveTarget(application,{cwd,permission,prepare=false,toolPolicy,mcpSourcePath,mcpRevision,toolScope}={}){
+  if(resolveTargetImpl)return resolveTargetImpl(application,{cwd,permission,prepare,toolPolicy,mcpSourcePath,mcpRevision,toolScope});
   if(application==='codex'){const command=codexPath||locateCodex();if(!command)fail('host_not_installed');return{codexPath:command};}
   const module=application==='workbuddy'?await import('./workbuddy-remote.mjs'):await import('./harness-remote.mjs');
   const resolver=application==='workbuddy'?module.resolveWorkBuddyNative:module.resolveHarnessNative;
   let native;try{native=await resolver({dataRoot,projectRoot});}catch(error){if(error.code==='not_installed')fail('host_not_installed');throw error;}
   if(prepare&&application==='harness'){
-   const prepared=await module.prepareHarnessRemoteProfile({native,cwd,permission,signal:preparation.signal});
+   const prepared=await module.prepareHarnessRemoteProfile({native,cwd,permission,toolPolicy,mcpSourcePath,mcpRevision,toolScope,signal:preparation.signal});
    if(prepared?.ready===false)fail('remote_profile_unavailable');
-   if(permission==='workspace-write')await module.prepareHarnessRemoteProfile({native,cwd,permission:'read-only',signal:preparation.signal});
+   if(permission==='workspace-write')await module.prepareHarnessRemoteProfile({native,cwd,permission:'read-only',toolPolicy,mcpSourcePath,mcpRevision,toolScope,signal:preparation.signal});
   }
   return native;
+ }
+ const sourceKey=(application,provider,cwd)=>keyOf(application,provider)+'\0'+(process.platform==='win32'?cwd.toLowerCase():cwd);
+ async function readCatalog(application,{cwd,sourcePath,native}={}){
+  if(readMcpCatalogImpl)return readMcpCatalogImpl(application,{cwd,sourcePath,native});
+  const target=native||nativeTargets.get(application)||await resolveTarget(application,{cwd});
+  if(application==='codex'){const {readCodexMcpCatalog}=await import('./codex-mcp.mjs');return readCodexMcpCatalog({codexPath:target.codexPath,codexHome:codexHome||(process.env.CODEX_HOME||join(homedir(),'.codex')),cwd,sourcePath});}
+  const {readNativeMcpCatalog}=await import('./native-mcp.mjs');return readNativeMcpCatalog({host:application,native:target,cwd,sourcePath});
+ }
+ function publicCatalog(catalog){
+  if(!catalog||catalog.state!=='ready')return{state:catalog?.state==='not-installed'?'not-installed':'unknown',items:[]};
+  const servers=catalog.servers,revision=catalog.revision;
+  if(typeof revision!=='string'||!/^[A-Za-z0-9_.:-]{1,256}$/.test(revision)||!Array.isArray(servers)||servers.length>256)fail('invalid_mcp_catalog');
+  const ids=new Set(),items=servers.map(server=>{if(!server||typeof server.id!=='string'||!/^[A-Za-z0-9][A-Za-z0-9_.:-]{0,159}$/.test(server.id)||ids.has(server.id)||typeof server.label!=='string'||/[\u0000-\u001f\u007f]/.test(server.label)||server.label.length>120)fail('invalid_mcp_catalog');ids.add(server.id);return{id:server.id,label:server.label,transport:['stdio','http','sse'].includes(server.transport)?server.transport:'unknown'};});
+  return{state:'ready',revision,items};
+ }
+ async function mcpCatalog(body){
+  if(Object.keys(body).some(key=>!['action','application','provider','cwd','sourcePath'].includes(key))||!APPLICATIONS.includes(body.application)||!PROVIDERS.includes(body.provider)||!isAbsolute(body.cwd||'')||body.sourcePath!==undefined&&!isAbsolute(body.sourcePath))fail('invalid_input');
+  const cwd=await realpath(body.cwd).catch(()=>fail('invalid_directory'));if(!(await stat(cwd)).isDirectory()||parse(cwd).root===cwd)fail('invalid_directory');
+  const key=sourceKey(body.application,body.provider,cwd),bridge=bridges.get(keyOf(body.application,body.provider));
+  const draft=draftSources.get(key),saved=bridge.projectTools?.(cwd);
+  const sourcePath=body.sourcePath??draft?.sourcePath??saved?.mcpSourcePath;
+  // 新的读取或选源使同一草稿的旧票据失效，不能用旧页面重新开启先前来源。
+  for(const [id,entry]of mcpSources)if(entry.key===key)mcpSources.delete(id);
+  let raw;try{raw=await readCatalog(body.application,{cwd,sourcePath});}catch(error){return{...state(),mcpCatalog:{state:['not_installed','host_not_installed'].includes(error.code)?'not-installed':'unknown',items:[]}};}
+  const view=publicCatalog(raw);if(view.state!=='ready')return{...state(),mcpCatalog:view};
+  if(raw.sourcePath!==undefined&&raw.sourcePath!==null&&!isAbsolute(raw.sourcePath))fail('invalid_mcp_catalog');
+  const chosen=raw.sourcePath??sourcePath,sourceId=randomUUID(),entry={key,application:body.application,provider:body.provider,cwd,sourcePath:chosen,revision:view.revision,at:now()};
+  for(const [id,old]of mcpSources)if(now()-old.at>=300000)mcpSources.delete(id);
+  while(mcpSources.size>=128)mcpSources.delete(mcpSources.keys().next().value);
+  mcpSources.set(sourceId,entry);draftSources.delete(key);draftSources.set(key,entry);while(draftSources.size>64)draftSources.delete(draftSources.keys().next().value);
+  return{...state(),mcpCatalog:{...view,sourceId,sourceName:chosen?basename(chosen):''}};
  }
  async function remoteFor(application,options){
   if(createRemoteImpl)return createRemoteImpl(application,options);
@@ -72,23 +104,34 @@ export async function createQQService({dataRoot,projectRoot,codexPath,codexHome,
  async function configure(body){
   if(disposed)fail('unavailable');
   if(!body||typeof body!=='object'||Array.isArray(body))fail('invalid_input');
+  if(body.action==='mcp-catalog')return mcpCatalog(body);
   if(body.action==='napcat-prepare'){if(Object.keys(body).length!==1)fail('invalid_input');runtime.prepare();return state();}
   if(body.action==='napcat-login'){
    if(Object.keys(body).length!==1)fail('invalid_input');runtime.start();const localLoginUrl=await runtime.getLoginUrl();
    return{...state(),...(localLoginUrl?{localLoginUrl}:{})};
   }
   if(body.action!=='save')return active().configure(body).then(()=>state());
-  if(Object.keys(body).some(k=>!['action','application','provider','appId','appSecret','cwd','permission','enabled'].includes(k)))fail('invalid_input');
+  if(Object.keys(body).some(k=>!['action','application','provider','appId','appSecret','cwd','permission','enabled','toolPolicy','mcpSourceId','mcpRevision'].includes(k)))fail('invalid_input');
   const application=body.application??selection.application,provider=body.provider??selection.provider;
   if(!APPLICATIONS.includes(application)||!PROVIDERS.includes(provider)||typeof body.enabled!=='boolean'||!isAbsolute(body.cwd||'')||!['read-only','workspace-write'].includes(body.permission))fail('invalid_input');
   if(provider==='official'&&(!/^\d{3,32}$/.test(body.appId||'')||body.appSecret!==undefined&&(typeof body.appSecret!=='string'||body.appSecret&&!/^[A-Za-z0-9_-]{6,256}$/.test(body.appSecret))))fail('invalid_input');
   const cwd=await realpath(body.cwd).catch(()=>fail('invalid_directory'));if(!(await stat(cwd)).isDirectory()||parse(cwd).root===cwd)fail('invalid_directory');
   if(busy(active().state()))fail('busy');
-  const native=await resolveTarget(application,{cwd,permission:body.permission,prepare:true});
+  const target=bridges.get(keyOf(application,provider)),prior=target.projectTools?.(cwd),toolPolicy=normalizeRemoteToolPolicy(body.toolPolicy??prior?.toolPolicy);
+  let mcpSourcePath,mcpRevision;
+  if(toolPolicy.mcp){
+   const source=mcpSources.get(body.mcpSourceId);
+   if(!source||source.key!==sourceKey(application,provider,cwd)||now()-source.at>=300000||source.revision!==body.mcpRevision)fail('stale_mcp_catalog');
+   const raw=await readCatalog(application,{cwd,sourcePath:source.sourcePath}),fresh=publicCatalog(raw);
+   if(fresh.state!=='ready'||fresh.revision!==source.revision||toolPolicy.mcpServerIds.some(id=>!fresh.items.some(item=>item.id===id)))fail('mcp_config_changed');
+   mcpSourcePath=raw.sourcePath??source.sourcePath;mcpRevision=fresh.revision;
+  }
+  const toolScope=remoteToolScope(toolPolicy,mcpRevision);
+  const native=await resolveTarget(application,{cwd,permission:body.permission,prepare:true,toolPolicy,mcpSourcePath,mcpRevision,toolScope});
   let connection;
   if(provider==='onebot')connection=await runtime.connection();
-  const target=bridges.get(keyOf(application,provider)),old=active(),next={application,provider},changed=keyOf(selection.application,selection.provider)!==keyOf(application,provider);
-  const config={action:'save',cwd,permission:body.permission,enabled:body.enabled,...(provider==='official'?{appId:body.appId,...(body.appSecret?{appSecret:body.appSecret}:{})}:{endpoint:connection.url,accessToken:connection.accessToken})};
+  const old=active(),next={application,provider},changed=keyOf(selection.application,selection.provider)!==keyOf(application,provider);
+  const config={action:'save',cwd,permission:body.permission,enabled:body.enabled,toolPolicy,...(toolPolicy.mcp?{mcpSourcePath,mcpRevision}:{}),...(provider==='official'?{appId:body.appId,...(body.appSecret?{appSecret:body.appSecret}:{})}:{endpoint:connection.url,accessToken:connection.accessToken})};
   // 先排空当前收信队列并停止旧传输，任务一旦已启动则拒绝切换，结果不会丢到别的账号。
   switching=true;
   let selectionWritten=false;

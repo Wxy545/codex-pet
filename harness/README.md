@@ -62,7 +62,7 @@ Codex Pet's **QQ connection** window can send private QQ messages to Harness thr
 
 Install and register the native plugin above first. QQ setup checks the registered, formal Harness installation and prepares its own `codex-pet-qq-*` ACP profile for the project and permission level. It keeps your original profile intact. An isolated test CLI is not treated as an installed desktop carrier.
 
-QQ conversations are created by this bridge and resumed within the same project and permission level; existing Harness desktop conversations are not listed or taken over. Model and reasoning settings follow Harness. The first version allows controlled file reading, writing, and editing, with one-time approval for writes; Shell and arbitrary MCP tools are unavailable. Usage and balance still come from Harness's own provider.
+QQ conversations are created by this bridge and resumed within the same project, file permission, and tool selection; existing Harness desktop conversations are not listed or taken over. Model and reasoning settings follow Harness. File writes ask for approval. Enable Shell and choose MCP servers separately in QQ settings on your computer; both start off, and each command or MCP call needs approval. Changing the tool selection starts a new conversation and keeps the old one. Usage and balance still come from Harness's own provider.
 
 ## QQ 任务
 
@@ -70,7 +70,7 @@ Codex Pet 的「QQ 连接」可以通过官方机器人或 NapCat 小号，把�
 
 先按上文安装并登记原生插件。QQ 设置核对正式 Harness 安装，再为项目和权限档准备本项目自己的 `codex-pet-qq-*` ACP profile，保留用户原 profile；隔离验收 CLI 不能代替正式载体。
 
-QQ 只恢复本桥新建、项目与权限档相符的原生会话，不列出或接管旧桌面会话。模型和思考遵 Harness 自己的设置。首版只开放受控的文件读取、写入和修改，写操作逐次确认，暂不开放 Shell 或任意 MCP 工具。额度与余额仍由 Harness 自己的服务商提供。
+QQ 只恢复本桥新建、项目、文件权限和工具选择相符的原生会话，不列出或接管旧桌面会话。模型和思考遵 Harness 自己的设置。文件写入逐次确认；Shell 和 MCP 在电脑端 QQ 设置中分别开启，默认关闭，具体命令或 MCP 调用每次确认。更换工具范围会新建会话并保留旧会话。额度与余额仍由 Harness 自己的服务商提供。
 
 ## Credits and license
 

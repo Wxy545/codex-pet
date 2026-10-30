@@ -43,6 +43,9 @@ test('原生Harness移交在实际HTTP入口阻止新Codex任务，保留既有�
    const response=await request(path,{method:'POST',body:{messages:[]}});assert.equal(response.status,409);assert.equal((await response.json()).error.code,'host_unavailable');
   }
   assert.equal((await internal({messages:[]})).status,409);const qq=await request('/dsh-pet-7340/qq-remote');assert.equal(qq.status,200);assert.equal((await qq.json()).application,'codex');
+  const qqSave={action:'save',application:'codex',provider:'official',appId:'123456',cwd:root,permission:'read-only',enabled:false};
+  const badTools=await request('/dsh-pet-7340/qq-remote',{method:'POST',body:{...qqSave,toolPolicy:{shell:'yes',mcp:false,mcpServerIds:[]}}});assert.equal(badTools.status,400);assert.equal((await badTools.json()).error.code,'invalid_tool_policy');
+  const staleMcp=await request('/dsh-pet-7340/qq-remote',{method:'POST',body:{...qqSave,toolPolicy:{shell:false,mcp:true,mcpServerIds:['synthetic-notes']},mcpSourceId:'synthetic-forged-source',mcpRevision:'synthetic-revision'}});assert.equal(staleMcp.status,400);assert.equal((await staleMcp.json()).error.code,'stale_mcp_catalog');
   assert.equal((await request('/dsh-pet-7340/codex-tasks')).status,200);
   const cancellation=await request('/dsh-pet-7340/codex-tasks/cancel',{method:'POST',body:{id:'synthetic-task'}});assert.equal(cancellation.status,409);assert.equal((await cancellation.json()).error.code,'stale_task');
   await saveActive(false);assert.equal((await request('/dsh-pet-7340/codex-chat',{method:'POST',body:{messages:[]}})).status,400);assert.equal((await internal({messages:[]})).status,400);

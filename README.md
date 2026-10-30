@@ -121,11 +121,25 @@ Select **Official QQ bot**, then **Create QQ bot**. Create a bot on QQ Open Plat
 | `/current`, `/status` | Show the task app, project, conversation, permissions, and progress; Codex also shows the last model and effort used |
 | `/cancel`, `/result`, `/help` | Cancel, retrieve a saved result, or show commands |
 
-**Codex** can continue existing desktop conversations as well as conversations created from QQ. Auto mode is the default: everyday chat prefers an available Luna model at `low` effort, while file and code tasks prefer the account's default model at `high`; an available Astra or Sol takes priority when that default is Luna. Effort follows the model's supported levels. Local rules make this choice without another model call. Ambiguous messages with no prior context wait for `/as-chat` or `/as-task`.
+**Codex** supports text continuation in existing desktop conversations. Use `/new` for a new QQ conversation with file tools; Shell and MCP also use dedicated QQ conversations. Existing conversations are kept without copying or rerunning them. Auto mode is the default: everyday chat prefers an available Luna model at `low` effort, while file and code tasks prefer the account's default model at `high`; an available Astra or Sol takes priority when that default is Luna. Effort follows the model's supported levels. Local rules make this choice without another model call. Ambiguous messages with no prior context wait for `/as-chat` or `/as-task`.
 
 Choose a fixed mode when automatic selection does not fit, or use `/task` to specify a task in auto mode. An unavailable Codex model catalog or manually selected model prompts you to choose again. Model and effort settings do not change file permissions.
 
-**WorkBuddy and Harness** create their own native QQ conversations; they do not take over existing desktop conversations. Conversations are kept separately for read-only and editing access. Their model and reasoning settings follow the host app. This first version supports controlled file reading, writing, and editing, with one-time approval for writes; Shell and arbitrary MCP tools are unavailable. First register Harness through the [native plugin setup](harness/README.md). QQ setup prepares a separate task environment and keeps your existing settings.
+**WorkBuddy and Harness** create their own native QQ conversations; they do not take over existing desktop conversations. Model and reasoning settings follow the host app. They can read and edit files, run commands, and use selected MCP servers with the permissions below. First register Harness through the [native plugin setup](harness/README.md). QQ setup prepares a separate task environment and keeps your existing settings.
+
+### Task tool permissions
+
+Set these separately for each app and project in **QQ connection** on your computer:
+
+| Option | What it allows |
+| --- | --- |
+| File access | Read only or edit the project; approve file writes when prompted |
+| Shell | Run builds, tests, and scripts; approve each complete command in QQ |
+| MCP | Choose servers from the app's local configuration; approve each call and its arguments in QQ |
+
+Shell and MCP start off. Each app keeps its own choices, and QQ commands cannot enable them. New QQ conversations can still read project files and directories with Shell off. You can also choose an existing JSON, JSONC, or TOML MCP configuration with the file picker. Listing servers does not start them; only the selected servers connect after you save. Configuration changes require a fresh review and save. `/permissions` changes file access only; `/current` shows the tool switches.
+
+Changing tool permissions or server choices starts a new QQ conversation and keeps the old one. Codex commands retain native write and network restrictions; these do not isolate reads of files outside the project. WorkBuddy Shell requires Git Bash and runs as your current Windows user: file read-only access does not fully constrain command side effects. MCP servers use their own permissions and may change external data. The local window lists these permissions for confirmation when you first enable them.
 
 Selecting a listed conversation continues that same conversation. Busy conversations, or those whose idle state cannot be confirmed, reject new tasks. You cannot switch projects, conversations, or permissions during a task. Codex sets model, effort, and permissions on each remote turn; those choices also affect that conversation's later defaults.
 

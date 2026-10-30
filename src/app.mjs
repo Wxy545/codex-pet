@@ -159,7 +159,7 @@ async function start() {
     if(req.method==='GET')return json(res,200,qq.state());
     if(req.method!=='POST')return json(res,405,{error:{code:'method_not_allowed'}});
     try{json(res,200,await qq.configure(await requestJson(req,32768)));}
-    catch(error){const code=['invalid_input','invalid_directory','busy','not_configured','already_paired','secret_required','secret_store_unavailable','host_not_installed','native_version_unverified','remote_profile_unavailable','remote_profile_modified','profile_prepare_failed','profile_prepare_timeout','pnpm_unavailable','not_prepared','port_in_use','config_conflict','runtime_incomplete','native_runtime_unavailable'].includes(error.code)?error.code:'storage_failed';json(res,code==='busy'?409:400,{error:{code}});}
+    catch(error){const code=['invalid_input','invalid_directory','busy','not_configured','already_paired','secret_required','secret_store_unavailable','host_not_installed','native_version_unverified','remote_profile_unavailable','remote_profile_modified','profile_prepare_failed','profile_prepare_timeout','pnpm_unavailable','not_prepared','port_in_use','config_conflict','runtime_incomplete','native_runtime_unavailable','invalid_tool_policy','stale_mcp_catalog','mcp_config_changed','mcp_source_changed','mcp_catalog_unavailable','mcp_server_unavailable','shell_unavailable','shell_approval_unavailable','tool_scope_mismatch'].includes(error.code)?error.code:'storage_failed';json(res,code==='busy'?409:400,{error:{code}});}
   }});
   const activeTaskStates = new Set(['running', 'cancelling']);
   const terminalTaskStates = new Set(['completed', 'failed', 'cancelled', 'timed_out']);

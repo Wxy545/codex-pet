@@ -23,6 +23,15 @@ input[readonly] { color: var(--ui-muted); }
 .permission { display: flex; align-items: center; gap: var(--ui-space-2); flex: 1 1 180px; border: 1px solid var(--ui-line); border-radius: var(--ui-radius-md); padding: var(--ui-space-3); cursor: pointer; font-size: var(--ui-text-sm); }
 .permission:has(input:checked) { border-color: var(--ui-accent); background: var(--ui-surface); }
 .permission input { margin: 0; }
+.tool-permissions, .mcp-actions { display: flex; flex-wrap: wrap; align-items: center; gap: var(--ui-space-3) var(--ui-space-5); margin-bottom: var(--ui-space-4); }
+.tool-switch, .mcp-server { display: flex; align-items: center; gap: var(--ui-space-2); font-size: var(--ui-text-sm); }
+.tool-switch input, .mcp-server input { margin: 0; }
+.mcp-actions { gap: var(--ui-space-2); margin-bottom: var(--ui-space-2); }
+.mcp-actions .note { flex: 1 1 auto; overflow-wrap: anywhere; }
+#mcp-status { margin-bottom: var(--ui-space-2); }
+.mcp-servers { display: grid; gap: var(--ui-space-2); margin-bottom: var(--ui-space-4); }
+.mcp-server { min-height: var(--ui-control); padding: var(--ui-space-2) var(--ui-space-3); border: 1px solid var(--ui-line); border-radius: var(--ui-radius-md); overflow-wrap: anywhere; }
+.mcp-server span { min-width: 0; }
 .actions { flex-wrap: wrap; }
 .status { margin: 0 0 var(--ui-space-6); display: flex; flex-wrap: wrap; gap: var(--ui-space-3) var(--ui-space-6); font-size: var(--ui-text-sm); }
 .status > div { display: flex; align-items: center; gap: var(--ui-space-2); }

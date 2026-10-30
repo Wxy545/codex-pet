@@ -5,13 +5,15 @@ import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {createWorkBuddyRemote,resolveWorkBuddyNative} from '../src/workbuddy-remote.mjs';
 import {createHarnessRemote,prepareHarnessRemoteProfile,createRemoteGuard,resolveHarnessNative} from '../src/harness-remote.mjs';
+import {readNativeMcpCatalog,selectNativeMcp} from '../src/native-mcp.mjs';
+import {remoteToolScope} from '../src/remote-tool-policy.mjs';
 import {EventEmitter} from 'node:events';
 import {PassThrough,Writable} from 'node:stream';
 
 function tree(t){const root=mkdtempSync(join(tmpdir(),'pet-native-'));t.after(()=>rmSync(root,{recursive:true,force:true}));const put=(path,body='')=>{mkdirSync(join(root,path,'..'),{recursive:true});writeFileSync(join(root,path),body);return join(root,path);};return{root,put};}
 function fakePeer(mode='default'){
-  const child=new EventEmitter();child.exitCode=null;child.stdout=new PassThrough();child.stderr=new PassThrough();let launch,buffer='';const send=(id,result)=>child.stdout.write(JSON.stringify({jsonrpc:'2.0',id,result})+'\n');
-  child.stdin=new Writable({write(chunk,encoding,done){buffer+=chunk.toString();let cut;while((cut=buffer.indexOf('\n'))>=0){const frame=JSON.parse(buffer.slice(0,cut));buffer=buffer.slice(cut+1);if(frame.method==='initialize')send(frame.id,{protocolVersion:1,agentCapabilities:{}});if(frame.method==='session/new')send(frame.id,{sessionId:'owned',modes:{currentModeId:mode}});}done();},final(done){child.exitCode=0;child.emit('close',0);done();}});child.kill=()=>{child.exitCode=-1;child.emit('close',-1);};return{spawnImpl:(...args)=>{launch=args;return child;},get launch(){return launch;}};
+  const child=new EventEmitter(),frames=[];child.exitCode=null;child.stdout=new PassThrough();child.stderr=new PassThrough();let launch,buffer='';const send=(id,result)=>child.stdout.write(JSON.stringify({jsonrpc:'2.0',id,result})+'\n');
+    child.stdin=new Writable({write(chunk,encoding,done){buffer+=chunk.toString();let cut;while((cut=buffer.indexOf('\n'))>=0){const frame=JSON.parse(buffer.slice(0,cut));buffer=buffer.slice(cut+1);frames.push(frame);if(frame.method==='initialize')send(frame.id,{protocolVersion:1,agentCapabilities:{}});if(frame.method==='session/new')send(frame.id,{sessionId:'owned',modes:{currentModeId:mode},configOptions:[{id:'sandbox',currentValue:'false'}]});}done();},final(done){child.exitCode=0;child.emit('close',0);done();}});child.kill=()=>{child.exitCode=-1;child.emit('close',-1);};return{frames,spawnImpl:(...args)=>{launch=args;return child;},get launch(){return launch;}};
 }
 function wb(t){const {root,put}=tree(t),cliPath=put('install/resources/app.asar.unpacked/cli/bin/codebuddy'),nodePath=put('node.exe'),configDir=join(root,'workbuddy-home');mkdirSync(configDir);put('install/WorkBuddy.exe');put('install/resources/app.asar.unpacked/cli/package.json',JSON.stringify({name:'@genie/agent-cli',version:'2.165.0'}));put('install/resources/app.asar.unpacked/cli/product.json',JSON.stringify({productName:'WorkBuddy'}));return{root,put,native:{nodePath,cliPath,configDir}};}
 function harness(t){const {root,put}=tree(t),command=put('installed/dsh.cmd'),home=join(root,'harness-home');put('harness-home/profiles/web/package.json','{}');const cwd=join(root,'workspace');mkdirSync(cwd);return{root,put,cwd,native:{command,home,profile:'web',version:'0.2.1-rc.5'}};}
@@ -60,4 +62,51 @@ test('Harness dependency preparation aborts only its own child promptly',async t
   const pending=prepareHarnessRemoteProfile({native,cwd,runtimeAvailable:()=>false,signal:controller.signal,spawnImpl:()=>{launched=true;return child;}});
   controller.abort();await assert.rejects(pending,{code:'profile_prepare_aborted'});assert.equal(launched,true);assert.equal(killed,1);
   await assert.rejects(prepareHarnessRemoteProfile({native,cwd,signal:controller.signal,runtimeAvailable:()=>false,spawnImpl:()=>{throw Error('must not spawn');}}),{code:'profile_prepare_aborted'});
+});
+
+test('WorkBuddy Shell显式default逐次Bash审批，不开放会自动放行的PowerShell工具',async t=>{
+  const {root,native}=wb(t),peer=fakePeer(),toolPolicy={shell:true,mcp:false,mcpServerIds:[]},adapter=createWorkBuddyRemote({cwd:root,native,permission:'read-only',toolPolicy,spawnImpl:peer.spawnImpl});t.after(()=>adapter.close());await adapter.createThread();
+  const [,args,options]=peer.launch,settings=JSON.parse(args[args.indexOf('--settings')+1]);assert.equal(args[args.indexOf('--permission-mode')+1],'default');assert.equal(args[args.indexOf('--tools')+1],'Read,Bash');assert.equal(settings.sandbox.enabled,false);assert.ok(settings.permissions.ask.includes('Bash'));assert.ok(settings.permissions.deny.includes('PowerShell'));assert.equal(settings.permissions.allow.length,0);assert.equal(options.env.CODEBUDDY_CODE_SHELL,'bash');
+});
+
+test('MCP仅公开元数据、中文名映射稳定ASCII ID，选定版本改变必须重新本机保存',t=>{
+  const {root,native,put}=wb(t),sourcePath=put('workbuddy-home/mcp.json',JSON.stringify({mcpServers:{'本地资料库':{type:'http',url:'http://127.0.0.1:18800/mcp',headers:{Authorization:'Bearer synthetic-private-token'}},docs:{command:native.nodePath,args:['synthetic-server.js'],env:{PRIVATE_TOKEN:'synthetic-env-value'}}}}));
+  const catalog=readNativeMcpCatalog({host:'workbuddy',native,cwd:root});assert.equal(catalog.state,'ready');assert.equal(catalog.servers[0].label,'本地资料库');assert.match(catalog.servers[0].id,/^[A-Za-z0-9][A-Za-z0-9_.:-]{0,159}$/);assert.doesNotMatch(JSON.stringify(catalog.servers),/18800|Bearer|synthetic-env|node.exe/);
+  const chosen=selectNativeMcp({host:'workbuddy',native,cwd:root,sourcePath,revision:catalog.revision,serverIds:['docs']});assert.equal(chosen.length,1);assert.equal(chosen[0].name,'docs');assert.equal(chosen[0].env[0].value,'synthetic-env-value');
+  writeFileSync(sourcePath,JSON.stringify({mcpServers:{docs:{type:'http',url:'http://127.0.0.1:18801/mcp'}}}));assert.throws(()=>selectNativeMcp({host:'workbuddy',native,cwd:root,sourcePath,revision:catalog.revision,serverIds:['docs']}),{code:'mcp_config_changed'});
+  assert.equal(readNativeMcpCatalog({host:'workbuddy',native,cwd:root,sourcePath:put('auth.json','not JSON')}).state,'unknown');
+});
+
+test('Harness Shell和MCP按scope另建profile，真实工具执行围栏每条先ask',async t=>{
+  const {native,cwd,put}=harness(t),sourcePath=put('harness-home/profiles/web/mcp.json',JSON.stringify({mcpServers:{docs:{type:'http',url:'http://127.0.0.1:18800/mcp'}}})),catalog=readNativeMcpCatalog({host:'harness',native,cwd,sourcePath});assert.equal(catalog.state,'ready');
+  const toolPolicy={shell:true,mcp:true,mcpServerIds:['docs']},toolScope=remoteToolScope(toolPolicy,catalog.revision),options={native,cwd,permission:'read-only',toolPolicy,mcpSourcePath:sourcePath,mcpRevision:catalog.revision,toolScope,runtimeAvailable:()=>true};
+  const prepared=await prepareHarnessRemoteProfile(options),files=await prepareHarnessRemoteProfile({native,cwd,runtimeAvailable:()=>true});assert.notEqual(prepared.profile,files.profile);
+  const patch=JSON.parse(readFileSync(join(native.home,'profiles',prepared.profile,'cordis.patch.yml'),'utf8'));assert.equal(patch.find(item=>item.id==='tool-pwsh').disabled,process.platform!=='win32');assert.equal(patch.find(item=>item.id==='tool-pwsh').config.promoteOnTimeout,false);
+  const hooks=new Map(),ctx={on:(name,fn)=>hooks.set(name,fn)},agent={session:{header:{cwd}}};createRemoteGuard(ctx,{root:cwd,permission:'read-only',toolPolicy,native,mcpSourcePath:sourcePath,mcpRevision:catalog.revision});
+  for(const exec of [{name:'pwsh',arguments:{command:'Get-Location'},agent},{name:'mcp__docs__search',arguments:{query:'README'},agent}])assert.equal((await hooks.get('tools/pre-execute')(exec,async()=>({kind:'allow'}))).kind,'ask');
+  assert.equal((await hooks.get('tools/pre-execute')({name:'mcp__foreign__search',arguments:{},agent},async()=>({kind:'allow'}))).kind,'deny');
+  writeFileSync(sourcePath,JSON.stringify({mcpServers:{docs:{type:'http',url:'http://127.0.0.1:19999/mcp'}}}));await assert.rejects(hooks.get('tools/execute')({name:'mcp__docs__search',arguments:{},agent},async()=>true),{code:'outside_remote_scope'});
+});
+
+test('原生MCP专用JSONC/TOML可读，注释和尾逗号不执行代码，长服务名只公开短标签',t=>{
+  const {root,native,put}=wb(t),jsonPath=put('workbuddy-home/mcp.jsonc','{ // native configuration\n"mcpServers": {"'+ 'x'.repeat(150)+'": {"type":"http", "url":"http://127.0.0.1:18800/mcp", /* tail */ }, }, }');
+  const json=readNativeMcpCatalog({host:'workbuddy',native,cwd:root,sourcePath:jsonPath});assert.equal(json.state,'ready');assert.ok(json.servers[0].label.length<=80);assert.match(json.servers[0].id,/^[A-Za-z0-9][A-Za-z0-9_.:-]{0,159}$/);
+  const tomlPath=put('workbuddy-home/mcp.toml','[mcp_servers.notes]\nurl = "http://127.0.0.1:18800/mcp"\n[mcp_servers.notes.http_headers]\nAuthorization = "Bearer synthetic-private"\n');
+  const toml=readNativeMcpCatalog({host:'workbuddy',native,cwd:root,sourcePath:tomlPath});assert.equal(toml.state,'ready');assert.equal(toml.servers[0].id,'notes');assert.equal(toml.descriptors[0].headers[0].value,'Bearer synthetic-private');assert.doesNotMatch(JSON.stringify(toml.servers),/synthetic-private|18800/);
+  const empty=readNativeMcpCatalog({host:'workbuddy',native:{...native,configDir:join(root,'empty-home')},cwd:join(root,'empty-project')});assert.equal(empty.state,'ready');assert.deepEqual(empty.servers,[]);assert.ok(empty.revision.length>20);
+});
+
+test('WorkBuddy只把所选MCP私有描述通过协议传入，命令行不带服务凭据',async t=>{
+  const {root,native,put}=wb(t),sourcePath=put('workbuddy-home/mcp.json',JSON.stringify({mcpServers:{docs:{type:'http',url:'http://127.0.0.1:18800/mcp',headers:{Authorization:'Bearer synthetic-private'}},unselected:{type:'http',url:'http://127.0.0.1:18801/mcp'}}})),catalog=readNativeMcpCatalog({host:'workbuddy',native,cwd:root,sourcePath});
+  const peer=fakePeer(),toolPolicy={shell:false,mcp:true,mcpServerIds:['docs']},adapter=createWorkBuddyRemote({cwd:root,native,permission:'read-only',toolPolicy,mcpSourcePath:sourcePath,mcpRevision:catalog.revision,spawnImpl:peer.spawnImpl});t.after(()=>adapter.close());await adapter.createThread();
+  const request=peer.frames.find(frame=>frame.method==='session/new');assert.deepEqual(request.params.mcpServers.map(server=>server.name),['docs']);assert.equal(request.params.mcpServers[0].headers[0].value,'Bearer synthetic-private');assert.doesNotMatch(JSON.stringify(peer.launch[1]),/18800|18801|synthetic-private/);
+  writeFileSync(sourcePath,JSON.stringify({mcpServers:{docs:{type:'http',url:'http://127.0.0.1:19999/mcp'}}}));await assert.rejects(adapter.prompt({text:'hi',threadId:'owned'}),{code:'mcp_config_changed'});
+});
+
+test('原生MCP不丢弃源中的工具限制或认证env扩展，无法等价转发的字段明确拒收',t=>{
+  const {root,native,put}=wb(t),sourcePath=put('workbuddy-home/mcp.json','{}');
+  for(const [key,value]of Object.entries({enabled_tools:['read_only'],disabled_tools:['delete'],env_vars:['PRIVATE_TOKEN'],env_http_headers:{Authorization:'PRIVATE_TOKEN'},bearer_token_env_var:'PRIVATE_TOKEN',oauth:{enabled:true},tool_timeout_sec:1,cwd:root,unknown_future_limit:{enabled:true}})){
+    writeFileSync(sourcePath,JSON.stringify({mcpServers:{docs:{type:'http',url:'http://127.0.0.1:18800/mcp',[key]:value}}}));
+    const catalog=readNativeMcpCatalog({host:'workbuddy',native,cwd:root,sourcePath});assert.equal(catalog.state,'unknown',key);assert.equal(catalog.reason,'mcp_fields_unsupported',key);assert.deepEqual(catalog.servers,[]);assert.deepEqual(catalog.descriptors,[]);
+  }
 });

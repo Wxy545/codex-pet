@@ -15,4 +15,6 @@ contextBridge.exposeInMainWorld('qqRemote',Object.freeze({
  copyPairing:()=>ipcRenderer.invoke('codex-qq:copy-pairing'),
  prepareNapCat:()=>ipcRenderer.invoke('codex-qq:napcat-prepare'),
  openNapCatLogin:()=>ipcRenderer.invoke('codex-qq:napcat-login'),
+ getMcpCatalog:selection=>ipcRenderer.invoke('codex-qq:mcp-catalog',selection),
+ chooseMcpSource:selection=>ipcRenderer.invoke('codex-qq:mcp-source',selection),
 }));

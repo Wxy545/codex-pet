@@ -5,10 +5,12 @@ import { dirname, isAbsolute, relative, resolve, sep } from 'node:path';
 import { StringDecoder } from 'node:string_decoder';
 import { createCodexChildEnv } from './codex-child-env.mjs';
 import { locateCodex } from './codex-path.mjs';
+import { normalizeRemoteToolPolicy, remoteToolScope } from './remote-tool-policy.mjs';
+import { createCodexRemoteTools, dynamicFailure } from './codex-remote-tools.mjs';
 
 const APPROVAL_POLICY={granular:{sandbox_approval:false,rules:true,mcp_elicitations:false,request_permissions:false,skill_approval:false}};
-const DISABLED=['code_mode','apps','plugins','hooks','browser_use','in_app_browser','computer_use','image_generation','multi_agent','multi_agent_v2','memories','workspace_dependencies','shell_snapshot','skill_search','sleep_tool','goals'];
-const RULES='This is a paired remote task. Work only in the selected workspace and within its explicit read-only or workspace-write permission. Do not read or modify credentials, secrets, login data, or files outside the task scope. Do not disable the sandbox, request additional permissions, use other applications, or use network tools. Remote approvals apply once to the displayed operation only; they never expand this scope. Return a concise final result and describe actual changes.';
+const DISABLED=['shell_tool','unified_exec','code_mode','code_mode_host','apps','plugins','hooks','browser_use','in_app_browser','computer_use','image_generation','multi_agent','multi_agent_v2','memories','workspace_dependencies','shell_snapshot','skill_search','sleep_tool','goals'];
+const RULES='This is a paired remote task. File operations must stay within the selected workspace and its explicit read-only or workspace-write permission. Do not read or modify credentials, secrets, or login data. Do not disable the sandbox or request additional permissions. Remote approvals apply once to the displayed operation only. Return a concise final result and describe actual changes.';
 const failure=code=>Object.assign(new Error('Codex remote: '+code),{code});
 const has=(object,key)=>Object.hasOwn(object??{},key);
 const object=value=>value&&typeof value==='object'&&!Array.isArray(value);
@@ -27,13 +29,23 @@ function terminate(child) {
 }
 
 /** V2 stdio适配；正文只走协议管道，诊断不透传服务端stderr、工具输出或鉴权信息。 */
-export function createCodexRemote({cwd,codexPath,permission='read-only',onEvent=()=>{},onThread=async()=>{},onTurn=async()=>{},beforeResume=async()=>true,spawnImpl=spawn,requestTimeoutMs=15000,turnTimeoutMs=600000,approvalTimeoutMs=120000}={}) {
+export function createCodexRemote({cwd,codexPath,codexHome,permission='read-only',onEvent=()=>{},onThread=async()=>{},onTurn=async()=>{},beforeResume=async()=>true,spawnImpl=spawn,requestTimeoutMs=15000,turnTimeoutMs=600000,approvalTimeoutMs=120000,toolPolicy,toolScope,mcpSourcePath,mcpRevision,managedThreads=[],createToolsImpl=createCodexRemoteTools}={}) {
   if(typeof cwd!=='string'||!isAbsolute(cwd))throw failure('invalid_cwd');
   if(!['read-only','workspace-write'].includes(permission))throw failure('invalid_permission');
   if(typeof onEvent!=='function'||typeof onThread!=='function'||typeof onTurn!=='function'||typeof beforeResume!=='function'||typeof spawnImpl!=='function')throw failure('invalid_callback');
   for(const timeout of [requestTimeoutMs,turnTimeoutMs,approvalTimeoutMs])if(!Number.isFinite(timeout)||timeout<=0)throw failure('invalid_timeout');
   let root;try{root=realpathSync(cwd);if(!statSync(root).isDirectory())throw failure('invalid_cwd');}catch{throw failure('invalid_cwd');}
   if(codexPath!==undefined&&(typeof codexPath!=='string'||!isAbsolute(codexPath)))throw failure('invalid_codex_path');
+  const policy=normalizeRemoteToolPolicy(toolPolicy),scope=remoteToolScope(policy,mcpRevision);
+  const instructions=()=>RULES+(policy.mcp?' Selected MCP proxies are a separate local grant for external service operations, independent of the file permission. Use them only after a fresh one-time QQ approval; do not access other applications or network tools.':' Do not use external applications or network tools.')+(policy.shell?' Use Shell only through qq_shell with a fresh one-time QQ approval and the original file/network sandbox.':' Shell execution is disabled.');
+  if(toolScope!==undefined&&toolScope!==scope||!Array.isArray(managedThreads)||typeof createToolsImpl!=='function')throw failure('invalid_tool_policy');
+  const toolThreads=new Set(managedThreads.filter(item=>item?.toolScope===scope&&item.permission===permission&&item.cwd===root&&identifier(item.id)).map(item=>item.id));
+  const fileThreads=new Set(managedThreads.filter(item=>item?.fileTools===true&&item.cwd===root&&identifier(item.id)).map(item=>item.id));
+  let tools,toolsPromise,toolsController;
+  const ensureTools=async()=>{
+    if(!toolsPromise){const controller=new AbortController();toolsController=controller;toolsPromise=Promise.resolve().then(()=>createToolsImpl({cwd:root,codexPath,codexHome,permission,toolPolicy:policy,mcpSourcePath,mcpRevision,spawnImpl,signal:controller.signal})).then(value=>{if(closed||controller.signal.aborted){void value.close();throw failure('closed');}tools=value;return value;});}
+    return(await toolsPromise).specs;
+  };
   let child,readyPromise,closed=false,active,catalogBusy=false,state='idle',sequence=0;
   const pending=new Map(),decisions=new Map(),seenRequests=new Set();
   const emit=event=>{try{Promise.resolve(onEvent(event)).catch(()=>{});}catch{/* 同步或异步显示失败均不改变执行与权限。 */}};
@@ -42,10 +54,12 @@ export function createCodexRemote({cwd,codexPath,permission='read-only',onEvent=
   const reply=(id,result)=>{try{write({id,result});}catch{/* 收尾仍需清除本地待确认项。 */}};
 
   function drainDecisions(run) {
-    for(const [id,item]of decisions){if(run&&item.run!==run)continue;clearTimeout(item.timer);decisions.delete(id);reply(item.rpcId,item.kind==='input'?{answers:{}}:{decision:'decline'});}
+    for(const [id,item]of decisions){if(run&&item.run!==run)continue;clearTimeout(item.timer);decisions.delete(id);reply(item.rpcId,item.kind==='input'?{answers:{}}:item.kind==='proxy'?dynamicFailure('Tool call cancelled.'):{decision:'decline'});}
   }
   function finish(run,{status,text='',error}={}) {
-    if(active!==run||run.done)return;run.done=true;clearTimeout(run.timer);clearTimeout(run.cancelTimer);drainDecisions(run);active=undefined;
+    if(active!==run||run.done)return;run.done=true;clearTimeout(run.timer);clearTimeout(run.cancelTimer);drainDecisions(run);
+    if(run.proxyReplies?.size){for(const id of run.proxyReplies)reply(id,dynamicFailure('Tool call cancelled.'));run.proxyReplies.clear();void tools?.cancel(run).catch(()=>{});toolsPromise=null;tools=null;}
+    active=undefined;
     setState(error||status==='failed'?'error':status==='completed'?'success':'idle');setState('idle');
     if(error)run.reject(failure(error));else run.resolve({threadId:run.threadId,text,status});
   }
@@ -56,9 +70,9 @@ export function createCodexRemote({cwd,codexPath,permission='read-only',onEvent=
     if(active)finish(active,active.cancelError?{error:active.cancelError}:active.cancelRequested?{status:'cancelled'}:{error:code});
     if(owned&&owned.exitCode==null)terminate(owned);
   }
-  function request(method,params) {
+  function request(method,params,timeout=requestTimeoutMs) {
     return new Promise((accept,reject)=>{
-      const id=++sequence,timer=setTimeout(()=>disconnect('request_timeout'),requestTimeoutMs);
+      const id=++sequence,timer=setTimeout(()=>disconnect('request_timeout'),timeout);
       pending.set(id,{resolve:accept,reject,timer});
       try{write({id,method,params});}catch{disconnect('process_exited');}
     });
@@ -76,7 +90,7 @@ export function createCodexRemote({cwd,codexPath,permission='read-only',onEvent=
     if(decisions.size>=8){blocked(message.id,kind,'too_many_pending');return;}
     const id=randomUUID(),run=active;
     const timer=setTimeout(()=>{
-      const item=decisions.get(id);if(!item)return;decisions.delete(id);reply(item.rpcId,kind==='input'?{answers:{}}:{decision:'decline'});
+      const item=decisions.get(id);if(!item)return;decisions.delete(id);reply(item.rpcId,kind==='input'?{answers:{}}:kind==='proxy'?dynamicFailure('Approval expired.'):{decision:'decline'});
       emit({type:'blocked',kind,reason:'approval_timeout'});void stopRun(run,'approval_timeout');
     },approvalTimeoutMs);
     decisions.set(id,{rpcId:message.id,kind,run,timer,...fields});setState('waiting');emit({type:kind==='input'?'input':'approval',id,...fields.public});
@@ -86,6 +100,21 @@ export function createCodexRemote({cwd,codexPath,permission='read-only',onEvent=
     const key=typeof message.id+':'+String(message.id);
     if(seenRequests.has(key))return;seenRequests.add(key);if(seenRequests.size>4096){disconnect('output_limit');return;}
     const matches=run&&!run.done&&!run.cancelRequested&&p.threadId===run.threadId&&p.turnId===run.turnId;
+    if(message.method==='item/tool/call'){
+      if(!matches||!tools||!identifier(p.callId)||!identifier(p.tool)||p.namespace!=null||run.dynamicCalls.has(p.callId)){reply(message.id,dynamicFailure('Tool call unavailable.'));return;}
+      run.dynamicCalls.add(p.callId);let call;
+      try{call=tools.prepare(p.tool,p.arguments);}catch{reply(message.id,dynamicFailure('Tool call not authorized or requires local review.'));emit({type:'blocked',kind:'tool',reason:'local_review_required'});return;}
+      if(call.kind==='read'){
+        if(!run.fileTools){reply(message.id,dynamicFailure('File tools were not registered on this older conversation. Use a new QQ conversation for project file tasks.'));return;}
+        setState(decisions.size?'waiting':'working');
+        void Promise.resolve().then(()=>tools.execute(call,request,run)).then(result=>{if(active===run&&!run.done&&!run.cancelRequested){reply(message.id,result);waiting();}},()=>{if(active===run&&!run.done&&!run.cancelRequested){reply(message.id,dynamicFailure('Project file could not be read.'));waiting();}});
+        return;
+      }
+      if(decisions.size>=8){reply(message.id,dynamicFailure('Too many pending approvals.'));return;}
+      addDecision(message,'proxy',{call,public:{kind:call.kind,summary:escaped(call.summary)}});return;
+    }
+    // 内置Shell始终不向模型注册，异常原生审批帧也不能借此绕过代理开关。
+    if(message.method==='item/commandExecution/requestApproval'){blocked(message.id,'command','native_shell_disabled');return;}
     if(message.method==='item/permissions/requestApproval'){reply(message.id,{permissions:{},scope:'turn'});emit({type:'blocked',kind:'permissions',reason:'permission_expansion'});return;}
     const command=message.method==='item/commandExecution/requestApproval',file=message.method==='item/fileChange/requestApproval',input=message.method==='item/tool/requestUserInput';
     if(!command&&!file&&!input){try{write({id:message.id,error:{code:-32601,message:'Unsupported remote request'}});}catch{}return;}
@@ -157,7 +186,8 @@ export function createCodexRemote({cwd,codexPath,permission='read-only',onEvent=
     readyPromise=(async()=>{
       const profile=permission==='workspace-write'?':workspace':':read-only';
       const args=['app-server','--listen','stdio://','-c','default_permissions='+JSON.stringify(profile),'-c','web_search="disabled"','-c','mcp_servers={}','-c','analytics.enabled=false',...(process.platform==='win32'?['-c','windows.sandbox="unelevated"']:[]),...DISABLED.flatMap(feature=>['--disable',feature])];
-      let owned;try{owned=spawnImpl(codexPath??locateCodex(),args,{cwd:root,env:createCodexChildEnv(),shell:false,windowsHide:true,stdio:['pipe','pipe','pipe']});}catch{throw failure('spawn_failed');}
+      const env=createCodexChildEnv();if(codexHome)env.CODEX_HOME=codexHome;
+      let owned;try{owned=spawnImpl(codexPath??locateCodex(),args,{cwd:root,env,shell:false,windowsHide:true,stdio:['pipe','pipe','pipe']});}catch{throw failure('spawn_failed');}
       child=owned;seenRequests.clear();let buffer='';const decoder=new StringDecoder('utf8');
       owned.stdout.on('data',chunk=>{if(child!==owned)return;if(active){active.bytes=(active.bytes??0)+Buffer.byteLength(chunk);if(active.bytes>4*1024*1024){disconnect('output_limit',owned);return;}}buffer+=typeof chunk==='string'?chunk:decoder.write(chunk);if(buffer.length>1024*1024){disconnect('output_limit',owned);return;}let cut;while(child===owned&&(cut=buffer.indexOf('\n'))>=0){const line=buffer.slice(0,cut);buffer=buffer.slice(cut+1);acceptLine(line);}});
       owned.stderr.on('data',()=>{});owned.stdin.on('error',()=>disconnect('process_exited',owned));owned.once('error',()=>disconnect('spawn_failed',owned));owned.once('close',()=>disconnect('process_exited',owned));
@@ -169,6 +199,9 @@ export function createCodexRemote({cwd,codexPath,permission='read-only',onEvent=
   async function stopRun(run,error) {
     if(!run||active!==run||run.done)return false;
     run.cancelRequested=true;if(error&&!run.cancelError)run.cancelError=error;drainDecisions(run);
+    toolsController?.abort();toolsController=null;toolsPromise=null;
+    for(const id of run.proxyReplies??[])reply(id,dynamicFailure('Tool call cancelled.'));run.proxyReplies?.clear();
+    if(tools){void tools.cancel(run).catch(()=>{});toolsPromise=null;tools=null;}
     if(!run.turnId){disconnect(error??'cancelled');return true;}
     if(!run.interrupting){run.interrupting=true;run.cancelTimer=setTimeout(()=>disconnect(error??'cancel_timeout'),requestTimeoutMs);try{await request('turn/interrupt',{threadId:run.threadId,turnId:run.turnId});}catch{disconnect(error??'cancel_timeout');}}
     return true;
@@ -233,10 +266,11 @@ export function createCodexRemote({cwd,codexPath,permission='read-only',onEvent=
     if(!object(input)||Object.keys(input).some(key=>key!=='title')||input.title!==undefined&&(!reviewable(input.title,80)||!input.title.trim()))throw failure('invalid_input');
     return catalog(async()=>{
       const config={default_permissions:permission==='workspace-write'?':workspace':':read-only','web_search':'disabled'};
-      const response=await request('thread/start',{ephemeral:false,cwd:root,approvalPolicy:APPROVAL_POLICY,approvalsReviewer:'user',developerInstructions:RULES,config});
+      const dynamicTools=await ensureTools();
+      const response=await request('thread/start',{ephemeral:false,cwd:root,approvalPolicy:APPROVAL_POLICY,approvalsReviewer:'user',developerInstructions:instructions(),config,...(dynamicTools.length?{dynamicTools}:{})});
       const metadata=threadMetadata(response?.thread);if(metadata.status==='active')throw failure('thread_busy');if(metadata.status==='systemError')throw failure('thread_failed');
       if(input.title){await request('thread/name/set',{threadId:metadata.id,name:input.title.trim()});metadata.title=input.title.trim();}
-      try{await onThread(metadata.id,{created:true});}catch{throw failure('thread_storage_failed');}if(closed)throw failure('closed');return metadata;
+      try{await onThread(metadata.id,{created:true,fileTools:true});}catch{throw failure('thread_storage_failed');}if(closed)throw failure('closed');fileThreads.add(metadata.id);if(scope!=='files')toolThreads.add(metadata.id);return{...metadata,fileTools:true};
     });
   }
   async function checkResume(threadId,thread,fallbackPath) {
@@ -247,27 +281,32 @@ export function createCodexRemote({cwd,codexPath,permission='read-only',onEvent=
   async function prompt({text,threadId,model,effort}={}) {
     if(closed)throw failure('closed');if(active||catalogBusy)throw failure('busy');
     if(typeof text!=='string'||!text.trim()||text.length>12000||threadId!==undefined&&!identifier(threadId)||model!==undefined&&!modelName(model)||effort!==undefined&&!['none','minimal','low','medium','high','xhigh','max','ultra'].includes(effort))throw failure('invalid_input');
+    if(scope!=='files'&&threadId&&!toolThreads.has(threadId))throw failure('thread_tool_scope_mismatch');
     let resolveRun,rejectRun;const result=new Promise((accept,reject)=>{resolveRun=accept;rejectRun=reject;});
-    const run={resolve:resolveRun,reject:rejectRun,items:new Map(),deltas:new Map(),beforeStart:[],answer:'',threadId:null,turnId:null,done:false,cancelRequested:false};active=run;setState('thinking');
+    const run={resolve:resolveRun,reject:rejectRun,items:new Map(),deltas:new Map(),beforeStart:[],dynamicCalls:new Set(),proxyReplies:new Set(),fileTools:!threadId||fileThreads.has(threadId),answer:'',threadId:null,turnId:null,done:false,cancelRequested:false};active=run;setState('thinking');
     run.timer=setTimeout(()=>{void stopRun(run,'turn_timeout');},turnTimeoutMs);
     // 立即挂接拒绝处理，避免初始化阶段出错时结果promise先成为未处理拒绝。
     result.catch(()=>{});
     try{
       await ready();if(active!==run)return await result;
+      // 初始化中的服务也可取消；外部服务晚到不能挡住当前回合的取消返回。
+      const dynamicTools=await Promise.race([ensureTools(),result.then(()=>null,()=>null)]);if(active!==run)return await result;
       let previousThread;
       if(threadId){
         const read=await readThreadRecord(threadId);previousThread=read.thread;if(active!==run)return await result;
         await Promise.race([checkResume(threadId,previousThread),result.then(()=>{},()=>{})]);if(active!==run)return await result;
       }
       const config={default_permissions:permission==='workspace-write'?':workspace':':read-only','web_search':'disabled'};
-      const response=await request(threadId?'thread/resume':'thread/start',{...(threadId?{threadId,excludeTurns:true}:{ephemeral:false}),cwd:root,approvalPolicy:APPROVAL_POLICY,approvalsReviewer:'user',developerInstructions:RULES,config});
+      const response=await request(threadId?'thread/resume':'thread/start',{...(threadId?{threadId,excludeTurns:true}:{ephemeral:false,...(dynamicTools.length?{dynamicTools}:{})}),cwd:root,approvalPolicy:APPROVAL_POLICY,approvalsReviewer:'user',developerInstructions:instructions(),config});
       const thread=response?.thread;
       if(active!==run)return await result;
       if(!identifier(thread?.id)||threadId&&thread.id!==threadId||!boundedPath(thread.cwd,{directory:true})||realpathSync(thread.cwd)!==root)throw failure('thread_scope_mismatch');
       if(thread.status?.type==='active')throw failure('thread_busy');if(thread.status?.type==='systemError')throw failure('thread_failed');
       run.threadId=thread.id;
+      if(scope!=='files')toolThreads.add(thread.id);
       // 取消或超时不等待外部存储回调；回调晚到也不能重新提交已终止的任务。
-      await Promise.race([Promise.resolve().then(()=>onThread(thread.id,{created:!threadId})),result.then(()=>{},()=>{})]);if(active!==run)return await result;
+      await Promise.race([Promise.resolve().then(()=>onThread(thread.id,{created:!threadId,fileTools:run.fileTools})),result.then(()=>{},()=>{})]);if(active!==run)return await result;
+      if(run.fileTools)fileThreads.add(thread.id);
       if(threadId){await Promise.race([checkResume(threadId,thread,previousThread?.path),result.then(()=>{},()=>{})]);if(active!==run)return await result;}
       const sandboxPolicy=permission==='read-only'?{type:'readOnly',networkAccess:false}:{type:'workspaceWrite',writableRoots:[root],networkAccess:false,excludeTmpdirEnvVar:true,excludeSlashTmp:true};
       run.turnStarting=true;
@@ -286,6 +325,13 @@ export function createCodexRemote({cwd,codexPath,permission='read-only',onEvent=
   async function approve({approvalId,decision}={}) {
     const item=decisions.get(approvalId);if(!item||item.kind==='input'||item.run!==active||active?.cancelRequested)throw failure('stale_approval');
     if(!['accept','decline'].includes(decision))throw failure('invalid_decision');
+    if(item.kind==='proxy'){
+      clearTimeout(item.timer);decisions.delete(approvalId);
+      if(decision==='decline'){reply(item.rpcId,dynamicFailure('User declined this tool call.'));waiting();return true;}
+      const run=item.run,executor=tools;run.proxyReplies.add(item.rpcId);setState(decisions.size?'waiting':'working');
+      void Promise.resolve().then(()=>executor.execute(item.call,request,run)).then(result=>{if(active===run&&!run.done&&!run.cancelRequested&&run.proxyReplies.delete(item.rpcId)){reply(item.rpcId,result);waiting();}},()=>{if(active===run&&!run.done&&run.proxyReplies.delete(item.rpcId)){reply(item.rpcId,dynamicFailure('Tool execution failed. No automatic retry.'));waiting();}});
+      return true;
+    }
     clearTimeout(item.timer);decisions.delete(approvalId);try{write({id:item.rpcId,result:{decision}});}catch{disconnect('process_exited');throw failure('process_exited');}waiting();return true;
   }
   async function answer({inputId,answers}={}) {
@@ -296,6 +342,8 @@ export function createCodexRemote({cwd,codexPath,permission='read-only',onEvent=
   }
   async function close() {
     if(closed)return;closed=true;if(active)await stopRun(active);drainDecisions();
+    toolsController?.abort();toolsController=null;
+    const ownedTools=tools;tools=null;toolsPromise=null;await ownedTools?.close().catch(()=>{});
     const owned=child;if(owned)await new Promise(accept=>{
       // EOF给持久thread留出正常刷盘机会，只有超出上限才终止本次进程树。
       const timer=setTimeout(()=>{disconnect('closed',owned);accept();},1000);

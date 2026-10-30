@@ -6,6 +6,7 @@ import {mkdtempSync,writeFileSync,mkdirSync,symlinkSync,linkSync,unlinkSync,rmSy
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {createAcpRemote,reviewRemoteTool} from '../src/acp-remote.mjs';
+import {remoteToolScope} from '../src/remote-tool-policy.mjs';
 
 function fixture(t){const cwd=mkdtempSync(join(tmpdir(),'pet-acp-'));writeFileSync(join(cwd,'a.txt'),'original');t.after(()=>rmSync(cwd,{recursive:true,force:true}));return cwd;}
 function peer(handler=()=>{}){
@@ -107,3 +108,38 @@ test('startup banners are discarded only before the first protocol frame',async 
   const adapter=remote(cwd,connection,{allowStartupPreamble:true});t.after(()=>adapter.close());await adapter.ready();
   connection.child.stdout.write('unexpected protocol output\n');assert.equal(connection.child.exitCode,-1);
 });
+
+test('Shell与MCP默认关闭，启用后完整展示且拒绝扩权、后台、秘密和未选服务',t=>{
+  const cwd=fixture(t),shell={title:'Bash',rawInput:{command:'printf hello',timeout:1000}},mcp={title:'mcp__docs__search',rawInput:{query:'README'}};
+  assert.equal(reviewRemoteTool(cwd,'workspace-write',shell),null);assert.equal(reviewRemoteTool(cwd,'workspace-write',mcp),null);
+  const toolPolicy={shell:true,mcp:true,mcpServerIds:['docs']},command=reviewRemoteTool(cwd,'read-only',shell,{toolPolicy});
+  assert.equal(command.kind,'command');assert.match(command.summary,/printf hello/);assert.ok(command.summary.includes(cwd));assert.match(command.summary,/1000/);assert.equal(reviewRemoteTool(cwd,'read-only',mcp,{toolPolicy}).kind,'mcp');
+  for(const rawInput of [{command:'echo hidden',dangerouslyDisableSandbox:true},{command:'echo hidden',run_in_background:true},{command:'echo hidden',sandbox_permissions:'require_escalated'},{command:'echo hidden',cwd:'../'},{command:'echo hidden',extra:true},{command:'echo '+ 'x'.repeat(3000)}])assert.equal(reviewRemoteTool(cwd,'workspace-write',{title:'Bash',rawInput},{toolPolicy}),null);
+  assert.equal(reviewRemoteTool(cwd,'workspace-write',{title:'mcp__foreign__search',rawInput:{}},{toolPolicy}),null);
+  assert.equal(reviewRemoteTool(cwd,'workspace-write',{title:'mcp__docs__search',rawInput:{nested:{accessToken:'do-not-display'}}},{toolPolicy}),null);
+});
+
+test('启用工具的会话只恢复同一toolScope，旧files会话不会跟着提权',async t=>{
+  const cwd=fixture(t),toolPolicy={shell:true,mcp:false,mcpServerIds:[]},scope=remoteToolScope(toolPolicy),connection=peer();
+  const adapter=remote(cwd,connection,{toolPolicy,managedThreads:[{id:'old-files',cwd,permission:'read-only'},{id:'tool-session',cwd,permission:'read-only',toolScope:scope}]});t.after(()=>adapter.close());
+  assert.deepEqual((await adapter.listThreads()).items.map(item=>item.id),['tool-session']);assert.equal(adapter.toolScope,scope);assert.equal(adapter.capabilities.shell,true);await assert.rejects(adapter.prompt({text:'continue',threadId:'old-files'}),{code:'thread_not_managed'});
+});
+
+for(const tool of [{title:'Bash',rawInput:{command:'printf synthetic'}},{title:'mcp__docs__search',rawInput:{query:'synthetic'}}]){
+  test(tool.title+' 执行前必须逐次确认，拒绝/取消/超时不会调用工具',async t=>{
+    for(const action of ['accept','decline','cancel','timeout']){
+      const cwd=fixture(t);let approval,promptId,executions=0;
+      const connection=peer((frame,child)=>{
+        if(frame.method==='session/new')child.send({id:frame.id,result:{sessionId:'owned'}});
+        if(frame.method==='session/prompt'){promptId=frame.id;child.send({method:'session/update',params:{sessionId:'owned',update:{sessionUpdate:'tool_call',toolCallId:'tool-call',...tool}}});child.send({id:'tool-permission',method:'session/request_permission',params:{sessionId:'owned',toolCall:{toolCallId:'tool-call'},options:[{kind:'allow_always',optionId:'always'},{kind:'allow_once',optionId:'once'}]}});}
+        if(frame.id==='tool-permission'&&frame.result){if(frame.result.outcome.outcome==='selected')executions++;if(['accept','decline'].includes(action)){child.send({method:'session/update',params:{sessionId:'owned',update:{sessionUpdate:'agent_message_chunk',content:{type:'text',text:executions?'executed':'declined'}}}});child.send({id:promptId,result:{stopReason:'end_turn'}});}}
+        if(frame.method==='session/cancel')child.send({id:promptId,result:{stopReason:'cancelled'}});if(frame.method==='session/close')child.send({id:frame.id,result:{}});
+      });
+      const adapter=remote(cwd,connection,{toolPolicy:{shell:true,mcp:true,mcpServerIds:['docs']},mcpRevision:'synthetic-revision',approvalTimeoutMs:30,onEvent:event=>{if(event.type==='approval')approval=event;}});t.after(()=>adapter.close());
+      const result=adapter.prompt({text:'run'});while(!approval)await next();assert.equal(executions,0,'no execution before approval');assert.equal(approval.kind,tool.title==='Bash'?'command':'mcp');
+      if(action==='accept'||action==='decline')await adapter.approve({approvalId:approval.id,decision:action});else if(action==='cancel')await adapter.cancel();
+      if(action==='timeout')await assert.rejects(result,{code:'approval_timeout'});else await result;
+      assert.equal(executions,action==='accept'?1:0);await assert.rejects(adapter.approve({approvalId:approval.id,decision:'accept'}),{code:'stale_approval'});
+    }
+  });
+}

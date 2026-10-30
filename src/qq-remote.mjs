@@ -23,7 +23,7 @@ export function projectQQState(base,remote,locale='zh-CN'){
   return{...base,state:remote.state,activeCount:local+active,task:locale.startsWith('zh')?'正在处理 '+(app?app+' ':'')+'QQ 任务':'Processing '+(app?app+' ':'a ')+'QQ task'};
 }
 
-/** 本人QQ可选择本机授权项目与会话；正文只走Codex协议，不拼接shell。 */
+/** 本人QQ只能选择本机授权项目、会话与工具范围；消息正文不作为桥接命令执行。 */
 export async function createQQBridge({dataRoot,codexPath,codexHome=process.env.CODEX_HOME||join(homedir(),'.codex'),createTransport,createRemote,activityGate,onState=()=>{},seal=protectQQSecret,unseal=unprotectQQSecret,locale='zh-CN',now=Date.now,canStart=()=>true,application='codex',provider='official',modelSelection=true,managedSessionsOnly=false}={}) {
   if(!isAbsolute(dataRoot||''))fail('invalid_directory');
   if(!['codex','workbuddy','harness'].includes(application)||!['official','onebot'].includes(provider))fail('invalid_input');
@@ -38,7 +38,7 @@ export async function createQQBridge({dataRoot,codexPath,codexHome=process.env.C
   let connection={state:'stopped'},task={state:'idle'},lastMsgId,connectionEpoch=0;
   const attempts=new Map();
   const acceptsNew=()=>{try{return !disposed&&canStart()===true;}catch{return false;}};
-  const unavailable=()=>send(T('请先将桌宠联动应用切回 Codex，再发送新任务。','Select Codex as the companion app before sending a new task.'));
+  const unavailable=()=>send(T('所选任务应用 Codex 暂不可用，请检查安装、登录和 QQ 连接设置。','The selected task app, Codex, is unavailable. Check its installation, sign-in, and QQ connection settings.'));
   async function safeFiles(){
     await mkdir(dir,{recursive:true,mode:0o700});
     for(const path of [dataRoot,dir,file])try{if((await lstat(path)).isSymbolicLink())fail('linked_settings');}catch(e){if(e.code!=='ENOENT')throw e;}
@@ -67,7 +67,7 @@ export async function createQQBridge({dataRoot,codexPath,codexHome=process.env.C
     try{const result=await change();await persist();return result;}
     catch(error){config=before;catalog=createQQCatalog(config);pairing=beforePairing;knownThreads.clear();for(const id of config.threads)knownThreads.add(id);knownTurns.clear();for(const turn of config.turns)knownTurns.add(turn.threadId+':'+turn.turnId);throw error;}
   }
-  function state(){const project=catalog.current();return {application,provider,capabilities:{models:modelSelection,desktopSessions:!managedSessionsOnly},enabled:config.enabled,configured:!!((provider==='official'?config.appId:config.endpoint)&&config.secret&&config.cwd),appId:provider==='official'?config.appId:'',hasSecret:!!config.secret,connection:{...connection},paired:!!config.ownerId,project:project?{id:project.id,label:project.label,cwd:project.cwd,permission:project.permission,maxPermission:project.maxPermission}:{cwd:'',permission:'read-only',maxPermission:'read-only'},projects:catalog.list(),pairing:pairing&&pairing.expiresAt>now()?{code:pairing.code,expiresAt:new Date(pairing.expiresAt).toISOString()}:null,task:{...task},pendingReplies:config.outbox.length};}
+  function state(){return {application,provider,capabilities:{models:modelSelection,desktopSessions:!scopedSessionsOnly()},enabled:config.enabled,configured:!!((provider==='official'?config.appId:config.endpoint)&&config.secret&&config.cwd),appId:provider==='official'?config.appId:'',hasSecret:!!config.secret,connection:{...connection},paired:!!config.ownerId,project:catalog.view()||{cwd:'',permission:'read-only',maxPermission:'read-only'},projects:catalog.list(),pairing:pairing&&pairing.expiresAt>now()?{code:pairing.code,expiresAt:new Date(pairing.expiresAt).toISOString()}:null,task:{...task},pendingReplies:config.outbox.length};}
   function emit(value){task={state:STATES.has(value)?value:'error'};try{onState({...task,activeCount:['thinking','working','waiting','result'].includes(task.state)?1:0,threadId:config.threadId||undefined});}catch{}}
   function clearPending(clearQueue=true){clearTimeout(expiry);expiry=null;approval=null;input=null;if(clearQueue)decisionQueue.length=0;}
   async function deliver(entry,{replyTo=lastMsgId}={}){
@@ -89,16 +89,25 @@ export async function createQQBridge({dataRoot,codexPath,codexHome=process.env.C
   const permissionText=value=>value==='workspace-write'?T('可修改项目','Can edit project'):T('只读','Read only');
   const selectedTitle=()=>catalog.selected()?.title||T('未命名会话','Untitled conversation');
   const modeText=value=>({auto:T('自动','Auto'),chat:T('聊天','Chat'),task:T('任务','Task')})[value];
-  const contextText=()=>T('应用：','App: ')+label+'\n'+T('项目：','Project: ')+(catalog.current()?.label||T('未选择','None'))+'\n'+T('会话：','Conversation: ')+(config.threadId?selectedTitle():T('下一条消息新建','New on next message'))+'\n'+T('权限：','Permission: ')+permissionText(config.permission)+'\n'+T('模式：','Mode: ')+modeText(config.execution.mode)+(config.lastExecution?'\n'+T('最近模型：','Last model: ')+(config.lastExecution.model||T('由应用决定','App default'))+(config.lastExecution.effort?' · '+config.lastExecution.effort:''):'');
+  const toolsText=()=>{const p=catalog.current()?.toolPolicy;return'Shell: '+(p?.shell?T('开启 · 逐次确认','On · approve each call'):T('关闭','Off'))+'\nMCP: '+(p?.mcp?p.mcpServerIds.length+T(' 项 · 逐次确认',' selected · approve each call'):T('关闭','Off'));};
+  const legacyText=()=>application==='codex'&&config.threadId&&catalog.selected()?.fileTools!==true?T('\n此会话仅文字续聊；文件任务请用 /新建 创建 QQ 会话。','\nThis conversation supports text continuation. Use /new for file tasks.'):'';
+  const contextText=()=>T('应用：','App: ')+label+'\n'+T('项目：','Project: ')+(catalog.current()?.label||T('未选择','None'))+'\n'+T('会话：','Conversation: ')+(config.threadId?selectedTitle():T('下一条消息新建','New on next message'))+'\n'+T('权限：','Permission: ')+permissionText(config.permission)+'\n'+toolsText()+'\n'+T('模式：','Mode: ')+modeText(config.execution.mode)+(config.lastExecution?'\n'+T('最近模型：','Last model: ')+(config.lastExecution.model||T('由应用决定','App default'))+(config.lastExecution.effort?' · '+config.lastExecution.effort:''):'')+legacyText();
+  function toolFailure(error){
+    const aliases={mcp_source_changed:'mcp_config_changed',mcp_catalog_unavailable:'mcp_unavailable',mcp_server_unavailable:'mcp_unavailable',shell_approval_unavailable:'shell_unavailable',tool_scope_mismatch:'thread_tool_scope_mismatch',thread_not_managed:'thread_tool_scope_mismatch'};
+    return({mcp_config_changed:T('MCP 配置已变化，请在电脑的 QQ 设置中重新选择并保存。','MCP configuration changed. Review and save it in QQ settings on your computer.'),mcp_unavailable:T('所选 MCP 服务不可用，请在电脑端检查连接。','A selected MCP server is unavailable. Check its connection on your computer.'),shell_unavailable:T('命令执行环境不可用，请在电脑端检查当前应用。','The command environment is unavailable. Check the app on your computer.'),thread_tool_scope_mismatch:T('这个会话的工具权限与当前设置不同，请新建会话。','This conversation has different tool permissions. Create a new conversation.')})[aliases[error?.code]||error?.code];
+  }
   const isBusy=async()=>{if(!running)return false;await send(T('当前任务仍在执行；发送 /状态 或 /取消。','A task is running. Send /status or /cancel.'));return true;};
   function invalidateLists(){projectListing=null;sessionListing=null;modelCache=null;modelListing=null;pendingExecution=null;}
+  function toolOptions(){const p=catalog.current();return{toolPolicy:p?.toolPolicy,toolScope:p?.toolScope||'files',mcpSourcePath:p?.mcpSourcePath||undefined,mcpRevision:p?.mcpRevision||undefined};}
+  function scopedSessionsOnly(){return managedSessionsOnly||(catalog.current()?.toolScope||'files')!=='files';}
+  function sameToolSession(session){return(session.toolScope||'files')===(catalog.current()?.toolScope||'files')&&(!scopedSessionsOnly()||session.permission===config.permission);}
   async function withCatalog(action){
     if(!acceptsNew())fail('host_unavailable');await catalog.check();
     const factory=createRemote||(await import('./codex-remote.mjs')).createCodexRemote;
-    const client=await factory({codexPath,cwd:config.cwd,permission:config.permission,managedThreads:managedMetadata()});
+    const client=await factory({codexPath,cwd:config.cwd,permission:config.permission,managedThreads:managedMetadata(),...toolOptions()});
     try{return await action(client);}finally{await client.close().catch(()=>{});}
   }
-  function managedMetadata(){return config.sessions.filter(s=>s.projectId===catalog.current()?.id&&s.source==='qq'&&s.permission===config.permission).map(s=>({id:s.id,title:s.title,cwd:config.cwd,permission:s.permission,updatedAt:Number.isSafeInteger(s.updatedAt)?s.updatedAt:0}));}
+  function managedMetadata(){return config.sessions.filter(s=>s.projectId===catalog.current()?.id&&s.source==='qq'&&sameToolSession(s)).map(s=>({id:s.id,title:s.title,cwd:config.cwd,permission:s.permission,toolScope:s.toolScope||'files',fileTools:s.fileTools===true,updatedAt:Number.isSafeInteger(s.updatedAt)?s.updatedAt:0}));}
   function trimThreads(){while(knownThreads.size>256)knownThreads.delete(knownThreads.values().next().value);config.threads=[...knownThreads];}
   async function models(force=false){
     if(!force&&modelCache&&modelCache.projectId===catalog.current()?.id&&now()-modelCache.at<5*60_000)return modelCache.items;
@@ -141,7 +150,7 @@ export async function createQQBridge({dataRoot,codexPath,codexHome=process.env.C
       if(Object.keys(body).some(k=>!['action','projectId'].includes(k))||!identity(body.projectId))fail('invalid_input');
       await commitChange(async()=>{if(body.action==='project-select')await catalog.select(body.projectId);else catalog.remove(body.projectId);invalidateLists();});emit('idle');return state();
     }
-    const allowed=provider==='onebot'?['action','endpoint','accessToken','cwd','permission','enabled']:['action','appId','appSecret','cwd','permission','enabled'];
+    const allowed=[...(provider==='onebot'?['action','endpoint','accessToken','cwd','permission','enabled']:['action','appId','appSecret','cwd','permission','enabled']),'toolPolicy','mcpSourcePath','mcpRevision'];
     if(body.action!=='save'||Object.keys(body).some(k=>!allowed.includes(k)))fail('invalid_input');
     if((provider==='official'?!/^\d{3,32}$/.test(body.appId||''):body.endpoint!=='ws://127.0.0.1:17630/')||typeof body.enabled!=='boolean'||!['read-only','workspace-write'].includes(body.permission)||!isAbsolute(body.cwd||''))fail('invalid_input');
     const cwd=await realpath(body.cwd).catch(()=>fail('invalid_directory'));
@@ -152,7 +161,7 @@ export async function createQQBridge({dataRoot,codexPath,codexHome=process.env.C
     if((changedApp||!config.secret)&&!supplied)fail('secret_required');
     if(supplied&&!/^[A-Za-z0-9_-]{6,256}$/.test(supplied))fail('invalid_input');
     const secret=supplied?await seal(supplied):config.secret;
-    await commitChange(async()=>{await catalog.register(cwd,body.permission);if(managedSessionsOnly&&catalog.selected()?.permission!==config.permission)catalog.newSelection();if(changedApp){config.ownerId=null;config.seen=[];config.outbox=[];pairing=null;catalog.clearSelections();}Object.assign(config,{...(provider==='official'?{appId:body.appId}:{endpoint:body.endpoint}),secret,enabled:body.enabled});invalidateLists();if(beforeSave)await beforeSave();});
+    await commitChange(async()=>{await catalog.register(cwd,body.permission);if(body.toolPolicy!==undefined)catalog.setTools(body.toolPolicy,{sourcePath:body.mcpSourcePath,revision:body.mcpRevision});if(scopedSessionsOnly()&&catalog.selected()&&!sameToolSession(catalog.selected()))catalog.newSelection();if(changedApp){config.ownerId=null;config.seen=[];config.outbox=[];pairing=null;catalog.clearSelections();}Object.assign(config,{...(provider==='official'?{appId:body.appId}:{endpoint:body.endpoint}),secret,enabled:body.enabled});invalidateLists();if(beforeSave)await beforeSave();});
     void connect();return state();
   }
   async function handleEvent(event,token){
@@ -190,9 +199,9 @@ export async function createQQBridge({dataRoot,codexPath,codexHome=process.env.C
       emit('thinking');
       if(cancelRequested){emit('idle');await sendTask(T('任务已取消。','Task cancelled.'),{durable:true});return;}
       const factory=createRemote||(await import('./codex-remote.mjs')).createCodexRemote;
-      remote=await factory({codexPath,cwd:config.cwd,permission:config.permission,managedThreads:managedMetadata(),
-        beforeResume:async(threadId,metadata)=>{if(!catalog.session(threadId))return undefined;await catalog.check();return application==='codex'?threadGuard({threadId,...metadata,cwd:config.cwd}):true;},
-        onThread:async(threadId,metadata)=>{if(token!==generation||!identity(threadId))fail('invalid_thread');const previous=catalog.session(threadId);const saved=catalog.remember(threadId,{source:previous?.source||'qq',title:metadata?.title||''});saved.lastKind=execution.kind;saved.updatedAt=now();if(config.job)Object.assign(config.job.context,{threadId,title:selectedTitle()});if(metadata?.created!==false&&!previous){knownThreads.add(threadId);trimThreads();}await persist();},
+      remote=await factory({codexPath,cwd:config.cwd,permission:config.permission,managedThreads:managedMetadata(),...toolOptions(),
+        beforeResume:async(threadId,metadata)=>{const saved=catalog.session(threadId);if(!saved||!sameToolSession(saved))return undefined;await catalog.check();return application==='codex'?threadGuard({threadId,...metadata,cwd:config.cwd}):true;},
+        onThread:async(threadId,metadata)=>{if(token!==generation||!identity(threadId))fail('invalid_thread');const previous=catalog.session(threadId);const saved=catalog.remember(threadId,{source:previous?.source||'qq',title:metadata?.title||'',...(typeof metadata?.fileTools==='boolean'?{fileTools:metadata.fileTools}:{})});saved.lastKind=execution.kind;saved.updatedAt=now();if(config.job)Object.assign(config.job.context,{threadId,title:selectedTitle()});if(metadata?.created!==false&&!previous){knownThreads.add(threadId);trimThreads();}await persist();},
         onTurn:async(threadId,turnId)=>{if(token!==generation||cancelRequested||!identity(threadId)||!identity(turnId))fail('invalid_thread');config.lastExecution={kind:execution.kind,model:execution.model,effort:execution.effort};const key=threadId+':'+turnId;knownTurns.add(key);config.turns.push({threadId,turnId});while(config.turns.length>512){const removed=config.turns.shift();knownTurns.delete(removed.threadId+':'+removed.turnId);}await persist();},
         onEvent:event=>handleEvent(event,token)});
       if(cancelRequested){emit('idle');await sendTask(T('任务已取消。','Task cancelled.'),{durable:true});return;}
@@ -203,7 +212,7 @@ export async function createQQBridge({dataRoot,codexPath,codexHome=process.env.C
       if(result.status==='completed'){emit('result');await sendTask(result.text||T('任务完成。','Task completed.'),{durable:true});emit('success');}
       else if(result.status==='interrupted'||result.status==='cancelled'){await sendTask(T('任务已取消。','Task cancelled.'),{durable:true});emit('idle');}
       else{await sendTask(T('任务未完成，请检查 Codex 后重试。','Task did not finish. Check Codex before retrying.'),{durable:true});emit('error');}
-    }).catch(async error=>{clearPending();emit('error');const text=error.code==='thread_busy'?T('这个会话正在执行任务，请等电脑端结束后再发。','This conversation is busy. Wait for its task to finish.'):error.code==='thread_state_unknown'?T('暂时无法确认这个会话是否空闲，本次没有发送任务。','Could not confirm that this conversation is idle. No task was sent.'):T('Codex 未能完成本次任务，没有自动重试。','Codex could not finish the task. It was not retried.');await sendTask(text,{durable:true});}).finally(async()=>{
+    }).catch(async error=>{clearPending();emit('error');const text=toolFailure(error)||(error.code==='thread_busy'?T('这个会话正在执行任务，请等电脑端结束后再发。','This conversation is busy. Wait for its task to finish.'):error.code==='thread_state_unknown'?T('暂时无法确认这个会话是否空闲，本次没有发送任务。','Could not confirm that this conversation is idle. No task was sent.'):T('Codex 未能完成本次任务，没有自动重试。','Codex could not finish the task. It was not retried.'));await sendTask(text,{durable:true});}).finally(async()=>{
       try{await remote?.close().catch(()=>{});config.job=null;await persist();}catch{connection={state:'error',code:'storage_failed'};}finally{remote=null;releaseGate?.();releaseGate=null;running=null;}
     });
     pendingExecution=null;return true;
@@ -272,10 +281,11 @@ export async function createQQBridge({dataRoot,codexPath,codexHome=process.env.C
     if(next&&(!listFresh(sessionListing)||!sessionListing.nextCursor))return send(T('没有下一页，请发送 /会话 重新查看。','No next page. Send /sessions to refresh.'));
     const project=catalog.current(),previous=sessionListing,searchTerm=next?previous.search:search,needle=searchTerm.toLocaleLowerCase();
     // 新空会话尚未进入官方列表；本机受管记录只提供ID线索，展示前仍逐条读取真实元数据。
-    const listing=next?{...previous,items:[],localQueue:[...previous.localQueue],remaining:[...previous.remaining],seen:new Set(previous.seen),serverCursors:new Set(previous.serverCursors)}:{projectId:project.id,at:now(),items:[],search:searchTerm,localQueue:config.sessions.filter(item=>item.projectId===project.id&&item.source==='qq'&&(!managedSessionsOnly||item.permission===config.permission)).slice(-256).reverse().map(item=>({id:item.id,title:item.title})),remaining:[],serverCursor:null,serverExhausted:false,serverCursors:new Set(),seen:new Set(),limited:false};
+    const listing=next?{...previous,items:[],localQueue:[...previous.localQueue],remaining:[...previous.remaining],seen:new Set(previous.seen),serverCursors:new Set(previous.serverCursors)}:{projectId:project.id,at:now(),items:[],search:searchTerm,localQueue:config.sessions.filter(item=>item.projectId===project.id&&item.source==='qq'&&sameToolSession(item)).slice(-256).reverse().map(item=>({id:item.id,title:item.title})),remaining:[],serverCursor:null,serverExhausted:false,serverCursors:new Set(),seen:new Set(),limited:false};
     const titleOf=item=>catalog.session(item.id)?.title||cleanTitle(item.title)||T('未命名会话','Untitled conversation');
     async function validated(item,expectedId){
       if(!item||!identity(item.id)||expectedId&&item.id!==expectedId||!isAbsolute(item.cwd||'')||!['idle','notLoaded','active','systemError'].includes(item.status)||!Number.isSafeInteger(item.updatedAt)||item.updatedAt<0)return null;
+      const known=catalog.session(item.id);if(known&&!sameToolSession(known))return null;
       const declared=resolve(item.cwd),expected=resolve(project.cwd);if(process.platform==='win32'?declared.toLowerCase()!==expected.toLowerCase():declared!==expected)return null;
       const canonical=await realpath(item.cwd).catch(()=>null);if(!canonical||(process.platform==='win32'?canonical.toLowerCase()!==project.cwd.toLowerCase():canonical!==project.cwd))return null;
       return{id:item.id,title:cleanTitle(item.title),cwd:project.cwd,status:item.status,updatedAt:item.updatedAt};
@@ -297,7 +307,7 @@ export async function createQQBridge({dataRoot,codexPath,codexHome=process.env.C
       // 官方首屏被本地条目挤出的部分留在remaining，下页先消费，不能直接跳到官方下一游标。
       while(!listing.serverExhausted&&!listing.limited&&(listing.items.length<10||listing.remaining.length===0)&&reads++<32){
         const cursor=listing.serverCursor,key=cursor??'<first>';if(listing.serverCursors.has(key))fail('invalid_thread');if(listing.serverCursors.size>=2048){listing.limited=true;break;}listing.serverCursors.add(key);
-        const result=managedSessionsOnly?{items:[],nextCursor:null}:await client.listThreads({...(cursor?{cursor}:{}),...(searchTerm?{search:searchTerm}:{})});
+        const result=scopedSessionsOnly()?{items:[],nextCursor:null}:await client.listThreads({...(cursor?{cursor}:{}),...(searchTerm?{search:searchTerm}:{})});
         if(!result||!Array.isArray(result.items)||result.items.length>10||result.nextCursor!=null&&(typeof result.nextCursor!=='string'||!result.nextCursor||result.nextCursor.length>2048||/[\u0000-\u001f\u007f]/.test(result.nextCursor)))fail('invalid_thread');
         listing.serverCursor=result.nextCursor??null;listing.serverExhausted=!listing.serverCursor;
         for(const item of result.items)retain(await validated(item));
@@ -305,13 +315,14 @@ export async function createQQBridge({dataRoot,codexPath,codexHome=process.env.C
       }
     });
     listing.at=now();listing.nextCursor=!listing.limited&&(listing.localQueue.length>0||listing.remaining.length>0||!listing.serverExhausted);sessionListing=listing;
-    const rows=listing.items.map((item,index)=>{const busy=item.status==='active'?T(' · 执行中',' · Busy'):'';return `${index+1}. ${item.id===config.threadId?'● ':''}${titleOf(item)}${busy}`;});
+    const rows=listing.items.map((item,index)=>{const busy=item.status==='active'?T(' · 执行中',' · Busy'):'',legacy=application==='codex'&&catalog.session(item.id)?.fileTools!==true?T(' · 文字续聊',' · Text continuation'):'';return `${index+1}. ${item.id===config.threadId?'● ':''}${titleOf(item)}${busy}${legacy}`;});
     const empty=listing.nextCursor?T('本页暂无新会话，可继续下一页。','No new conversations on this page. Continue to the next page.'):T('暂无会话，可用 /新建 名称 创建。','No conversations. Use /new name.');
     await send(T('项目：','Project: ')+project.label+'\n'+(rows.length?rows.join('\n'):empty)+(listing.nextCursor?T('\n/会话 下一页','\n/sessions next'):'')+(listing.limited?T('\n会话较多，请用 /会话 搜索 名称 缩小范围。','\nMany conversations match. Use /sessions search name to narrow the list.'):''));
   }
   async function selectSession(number,{announce=true}={}){
     if(!listFresh(sessionListing)||!Number.isInteger(number)||number<1||number>sessionListing.items.length)fail('stale_list');
     const listed=sessionListing.items[number-1];
+    const saved=catalog.session(listed.id);if(saved&&!sameToolSession(saved)||scopedSessionsOnly()&&!saved)fail('thread_tool_scope_mismatch');
     const latest=await withCatalog(client=>client.readThread({threadId:listed.id}));
     if(!latest||latest.id!==listed.id||resolve(latest.cwd)!==resolve(config.cwd))fail('thread_scope_mismatch');
     if(latest.status==='active')fail('thread_busy');
@@ -333,8 +344,8 @@ export async function createQQBridge({dataRoot,codexPath,codexHome=process.env.C
         else{const index=Number(arg)-1;if(!/^\d+$/.test(arg)||!projectListing||now()-projectListing.at>=5*60_000||!projectListing.ids[index])fail('stale_list');await commitChange(async()=>{await catalog.select(projectListing.ids[index]);invalidateLists();});emit('idle');await send(contextText());}return true;
       }
       if(permissions){
-        if(arg){const value=/^(?:只读|read-only|readonly)$/i.test(arg)?'read-only':/^(?:编辑|修改|edit|workspace-write)$/i.test(arg)?'workspace-write':null;if(!value)fail('invalid_permission');await catalog.check();await commitChange(()=>{catalog.setPermission(value);if(managedSessionsOnly&&catalog.selected()?.permission!==value){catalog.newSelection();invalidateLists();}});}
-        await send(T('当前权限：','Current permission: ')+permissionText(config.permission)+'\n'+T('电脑授权上限：','Computer-authorized limit: ')+permissionText(catalog.current()?.maxPermission));return true;
+        if(arg){const value=/^(?:只读|read-only|readonly)$/i.test(arg)?'read-only':/^(?:编辑|修改|edit|workspace-write)$/i.test(arg)?'workspace-write':null;if(!value)fail('invalid_permission');await catalog.check();await commitChange(()=>{catalog.setPermission(value);if(scopedSessionsOnly()&&catalog.selected()?.permission!==value){catalog.newSelection();invalidateLists();}});}
+        await send(T('当前权限：','Current permission: ')+permissionText(config.permission)+'\n'+T('电脑授权上限：','Computer-authorized limit: ')+permissionText(catalog.current()?.maxPermission)+'\n'+toolsText());return true;
       }
       if(sessions){
         if(/^\d+$/.test(arg))await selectSession(Number(arg));
@@ -343,7 +354,7 @@ export async function createQQBridge({dataRoot,codexPath,codexHome=process.env.C
         else{const search=arg.replace(/^(?:搜索|search)\s+/i,'');if(search.length>80)fail('invalid_input');await listSessions({search});}return true;
       }
       if(fresh){
-        if(arg.length>80)fail('invalid_input');await commitChange(async()=>{const title=cleanTitle(arg),thread=await withCatalog(client=>client.createThread(title?{title}:{}));if(!thread||!identity(thread.id))fail('invalid_thread');catalog.remember(thread.id,{title:title||cleanTitle(thread.title),source:'qq'});knownThreads.add(thread.id);trimThreads();sessionListing=null;});emit('idle');await send(T('已创建会话：','Created: ')+selectedTitle()+'\n'+T('项目：','Project: ')+catalog.current().label);return true;
+        if(arg.length>80)fail('invalid_input');await commitChange(async()=>{const title=cleanTitle(arg),thread=await withCatalog(client=>client.createThread(title?{title}:{}));if(!thread||!identity(thread.id))fail('invalid_thread');catalog.remember(thread.id,{title:title||cleanTitle(thread.title),source:'qq',...(typeof thread.fileTools==='boolean'?{fileTools:thread.fileTools}:{})});knownThreads.add(thread.id);trimThreads();sessionListing=null;});emit('idle');await send(T('已创建会话：','Created: ')+selectedTitle()+'\n'+T('项目：','Project: ')+catalog.current().label);return true;
       }
       if(taskCommand){
         const target=arg.match(/^(\d+)\s+([\s\S]+)$/);if(target){await selectSession(Number(target[1]),{announce:false});await run(target[2],messageId,{taskCommand:true});}
@@ -352,9 +363,9 @@ export async function createQQBridge({dataRoot,codexPath,codexHome=process.env.C
     }catch(error){await commandFailure(error);}return true;
   }
   async function commandFailure(error){
-    const messages={stale_list:T('列表已过期或序号无效，请先重新查看 /项目 或 /会话。','The list expired or that number is invalid. Refresh /projects or /sessions.'),permission_limit:T('电脑只授权了只读访问。需要修改时，请先在电脑的 QQ 设置中允许。','Your computer permits read-only access. Allow edits in its QQ settings first.'),invalid_permission:T('可选权限：只读、编辑。','Available permissions: read-only, edit.'),invalid_directory:T('项目文件夹不可用，请在电脑的 QQ 设置中重新选择。','The project folder is unavailable. Choose it again in QQ settings.'),thread_busy:T('这个会话正在执行任务，请等电脑端结束后再选。','This conversation is busy. Wait for its task to finish.'),host_unavailable:T('请先将桌宠联动应用切回 Codex。','Select Codex as the companion app first.')};
+    const messages={stale_list:T('列表已过期或序号无效，请先重新查看 /项目 或 /会话。','The list expired or that number is invalid. Refresh /projects or /sessions.'),permission_limit:T('电脑只授权了只读访问。需要修改时，请先在电脑的 QQ 设置中允许。','Your computer permits read-only access. Allow edits in its QQ settings first.'),invalid_permission:T('可选权限：只读、编辑。','Available permissions: read-only, edit.'),invalid_directory:T('项目文件夹不可用，请在电脑的 QQ 设置中重新选择。','The project folder is unavailable. Choose it again in QQ settings.'),thread_busy:T('这个会话正在执行任务，请等电脑端结束后再选。','This conversation is busy. Wait for its task to finish.'),host_unavailable:T('所选任务应用 Codex 暂不可用，请检查安装、登录和 QQ 连接设置。','The selected task app, Codex, is unavailable. Check its installation, sign-in, and QQ connection settings.')};
     Object.assign(messages,{catalog_unavailable:T('模型目录暂不可用，请发送 /模型 重试。','The model catalog is unavailable. Send /models to retry.'),model_unavailable:T('这个模型当前不可用，请发送 /模型 重新选择。','That model is unavailable. Send /models to choose again.'),unsupported_effort:T('当前模型不支持这个思考档位，请重新选择。','This model does not support that reasoning effort.'),stale_choice:T('待选择的消息已过期或项目会话已变化，请重新发送。','That choice expired or its project or conversation changed. Send the message again.'),invalid_mode:T('可选模式：自动、聊天、任务。','Available modes: auto, chat, task.'),invalid_model:T('用法：/模型 聊天 2，或 /模型 任务 1。','Use /model chat 2 or /model task 1.'),invalid_effort:T('用法：/思考 聊天 low，或 /思考 任务 high。','Use /effort chat low or /effort task high.')});
-    await send(messages[error?.code]||T('操作未完成，请重试或发送 /帮助。','That operation did not finish. Try again or send /help.'));
+    await send(messages[error?.code]||toolFailure(error)||T('操作未完成，请重试或发送 /帮助。','That operation did not finish. Try again or send /help.'));
   }
   // 收信先持久去重，控制命令在正在执行的任务之外处理，以便随时取消或审批。
   async function acceptMessage(message){
@@ -392,5 +403,6 @@ export async function createQQBridge({dataRoot,codexPath,codexHome=process.env.C
   const receive=message=>serial(()=>acceptMessage(message));
   async function dispose(){disposed=true;cancelRequested=true;connectionEpoch++;clearPending();pairing=null;transport?.stop();transport=null;await remote?.cancel().catch(()=>{});await remote?.close().catch(()=>{});await running?.catch(()=>{});await writes.catch(()=>{});}
   const pause=()=>serial(async()=>{if(running)fail('busy');connectionEpoch++;transport?.stop();transport=null;connection={state:'stopped'};});
-  return {state,configure:body=>serial(()=>applyConfig(body)),configureWithCommit:(body,commit)=>serial(()=>applyConfig(body,commit)),receive,start:connect,pause,dispose,isOwner:id=>Boolean(config.ownerId&&config.ownerId===id),ownsThread:id=>knownThreads.has(id),ownsTurn:(threadId,turnId)=>identity(turnId)&&knownTurns.has(threadId+':'+turnId),idle:async()=>{await requests;await running;await writes;}};
+  const projectTools=cwd=>{const p=config.projects.find(p=>(process.platform==='win32'?p.cwd.toLowerCase()===cwd.toLowerCase():p.cwd===cwd));return p?{toolPolicy:p.toolPolicy,toolScope:p.toolScope||'files',mcpSourcePath:p.mcpSourcePath||undefined,mcpRevision:p.mcpRevision||undefined}:{};};
+  return {state,projectTools,configure:body=>serial(()=>applyConfig(body)),configureWithCommit:(body,commit)=>serial(()=>applyConfig(body,commit)),receive,start:connect,pause,dispose,isOwner:id=>Boolean(config.ownerId&&config.ownerId===id),ownsThread:id=>knownThreads.has(id),ownsTurn:(threadId,turnId)=>identity(turnId)&&knownTurns.has(threadId+':'+turnId),idle:async()=>{await requests;await running;await writes;}};
 }

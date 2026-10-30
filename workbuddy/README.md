@@ -32,11 +32,17 @@ To remove the hook, use the same arguments with `workbuddy/uninstall.ps1`. Other
 
 卸载时使用相同参数运行 `workbuddy/uninstall.ps1`。脚本只移除本插件；同一市场还有其它插件时保留市场登记，插件数据也保留。市场名称被别的目录占用，或已登记脚本被修改时，安装停止并保留原文件。
 
+## QQ tasks / QQ 任务
+
+Choose **WorkBuddy** in Codex Pet's **QQ connection** window to send private text tasks through an official bot or a NapCat QQ account. WorkBuddy uses its own native conversations and account. Shell and MCP are separate, initially disabled options for each project; each command or MCP call asks for approval. Shell requires Git Bash and runs as the current Windows user. See the [QQ guide](../README.md#tasks-from-qq) for pairing and commands.
+
+在桌宠「QQ 连接」中选择 WorkBuddy，可通过官方机器人或 NapCat 小号提交私聊文字任务。任务使用 WorkBuddy 自己的原生会话与账号。文件权限、Shell 和 MCP 分开设置，后两项默认关闭；具体命令和 MCP 调用逐次确认。Shell 需要 Git Bash，按当前 Windows 用户身份执行。绑定及命令见 [QQ 使用说明](../README.zh-CN.md#在-qq-里下任务)。桌宠内原有的独立聊天和文件任务入口仍关闭。
+
 ## 接入约定
 
 用途：维护本模块的 Hook、安装和宿主接线；维护者：项目维护者。适用版本：Windows WorkBuddy 5.9.3，内置 `@genie/agent-cli` 2.165.0；核对日期：2026-10-29。
 
-- 插件格式为 `.codebuddy-plugin/plugin.json` 和 `hooks/hooks.json`。实际客户端支持直接 `powershell.exe -File`；脚本使用 UTF-8 BOM，兼容 Windows PowerShell 5.1，不要求额外安装 Git Bash 或 PowerShell 7。
+- 插件格式为 `.codebuddy-plugin/plugin.json` 和 `hooks/hooks.json`。实际客户端支持直接 `powershell.exe -File`；脚本使用 UTF-8 BOM，兼容 Windows PowerShell 5.1。该 Hook 接入不要求额外安装 Git Bash 或 PowerShell 7；QQ Shell 的前提单独见上节。
 - `CODEBUDDY_CONVERSATION_REQUEST_ID` 区分回合；同一会话旧回合的结束不能覆盖新回合。子代理 Hook 的 `session_id` 可能是父会话 ID，环境中的 `CODEBUDDY_SESSION_ID` 是实际会话 ID，二者不同时过滤。审批按 `call_id` 保留等待；`elicitation_id` 映射为同一传输字段 `callId`，只有对应决定或结果才清理，避免并行工具覆盖等待状态。
 - `Stop` 可能被其它 Hook 续跑，只进入整理结果；`FinalStop` 的 `completed` 才表示本轮返回，`failed` 表示失败，`cancelled` 和 `interrupted` 回待机。工具失败可能继续重试，不等于整项任务失败。`SessionEnd` 可不带回合 ID，按明确会话关闭处理，保留时间顺序校验。
 - `createWorkBuddyBridge({onChange, locale})` 位于 `src/workbuddy-events.mjs`，提供 `accept(body)`、`snapshot()`、`hostClosed()` 和 `dispose()`。回调给出 `{state, task, activeCount, source:'workbuddy'}`；通知只含固定文案和内存中的来源会话 ID。宿主确认 WorkBuddy 进程全部退出时调用 `hostClosed()`，最小化、失焦和长任务无事件不作为退出。

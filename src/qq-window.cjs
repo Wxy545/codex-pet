@@ -4,7 +4,7 @@ const fs=require('node:fs/promises');
 const {pathToFileURL}=require('node:url');
 const L=require('./codex-locale.cjs');
 const API='/dsh-pet-7340/qq-remote';
-const CHANNELS=Object.freeze({open:'codex-qq:open',state:'codex-qq:state',directory:'codex-qq:directory',save:'codex-qq:save',action:'codex-qq:action',project:'codex-qq:project',platform:'codex-qq:platform',copyPairing:'codex-qq:copy-pairing',prepareNapCat:'codex-qq:napcat-prepare',openNapCatLogin:'codex-qq:napcat-login'});
+const CHANNELS=Object.freeze({open:'codex-qq:open',state:'codex-qq:state',directory:'codex-qq:directory',save:'codex-qq:save',action:'codex-qq:action',project:'codex-qq:project',platform:'codex-qq:platform',copyPairing:'codex-qq:copy-pairing',prepareNapCat:'codex-qq:napcat-prepare',openNapCatLogin:'codex-qq:napcat-login',getMcpCatalog:'codex-qq:mcp-catalog',chooseMcpSource:'codex-qq:mcp-source'});
 const text=(zh,en)=>L.getLocale()==='zh-CN'?zh:en;
 const ERRORS={
  unauthorized:['此窗口不能执行这项操作。','This window cannot perform that action.'],
@@ -30,6 +30,16 @@ const ERRORS={
  profile_prepare_failed:['任务环境未能准备完成，请检查网络后重试。','The task environment could not be prepared. Check your connection and retry.'],
  profile_prepare_timeout:['准备任务环境超时，当前连接已保留。','Task environment setup timed out. Your current connection was kept.'],
  pnpm_unavailable:['Harness 的本机依赖工具不可用，请先完成其安装。','The local Harness package tool is unavailable. Finish its installation first.'],
+ invalid_tool_policy:['工具权限不完整，请重新选择。','The tool permissions are incomplete. Choose them again.'],
+ mcp_catalog_changed:['MCP 服务目录已变化，请刷新后重新选择。','The MCP server list changed. Refresh it and choose again.'],
+ mcp_catalog_unavailable:['暂时无法读取 MCP 服务，请重试或选择本机配置文件。','MCP servers could not be read. Retry or choose a local configuration file.'],
+ stale_mcp_catalog:['MCP 服务目录已过期，请刷新后重新选择。','The MCP server list expired. Refresh it and choose again.'],
+ mcp_config_changed:['MCP 配置已变化，请刷新后重新选择。','The MCP configuration changed. Refresh it and choose again.'],
+ mcp_source_changed:['MCP 配置文件已变化，请刷新后重新选择。','The MCP configuration file changed. Refresh it and choose again.'],
+ mcp_server_unavailable:['所选 MCP 服务当前不可用，请刷新后重新选择。','The selected MCP server is unavailable. Refresh the list and choose again.'],
+ shell_unavailable:['所选应用当前无法使用命令执行，请关闭此项后重试。','Command execution is unavailable in the selected app. Turn it off and retry.'],
+ shell_approval_unavailable:['命令无法逐次确认，本次未执行。','The command could not request one-time approval and was not run.'],
+ tool_scope_mismatch:['工具权限已变化，请新建或重新选择会话。','Tool permissions changed. Create or choose a conversation again.'],
  invalid_login_url:['登录窗口暂时无法打开，请重新准备小号连接。','The sign-in window could not be opened. Set up the QQ account connection again.'],
  napcat_login_timeout:['小号登录页未能及时启动，请重试。','The QQ sign-in page did not start in time. Try again.'],
  cancelled:['已取消。','Cancelled.'],
@@ -41,12 +51,17 @@ const samePath=(a,b)=>process.platform==='win32'?String(a).toLowerCase()===Strin
 const projectId=value=>typeof value==='string'&&/^[A-Za-z0-9_-]{1,256}$/.test(value);
 const applications=new Set(['codex','workbuddy','harness']),providers=new Set(['official','onebot']);
 const profileKey=value=>(value?.application||'codex')+':'+(value?.provider||'official');
+const toolId=value=>typeof value==='string'&&/^[A-Za-z0-9][A-Za-z0-9_.:-]{0,159}$/.test(value);
+const revision=value=>typeof value==='string'&&/^[A-Za-z0-9][A-Za-z0-9_.:-]{0,255}$/.test(value);
+function toolPolicy(value){if(value===undefined)return{shell:false,mcp:false,mcpServerIds:[]};if(!value||typeof value!=='object'||Array.isArray(value)||Object.keys(value).some(k=>!['shell','mcp','mcpServerIds'].includes(k))||typeof value.shell!=='boolean'||typeof value.mcp!=='boolean'||!Array.isArray(value.mcpServerIds)||value.mcpServerIds.length>32||value.mcpServerIds.some(id=>!toolId(id))||new Set(value.mcpServerIds).size!==value.mcpServerIds.length||value.mcp!==Boolean(value.mcpServerIds.length))return null;return{shell:value.shell,mcp:value.mcp,mcpServerIds:[...value.mcpServerIds]};}
+const sourceName=value=>typeof value==='string'?path.basename(value.replaceAll('\\','/')).replace(/[\u0000-\u001f\u007f]/g,'').slice(0,120):'';
+function publicCatalog(value){if(!value||typeof value!=='object')return null;const ready=value.state==='ready';return{state:ready?'ready':value.state==='not-installed'?'not-installed':'unknown',revision:revision(value.revision)?value.revision:'',sourceId:toolId(value.sourceId)?value.sourceId:'',sourceName:sourceName(value.sourceName),items:ready&&Array.isArray(value.items)?value.items.slice(0,128).filter(item=>toolId(item?.id)).map(item=>({id:item.id,label:typeof item.label==='string'?item.label.replace(/[\u0000-\u001f\u007f]/g,'').slice(0,120):item.id,transport:['stdio','http','sse','streamable-http'].includes(item.transport)?item.transport:''})):[]};}
 const failure=code=>{const known=Object.hasOwn(ERRORS,code)?code:'host_unavailable';return{ok:false,code:known,message:text(...ERRORS[known]),locale:L.getLocale()};};
 
 function publicProject(value){
  const cwd=typeof value?.cwd==='string'&&path.isAbsolute(value.cwd)&&value.cwd.length<=32768?value.cwd:'';
  const permission=value?.permission==='workspace-write'?'workspace-write':'read-only';
- return{id:projectId(value?.id)?value.id:'',label:typeof value?.label==='string'?value.label.replace(/[\u0000-\u001f\u007f]/g,'').slice(0,100):path.basename(cwd),cwd,permission,maxPermission:(value?.maxPermission??permission)==='workspace-write'?'workspace-write':'read-only'};
+ return{id:projectId(value?.id)?value.id:'',label:typeof value?.label==='string'?value.label.replace(/[\u0000-\u001f\u007f]/g,'').slice(0,100):path.basename(cwd),cwd,permission,maxPermission:(value?.maxPermission??permission)==='workspace-write'?'workspace-write':'read-only',toolPolicy:toolPolicy(value?.toolPolicy)||{shell:false,mcp:false,mcpServerIds:[]},mcpSourceName:sourceName(value?.mcpSourceName),mcpRevision:revision(value?.mcpRevision)?value.mcpRevision:'',toolScope:typeof value?.toolScope==='string'&&/^(?:files|tools-[a-f0-9]{32})$/.test(value.toolScope)?value.toolScope:'files'};
 }
 
 /** 密钥、QQ身份和任务正文不属于设置页状态，始终按字段白名单投影。 */
@@ -66,6 +81,7 @@ function sanitizeState(value){
  const state=sanitizeProfile(value);if(!state)return null;
  state.capabilities={models:value.capabilities?.models===true,desktopSessions:value.capabilities?.desktopSessions===true};
  state.profiles=Array.isArray(value.profiles)?value.profiles.slice(0,6).filter(item=>applications.has(item?.application)&&providers.has(item?.provider)).map(sanitizeProfile):[{...state}];
+ if(value.mcpCatalog)state.mcpCatalog=publicCatalog(value.mcpCatalog);
  const states=new Set(['not-installed','preparing','ready','starting','running','error']),phases=new Set(['download','downloading','verify','verifying','extract','extracting','configure','configuring','start','starting','ready','idle','running','error']);
  state.napcat={state:states.has(value.napcat?.state)?value.napcat.state:'not-installed',phase:phases.has(value.napcat?.phase)?value.napcat.phase:'idle',canLogin:value.napcat?.canLogin===true,endpoint:'ws://127.0.0.1:17630/'};
  const codes=new Set(['archive_size_mismatch','archive_digest_mismatch','archive_unsafe','download_failed','download_timeout','runtime_incomplete','runtime_modified','runtime_conflict','runtime_identity_mismatch','runtime_start_timeout','runtime_exited','runtime_spawn_failed','native_runtime_unavailable','port_in_use','secret_store_unavailable','config_invalid','config_conflict','preparation_locked','unsafe_path','not_prepared','prepare_failed','start_failed','runtime_disposed']);if(codes.has(value.napcat?.code))state.napcat.code=value.napcat.code;
@@ -78,6 +94,9 @@ function createController({electron,hostRequest,fileRoot=__dirname,fsImpl={},can
  const io={realpath:fs.realpath,stat:fs.stat,...fsImpl};
  const panelFile=path.join(fileRoot,'qq-window.html'),panelUrl=pathToFileURL(panelFile).href,petUrl=pathToFileURL(path.join(fileRoot,'index.html')).href;
  let win=null,selectedDirectory='',selectedProjectId='',selectedDirectoryKey='codex:official',directoryDraft=false,pending=false,disposed=false,opening=null,loginAttempt=null,loginTimer=null,loginFailure='';
+ const directoryDrafts=new Map(),mcpCatalogs=new Map();
+ const scopeKey=(selection,cwd)=>profileKey(selection)+'\0'+(process.platform==='win32'?cwd.toLowerCase():cwd);
+ function rememberDirectory(key,directory){const values=directoryDrafts.get(key)||new Set();values.delete(directory);values.add(directory);while(values.size>32)values.delete(values.values().next().value);directoryDrafts.set(key,values);}
  const cancelLogin=()=>{loginAttempt=null;clearTimeout(loginTimer);loginTimer=null;};
  const available=()=>{try{return !disposed&&canUse()===true;}catch{return false;}};
  const owned=event=>Boolean(available()&&win&&!win.isDestroyed()&&event?.sender===win.webContents&&(!win.webContents.mainFrame||event.senderFrame===win.webContents.mainFrame)&&win.webContents.getURL()===panelUrl);
@@ -105,6 +124,28 @@ function createController({electron,hostRequest,fileRoot=__dirname,fsImpl={},can
    selectedProjectId=snapshot.project.id;
    return{ok:true,snapshot,selectedDirectory,...(loginPending?{loginPending:true}:{})};
   }catch{return failure('host_unavailable');}
+ }
+ async function authorizedDirectory(selection,current){
+  const key=profileKey(selection),profile=current.snapshot.profiles.find(item=>profileKey(item)===key),directory=selection.cwd;
+  const saved=[profile?.project,...(profile?.projects||[])].find(item=>item?.cwd&&samePath(directory,item.cwd));
+  const native=[...(directoryDrafts.get(key)||[])].some(value=>samePath(value,directory));
+  if(typeof directory!=='string'||!path.isAbsolute(directory)||!saved&&!native)return false;
+  try{return samePath(await io.realpath(directory),directory)&&(await io.stat(directory)).isDirectory();}catch{return false;}
+ }
+ async function catalogRequest(event,selection,choose){
+  if(!owned(event))return failure('unauthorized');if(pending)return failure('busy');
+  if(!selection||typeof selection!=='object'||Array.isArray(selection)||Object.keys(selection).length!==3||!applications.has(selection.application)||!providers.has(selection.provider)||typeof selection.cwd!=='string')return failure('invalid_input');
+  pending=true;
+  try{
+   const current=await request('GET');if(!current.ok)return current;if(!await authorizedDirectory(selection,current))return failure('invalid_cwd');
+   if(current.snapshot.profiles.some(value=>['thinking','working','waiting','result','running','cancelling'].includes(value.task?.state)))return failure('task_busy');
+   let sourcePath;
+   if(choose){const answer=await dialog.showOpenDialog(win,{title:text('选择 MCP 配置文件','Choose an MCP configuration'),properties:['openFile','dontAddToRecent'],filters:[{name:text('MCP 配置','MCP configuration'),extensions:['json','jsonc','toml']}]});if(answer.canceled||answer.filePaths.length!==1)return{ok:true,cancelled:true};sourcePath=await io.realpath(answer.filePaths[0]);if(!path.isAbsolute(sourcePath)||!['.json','.jsonc','.toml'].includes(path.extname(sourcePath).toLowerCase())||!(await io.stat(sourcePath)).isFile())return failure('invalid_input');}
+   if(!owned(event))return failure('unauthorized');
+   const result=await request('POST',{action:'mcp-catalog',...selection,...(sourcePath?{sourcePath}:{})});
+   if(result.ok){const catalog=result.snapshot.mcpCatalog;if(catalog?.state==='ready'){mcpCatalogs.set(scopeKey(selection,selection.cwd),{...catalog,at:Date.now()});while(mcpCatalogs.size>192)mcpCatalogs.delete(mcpCatalogs.keys().next().value);}else mcpCatalogs.delete(scopeKey(selection,selection.cwd));}
+   return result;
+  }catch{return failure('mcp_catalog_unavailable');}finally{pending=false;}
  }
  function scheduleLogin(attempt){
   loginTimer=setTimeout(async()=>{
@@ -152,21 +193,26 @@ function createController({electron,hostRequest,fileRoot=__dirname,fsImpl={},can
     const chosen=await dialog.showOpenDialog(win,{title:text('选择 QQ 任务使用的项目','Choose a project for QQ tasks'),buttonLabel:text('使用这个文件夹','Use this folder'),properties:['openDirectory','dontAddToRecent'],...(selectedDirectory?{defaultPath:selectedDirectory}:{})});
     if(chosen.canceled||chosen.filePaths.length!==1)return{ok:true,cancelled:true,directory:selectedDirectory};
     const directory=await io.realpath(chosen.filePaths[0]);if(!path.isAbsolute(directory)||!(await io.stat(directory)).isDirectory())return failure('invalid_cwd');
-    if(!owned(event))return failure('unauthorized');if(pending)return failure('busy');selectedDirectory=directory;selectedDirectoryKey=selection?profileKey(selection):selectedDirectoryKey;directoryDraft=true;return{ok:true,directory};
+    if(!owned(event))return failure('unauthorized');if(pending)return failure('busy');selectedDirectory=directory;selectedDirectoryKey=selection?profileKey(selection):selectedDirectoryKey;rememberDirectory(selectedDirectoryKey,directory);directoryDraft=true;return{ok:true,directory};
    }catch{return failure('invalid_cwd');}
   },
   [CHANNELS.save]:async(event,body)=>{
    if(!owned(event))return failure('unauthorized');if(pending)return failure('busy');
-   if(!body||typeof body!=='object'||Array.isArray(body)||Object.keys(body).some(key=>!['application','provider','appId','appSecret','cwd','permission','enabled'].includes(key))||body.application!==undefined&&!applications.has(body.application)||body.provider!==undefined&&!providers.has(body.provider)||!['read-only','workspace-write'].includes(body.permission)||typeof body.enabled!=='boolean')return failure('invalid_input');
+   if(!body||typeof body!=='object'||Array.isArray(body)||Object.keys(body).some(key=>!['application','provider','appId','appSecret','cwd','permission','enabled','toolPolicy','mcpSourceId','mcpRevision'].includes(key))||body.application!==undefined&&!applications.has(body.application)||body.provider!==undefined&&!providers.has(body.provider)||!['read-only','workspace-write'].includes(body.permission)||typeof body.enabled!=='boolean')return failure('invalid_input');
+   const tools=toolPolicy(body.toolPolicy);if(!tools||tools.mcp&&(!toolId(body.mcpSourceId)||!revision(body.mcpRevision))||!tools.mcp&&(body.mcpSourceId!==undefined||body.mcpRevision!==undefined))return failure('invalid_tool_policy');
    const provider=body.provider||'official';
    if(provider==='official'&&(typeof body.appId!=='string'||!/^\d{3,32}$/.test(body.appId)||body.appSecret!==undefined&&(typeof body.appSecret!=='string'||body.appSecret.length>4096||/[\u0000-\u001f]/.test(body.appSecret)))||provider==='onebot'&&(Object.hasOwn(body,'appId')||Object.hasOwn(body,'appSecret')))return failure('invalid_input');
    const directory=body.cwd;pending=true;
    try{
     const current=await request('GET');if(!current.ok)return current;
+    if(current.snapshot.profiles.some(value=>['thinking','working','waiting','result','running','cancelling'].includes(value.task?.state)))return failure('task_busy');
     const selection={application:body.application||current.snapshot.application,provider},key=profileKey(selection),profile=current.snapshot.profiles.find(item=>profileKey(item)===key);
-    if(!directory||!(directoryDraft&&selectedDirectoryKey===key&&samePath(directory,selectedDirectory))&&!samePath(directory,profile?.project.cwd))return failure('invalid_cwd');
-    const canonical=await io.realpath(directory);if(!samePath(canonical,directory)||!(await io.stat(canonical)).isDirectory())return failure('invalid_cwd');
-    const result=await request('POST',{action:'save',...(body.application!==undefined?{application:body.application}:{}),...(body.provider!==undefined?{provider}:{}),...(provider==='official'?{appId:body.appId,...(body.appSecret?{appSecret:body.appSecret}:{})}:{}),cwd:directory,permission:body.permission,enabled:body.enabled});
+    if(!await authorizedDirectory({...selection,cwd:directory},current))return failure('invalid_cwd');
+    if(tools.mcp){const catalog=mcpCatalogs.get(scopeKey(selection,directory));if(catalog?.state!=='ready'||Date.now()-catalog.at>=5*60_000||catalog.sourceId!==body.mcpSourceId||catalog.revision!==body.mcpRevision||tools.mcpServerIds.some(id=>!catalog.items.some(item=>item.id===id)))return failure('mcp_catalog_changed');}
+    const previous=[profile?.project,...(profile?.projects||[])].find(item=>item?.cwd&&samePath(item.cwd,directory))?.toolPolicy||{shell:false,mcp:false,mcpServerIds:[]};
+    const newlyEnabled=[tools.shell&&!previous.shell?'shell':null,tools.mcp&&!previous.mcp?'mcp':null].filter(Boolean);
+    if(newlyEnabled.length){const detail=[newlyEnabled.includes('shell')?text('命令按当前 Windows 用户身份执行，每次都需确认；文件只读不能完整约束命令的副作用。','Commands run as your current Windows user and ask each time. File read-only access does not fully restrict command side effects.'):null,newlyEnabled.includes('mcp')?text('MCP 外部工具使用服务自身的权限，不受文件只读限制，每次都需确认。','External MCP tools use the service’s own permissions, beyond file read-only access, and ask each time.'):null,text('工具权限或服务选择变化后，将使用新的 QQ 会话。','Changing tool permissions or server choices starts a new QQ conversation.')].filter(Boolean).join('\n\n');const answer=await dialog.showMessageBox(win,{type:'question',buttons:[text('取消','Cancel'),text('允许并保存','Allow and save')],defaultId:0,cancelId:0,message:text('开启这些任务工具？','Enable these task tools?'),detail});if(answer.response!==1)return{ok:true,cancelled:true};if(!owned(event))return failure('unauthorized');}
+    const result=await request('POST',{action:'save',...(body.application!==undefined?{application:body.application}:{}),...(body.provider!==undefined?{provider}:{}),...(provider==='official'?{appId:body.appId,...(body.appSecret?{appSecret:body.appSecret}:{})}:{}),cwd:directory,permission:body.permission,enabled:body.enabled,...(body.toolPolicy!==undefined?{toolPolicy:tools}:{}),...(tools.mcp?{mcpSourceId:body.mcpSourceId,mcpRevision:body.mcpRevision}:{})});
     if(result.ok){directoryDraft=false;selectedDirectory=result.snapshot.project.cwd;selectedProjectId=result.snapshot.project.id;selectedDirectoryKey=profileKey(result.snapshot);}
     return result;
    }catch{return failure('invalid_cwd');}finally{pending=false;}
@@ -203,6 +249,8 @@ function createController({electron,hostRequest,fileRoot=__dirname,fsImpl={},can
    }finally{pending=false;}
   },
   [CHANNELS.prepareNapCat]:async event=>{if(!owned(event))return failure('unauthorized');if(pending)return failure('busy');pending=true;try{return await request('POST',{action:'napcat-prepare'});}finally{pending=false;}},
+  [CHANNELS.getMcpCatalog]:(event,selection)=>catalogRequest(event,selection,false),
+  [CHANNELS.chooseMcpSource]:(event,selection)=>catalogRequest(event,selection,true),
   [CHANNELS.openNapCatLogin]:async event=>{
    if(!owned(event))return failure('unauthorized');if(pending)return failure('busy');pending=true;cancelLogin();loginFailure='';
    const attempt={window:win,expiresAt:Date.now()+30000,profile:''};loginAttempt=attempt;
@@ -213,7 +261,7 @@ function createController({electron,hostRequest,fileRoot=__dirname,fsImpl={},can
  };
  const openListener=event=>{if(petSender(event))void open().catch(()=>{});};
  for(const [channel,handler]of Object.entries(handlers))ipcMain.handle(channel,handler);ipcMain.on(CHANNELS.open,openListener);
- function dispose(){if(disposed)return;disposed=true;cancelLogin();for(const channel of Object.keys(handlers))ipcMain.removeHandler(channel);ipcMain.removeListener(CHANNELS.open,openListener);app.removeListener('before-quit',dispose);if(win&&!win.isDestroyed())win.destroy();win=null;}
+ function dispose(){if(disposed)return;disposed=true;cancelLogin();directoryDrafts.clear();mcpCatalogs.clear();for(const channel of Object.keys(handlers))ipcMain.removeHandler(channel);ipcMain.removeListener(CHANNELS.open,openListener);app.removeListener('before-quit',dispose);if(win&&!win.isDestroyed())win.destroy();win=null;}
  app.once('before-quit',dispose);
  const hide=()=>{if(win&&!win.isDestroyed())win.hide();};
  return{open,hide,dispose,trayItems:()=>available()?[{label:text('QQ 远程任务','QQ remote tasks'),click:()=>{void open().catch(()=>{});}}]:[]};

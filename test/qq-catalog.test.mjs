@@ -109,3 +109,17 @@ test('损坏项目配置、越限列表和无效会话记录拒绝载入，标�
  assert.equal(cleanTitle(' line\nwith\u0000controls ').includes('\n'),false);assert.equal(cleanTitle('x'.repeat(1000)).length,80);
  catalog.remember('bounded-title',{title:'x'.repeat(1000)});assert.equal(catalog.selected().title.length,80);
 });
+
+test('工具权限与MCP来源按项目保存，公开投影只含文件名，变更后不续接旧工具会话',async t=>{
+ const f=await fixture(t),config=empty(),catalog=createQQCatalog(config),a=await catalog.register(f.a,'workspace-write');
+ catalog.remember('files-thread');catalog.setTools({shell:true,mcp:true,mcpServerIds:['notes']},{sourcePath:join(f.root,'private-tools.toml'),revision:'rev-one'});
+ assert.equal(config.threadId,null);const toolScope=catalog.current().toolScope;assert.match(toolScope,/^tools-[a-f0-9]{32}$/);
+ catalog.remember('tools-thread',{fileTools:true});assert.equal(catalog.selected().toolScope,toolScope);assert.equal(catalog.selected().fileTools,true);assert.throws(()=>catalog.remember('files-thread'),{code:'thread_tool_scope_mismatch'});
+ assert.throws(()=>catalog.remember('invalid-metadata',{fileTools:'true'}),{code:'invalid_thread'});
+ const publicProject=catalog.view();assert.equal(publicProject.mcpSourceName,'private-tools.toml');assert.equal(publicProject.mcpSourcePath,undefined);assert.doesNotMatch(JSON.stringify(catalog.list()),/mcpSourcePath/);
+ catalog.setTools({shell:true,mcp:true,mcpServerIds:['notes']},{sourcePath:join(f.root,'private-tools.toml'),revision:'rev-one'});assert.equal(config.threadId,'tools-thread');
+ await catalog.register(f.b,'read-only');assert.deepEqual(catalog.current().toolPolicy,{shell:false,mcp:false,mcpServerIds:[]});
+ await catalog.select(a.id);assert.equal(config.threadId,'tools-thread');
+ const reopened=createQQCatalog(JSON.parse(JSON.stringify(config)));assert.equal(reopened.current().toolScope,toolScope);assert.equal(reopened.current().mcpSourcePath,join(f.root,'private-tools.toml'));assert.equal(reopened.selected().fileTools,true);
+ reopened.setTools({shell:true,mcp:true,mcpServerIds:['notes']},{sourcePath:join(f.root,'private-tools.toml'),revision:'rev-two'});assert.equal(reopened.selected(),undefined);assert.notEqual(reopened.current().toolScope,toolScope);
+});

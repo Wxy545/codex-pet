@@ -13,7 +13,7 @@ const L=require('../src/codex-locale.cjs');
 const folder=resolve('synthetic-qq-project'),other=resolve('synthetic-other-project');
 function fixture(options={}){
  assert.equal(typeof QQ.createController,'function','QQ settings controller is missing');
- const handlers=new Map(),windows=[],calls=[],links=[],copied=[];
+ const handlers=new Map(),windows=[],calls=[],links=[],copied=[],dialogs=[];
  const app=new EventEmitter();app.whenReady=async()=>{};
  const ipcMain=new EventEmitter();ipcMain.handle=(name,fn)=>handlers.set(name,fn);ipcMain.removeHandler=name=>handlers.delete(name);
  class BrowserWindow extends EventEmitter{
@@ -25,13 +25,13 @@ function fixture(options={}){
  }
  let state={enabled:false,configured:true,appId:'12345678',connection:{state:'stopped'},paired:false,project:{cwd:folder,permission:'read-only'},pairing:null,task:null,pendingReplies:0};
  let selected=folder;
- const controller=QQ.createController({electron:{BrowserWindow,ipcMain,app,clipboard:{writeText:value=>copied.push(value)},shell:{openExternal:async url=>links.push(url)},dialog:{showOpenDialog:async()=>({canceled:false,filePaths:[selected]}),showMessageBox:async()=>({response:options.confirm??1})}},fsImpl:{realpath:async target=>target,stat:async()=>({isDirectory:()=>true}),...options.fsImpl},hostRequest:async(method,route,body)=>{
+ const controller=QQ.createController({electron:{BrowserWindow,ipcMain,app,clipboard:{writeText:value=>copied.push(value)},shell:{openExternal:async url=>links.push(url)},dialog:{showOpenDialog:async()=>({canceled:false,filePaths:[selected]}),showMessageBox:async(_win,value)=>{dialogs.push(value);return{response:options.confirm??1};}}},fsImpl:{realpath:async target=>target,stat:async()=>({isDirectory:()=>true}),...options.fsImpl},hostRequest:async(method,route,body)=>{
   calls.push({method,route,body});if(options.hostRequest)return options.hostRequest(method,route,body);
   if(method==='POST'){const value=JSON.parse(body);if(value.action==='save')state={...state,appId:value.appId,enabled:value.enabled,project:{cwd:value.cwd,permission:value.permission}};if(value.action==='disable')state={...state,enabled:false,connection:{state:'stopped'}};if(value.action==='pair')state={...state,pairing:{code:'123456',expiresAt:'2026-10-30T11:00:00.000Z'}};if(value.action==='project-select')state={...state,project:state.projects.find(item=>item.id===value.projectId)};if(value.action==='project-remove'){const projects=state.projects.filter(item=>item.id!==value.projectId);state={...state,projects,project:projects[0]||{cwd:'',permission:'read-only'}};}}
   return{status:200,body:JSON.stringify(state)};
  }});
  const event=()=>({sender:windows.at(-1).webContents,senderFrame:windows.at(-1).webContents.mainFrame});
- return{controller,windows,handlers,calls,links,copied,app,ipcMain,event,invoke:(key,body,source=event())=>handlers.get(QQ.CHANNELS[key])(source,body),setDirectory:value=>{selected=value;},setState:value=>{state=value;}};
+ return{controller,windows,handlers,calls,links,copied,dialogs,app,ipcMain,event,invoke:(key,body,source=event())=>handlers.get(QQ.CHANNELS[key])(source,body),setDirectory:value=>{selected=value;},setState:value=>{state=value;}};
 }
 
 test('QQ设置拒绝其他页面和子frame，打开窗口不给渲染器Node权限',async t=>{
@@ -234,12 +234,12 @@ test('等待扫码期间保存的profile变化会拒绝迟到的登录票据',as
  }});t.after(()=>f.controller.dispose());await f.controller.open();assert.equal((await f.invoke('openNapCatLogin')).loginPending,true);await new Promise(resolve=>setTimeout(resolve,470));assert.equal(loginCalls,2);assert.equal(f.links.length,0);
 });
 
-function rendererFixture(initial){
+function rendererFixture(initial,overrides={}){
  const nodes=new Map(),listeners=new Map(),windowEvents=new Map(),intervals=[],calls=[],radios=new Map();let state=structuredClone(initial);
  for(const value of ['read-only','workspace-write']){let checked=false;radios.set(value,{value,get checked(){return checked;},set checked(next){if(next)for(const[other,radio]of radios)if(other!==value)radio.checked=false;checked=next;}});}
  function node(id){if(nodes.has(id))return nodes.get(id);const n={value:'',disabled:false,hidden:false,textContent:'',dataset:{},children:[],setAttribute(){},select(){},replaceChildren(){this.children=[];},appendChild(value){this.children.push(value);},addEventListener(type,fn){listeners.set(id+':'+type,fn);},querySelector(selector){if(selector.includes(':checked'))return[...radios.values()].find(item=>item.checked);return radios.get(/value="([^"]+)"/.exec(selector)?.[1]);},querySelectorAll:()=>[...nodes.values()]};nodes.set(id,n);return n;}
- const response=()=>({ok:true,snapshot:structuredClone(state)}),api={getState:async()=>response(),save:async body=>{calls.push({action:'save',body});const selected=state.profiles.find(item=>item.application===body.application&&item.provider===body.provider);state={...state,...selected,application:body.application,provider:body.provider,enabled:true};return response();},chooseDirectory:async selection=>{calls.push({action:'directory',selection});return{ok:true,directory:other};},prepareNapCat:async()=>{calls.push({action:'prepare'});state.napcat={state:'ready',phase:'ready',canLogin:false};return response();},openNapCatLogin:async()=>{calls.push({action:'login'});return response();}};
- const window={qqRemote:api,addEventListener:(name,fn)=>windowEvents.set(name,fn)},document={hidden:false,title:'',documentElement:{lang:''},getElementById:node,createElement:()=>({}),querySelectorAll:()=>[],addEventListener(){}};
+ const response=()=>({ok:true,snapshot:structuredClone(state)}),api={getState:async()=>response(),save:async body=>{calls.push({action:'save',body});const selected=state.profiles.find(item=>item.application===body.application&&item.provider===body.provider);state={...state,...selected,application:body.application,provider:body.provider,enabled:true};return response();},chooseDirectory:async selection=>{calls.push({action:'directory',selection});return{ok:true,directory:other};},prepareNapCat:async()=>{calls.push({action:'prepare'});state.napcat={state:'ready',phase:'ready',canLogin:false};return response();},openNapCatLogin:async()=>{calls.push({action:'login'});return response();},...overrides};
+ const window={qqRemote:api,addEventListener:(name,fn)=>windowEvents.set(name,fn)},document={hidden:false,title:'',documentElement:{lang:''},getElementById:node,createElement:()=>({children:[],listeners:new Map(),appendChild(value){this.children.push(value);},addEventListener(type,fn){this.listeners.set(type,fn);}}),querySelectorAll:()=>[],addEventListener(){}};
  vm.runInNewContext(readFileSync(new URL('../src/qq-window.js',import.meta.url),'utf8'),{window,document,navigator:{language:'en'},Date,setInterval:(fn,ms)=>{intervals.push({fn,ms});return intervals.length;},clearInterval(){},setTimeout:()=>1,clearTimeout(){}});
  const settle=()=>new Promise(resolve=>setImmediate(resolve));
  return{node,calls,get state(){return state;},setState:value=>{state=structuredClone(value);},settle,async fire(id,type){listeners.get(id+':'+type)({preventDefault(){}});await settle();},async poll(){intervals.find(item=>item.ms===2500).fn();await settle();},close(){windowEvents.get('beforeunload')();}};
@@ -252,7 +252,74 @@ test('应用和连接选择保持草稿，轮询不改选择，配对与凭据�
  assert.equal(f.node('app-id').value,'654321');assert.equal(f.node('app-secret').value,'');assert.equal(f.node('directory').value,other);assert.equal(f.node('pair').disabled,true);assert.equal(f.node('copy-pair').disabled,true);assert.equal(f.node('pair-code').value,'');assert.equal(f.node('save').disabled,true);assert.equal(f.node('selection-state').hidden,false);
  await f.poll();assert.equal(f.node('application').value,'workbuddy');assert.equal(f.node('app-id').value,'654321');assert.equal(f.calls.length,0,'choosing a draft must not save or switch a connection');
  f.node('provider').value='onebot';await f.fire('provider','change');assert.equal(f.node('official-connection').hidden,true);assert.equal(f.node('app-id').disabled,true);assert.equal(f.node('app-secret').disabled,true);assert.equal(f.node('save').disabled,false);assert.equal(f.node('login-napcat').disabled,false,'ready can start the service even before canLogin becomes true');
- await f.fire('settings','submit');const body=f.calls.find(item=>item.action==='save').body;assert.deepEqual(JSON.parse(JSON.stringify(body)),{application:'workbuddy',provider:'onebot',cwd:other,permission:'read-only',enabled:true});assert.equal(f.node('selection-state').hidden,true);assert.equal(f.node('connection').textContent,'Connecting…');assert.doesNotMatch(f.node('napcat-status').textContent,/connected/i);
+ await f.fire('settings','submit');const body=f.calls.find(item=>item.action==='save').body;assert.deepEqual(JSON.parse(JSON.stringify(body)),{application:'workbuddy',provider:'onebot',cwd:other,permission:'read-only',enabled:true,toolPolicy:{shell:false,mcp:false,mcpServerIds:[]}});assert.equal(f.node('selection-state').hidden,true);assert.equal(f.node('connection').textContent,'Connecting…');assert.doesNotMatch(f.node('napcat-status').textContent,/connected/i);
  f.setState({...f.state,napcat:{state:'running',phase:'running',canLogin:true},connection:{state:'connecting'}});await f.poll();assert.equal(f.node('connection').textContent,'Connecting…');assert.match(f.node('napcat-status').textContent,/service is running/);assert.equal(f.node('pair').disabled,true);
  f.setState({...f.state,task:{state:'working'}});await f.poll();assert.equal(f.node('application').disabled,true);assert.equal(f.node('provider').disabled,true);assert.equal(f.node('save').disabled,true);
+});
+
+test('项目和MCP目录只投影工具开关与安全标识，不返回源路径或执行配置',()=>{
+ const state=QQ.sanitizeState({project:{cwd:folder,toolPolicy:{shell:true,mcp:true,mcpServerIds:['server-a']},mcpSourceName:'C:\\private\\mcp.json',mcpRevision:'revision-a',toolScope:'tools-'+ 'a'.repeat(32),sourcePath:'PRIVATE_PATH'},mcpCatalog:{state:'ready',sourceId:'source-a',sourceName:'C:\\private\\mcp.json',revision:'revision-a',sourcePath:'PRIVATE_PATH',items:[{id:'server-a',label:'Calendar',transport:'stdio',command:'PRIVATE_COMMAND',args:['PRIVATE_ARGUMENT'],env:{TOKEN:'PRIVATE_TOKEN'},url:'https://PRIVATE_URL'}]}});
+ assert.deepEqual(state.project.toolPolicy,{shell:true,mcp:true,mcpServerIds:['server-a']});assert.equal(state.project.mcpSourceName,'mcp.json');assert.equal(state.mcpCatalog.sourceName,'mcp.json');assert.deepEqual(state.mcpCatalog.items,[{id:'server-a',label:'Calendar',transport:'stdio'}]);assert.doesNotMatch(JSON.stringify(state),/PRIVATE_|sourcePath|command|args|env|https:/);
+});
+
+test('MCP目录限定目标profile真实目录，配置源只能经原生文件选择器提交',async t=>{
+ const source=resolve('synthetic-mcp.jsonc'),requests=[],base={application:'codex',provider:'official',project:{cwd:folder},projects:[{id:'project-b',cwd:other}],connection:{state:'stopped'},profiles:[{application:'codex',provider:'official',project:{cwd:folder},projects:[{id:'project-b',cwd:other}]}]},catalog={state:'ready',sourceId:'source-a',sourceName:'synthetic-mcp.jsonc',revision:'revision-a',items:[{id:'server-a',label:'Notes',transport:'http',url:'PRIVATE_URL'}]};
+ const f=fixture({fsImpl:{stat:async file=>({isDirectory:()=>file!==source,isFile:()=>file===source})},hostRequest:async(method,route,body)=>{if(method==='POST')requests.push(JSON.parse(body));return{status:200,body:JSON.stringify({...base,mcpCatalog:catalog})};}});t.after(()=>f.controller.dispose());await f.controller.open();
+ const selection={application:'codex',provider:'official',cwd:folder};
+ assert.equal((await f.invoke('getMcpCatalog',{...selection,sourcePath:source})).code,'invalid_input');assert.equal((await f.invoke('getMcpCatalog',{...selection,application:'workbuddy'})).code,'invalid_cwd');
+ const first=await f.invoke('getMcpCatalog',selection);assert.equal(first.snapshot.mcpCatalog.items[0].label,'Notes');assert.deepEqual(requests[0],{action:'mcp-catalog',...selection});
+ f.setDirectory(source);const chosen=await f.invoke('chooseMcpSource',selection);assert.equal(chosen.ok,true);assert.equal(requests.at(-1).sourcePath,source);assert.doesNotMatch(JSON.stringify(chosen),/PRIVATE_URL|sourcePath/);
+ const foreign={sender:{getURL:()=>f.windows[0].url},senderFrame:{}};for(const action of ['getMcpCatalog','chooseMcpSource'])assert.equal((await f.invoke(action,selection,foreign)).code,'unauthorized');
+});
+
+test('工具新开启经本机确认，取消不保存，已开启项目不重复提示',async t=>{
+ for(const confirm of [0,1]){
+  let savedPolicy={shell:false,mcp:false,mcpServerIds:[]},writes=0;const f=fixture({confirm,hostRequest:async(method,route,body)=>{if(method==='POST'){const value=JSON.parse(body);if(value.action==='save'){writes++;savedPolicy=value.toolPolicy;}}return{status:200,body:JSON.stringify({appId:'123456',configured:true,project:{cwd:folder,toolPolicy:savedPolicy},connection:{state:'connected'}})};}});t.after(()=>f.controller.dispose());await f.controller.open();
+  const body={application:'codex',provider:'official',appId:'123456',cwd:folder,permission:'read-only',enabled:true,toolPolicy:{shell:true,mcp:false,mcpServerIds:[]}};
+  const first=await f.invoke('save',body);assert.equal(first.ok,true);assert.equal(Boolean(first.cancelled),confirm===0);assert.equal(writes,confirm);assert.equal(f.dialogs.length,1);assert.match(f.dialogs[0].detail,/Windows|命令/);assert.match(f.dialogs[0].detail,/副作用|side effects/);
+  if(confirm){await f.invoke('save',body);assert.equal(f.dialogs.length,1);assert.equal(writes,2);}
+ }
+});
+
+test('MCP保存拒绝伪服务和旧摘要，关闭MCP不携带遗留选择或源标识',async t=>{
+ const catalog={state:'ready',sourceId:'source-a',sourceName:'mcp.json',revision:'revision-a',items:[{id:'server-a',label:'Notes',transport:'stdio'}]},base={application:'codex',provider:'official',appId:'123456',configured:true,project:{cwd:folder},connection:{state:'connected'}};
+ const f=fixture({hostRequest:async()=>({status:200,body:JSON.stringify({...base,mcpCatalog:catalog})})});t.after(()=>f.controller.dispose());await f.controller.open();const body={application:'codex',provider:'official',appId:'123456',cwd:folder,permission:'read-only',enabled:true,toolPolicy:{shell:false,mcp:true,mcpServerIds:['server-a']},mcpSourceId:'source-a',mcpRevision:'revision-a'};
+ assert.equal((await f.invoke('save',body)).code,'mcp_catalog_changed');await f.invoke('getMcpCatalog',{application:'codex',provider:'official',cwd:folder});
+ for(const changed of [{mcpRevision:'revision-old'},{mcpSourceId:'source-other'},{toolPolicy:{shell:false,mcp:true,mcpServerIds:['server-other']}}])assert.equal((await f.invoke('save',{...body,...changed})).code,'mcp_catalog_changed');
+ assert.equal((await f.invoke('save',body)).ok,true);
+ assert.equal((await f.invoke('save',{...body,toolPolicy:{shell:false,mcp:false,mcpServerIds:['server-a']}})).code,'invalid_tool_policy');
+ assert.equal((await f.invoke('save',{...body,toolPolicy:{shell:false,mcp:false,mcpServerIds:[]}})).code,'invalid_tool_policy');
+ assert.equal((await f.invoke('save',{...body,toolPolicy:{shell:true,mcp:false,mcpServerIds:[],command:'arbitrary'}})).code,'invalid_tool_policy');
+});
+
+test('工具草稿跨应用连接隔离，新目录默认关闭，轮询不覆盖本机选择',async t=>{
+ const a={application:'codex',provider:'official',appId:'123456',configured:true,hasSecret:true,project:{id:'a',cwd:folder,permission:'read-only'},projects:[{id:'a',cwd:folder}],connection:{state:'connected'}},b={...a,application:'workbuddy',provider:'onebot',appId:'',project:{id:'b',cwd:folder,permission:'read-only'},projects:[{id:'b',cwd:folder}]},f=rendererFixture({...a,locale:'en',profiles:[a,b]});t.after(()=>f.close());await f.settle();
+ assert.equal(f.node('allow-shell').checked,false);assert.equal(f.node('allow-mcp').checked,false);f.node('allow-shell').checked=true;await f.fire('allow-shell','change');await f.poll();assert.equal(f.node('allow-shell').checked,true);
+ f.node('application').value='workbuddy';await f.fire('application','change');f.node('provider').value='onebot';await f.fire('provider','change');assert.equal(f.node('allow-shell').checked,false);assert.equal(f.node('allow-mcp').checked,false);
+ f.node('application').value='codex';await f.fire('application','change');f.node('provider').value='official';await f.fire('provider','change');assert.equal(f.node('allow-shell').checked,true);
+ await f.fire('choose-directory','click');assert.equal(f.node('directory').value,other);assert.equal(f.node('allow-shell').checked,false);assert.equal(f.node('allow-mcp').checked,false);await f.poll();assert.equal(f.node('allow-shell').checked,false);assert.equal(f.node('directory').value,other);
+});
+
+test('MCP按需加载，迟到目录不污染新profile，未知与空目录均阻止保存',async t=>{
+ const a={application:'codex',provider:'official',appId:'123456',configured:true,hasSecret:true,project:{id:'a',cwd:folder,permission:'read-only'},projects:[{id:'a',cwd:folder}],connection:{state:'connected'}},b={...a,application:'workbuddy',project:{id:'b',cwd:other,permission:'read-only'},projects:[{id:'b',cwd:other}]};let resolveCatalog,calls=0;
+ const f=rendererFixture({...a,locale:'en',profiles:[a,b]},{getMcpCatalog:async()=>{calls++;return await new Promise(r=>{resolveCatalog=r;});}});t.after(()=>f.close());await f.settle();assert.equal(calls,0);f.node('allow-mcp').checked=true;await f.fire('allow-mcp','change');assert.equal(calls,1);assert.equal(f.node('save').disabled,true);
+ f.node('application').value='workbuddy';await f.fire('application','change');resolveCatalog({ok:true,snapshot:{mcpCatalog:{state:'ready',sourceId:'source-a',revision:'revision-a',sourceName:'mcp.json',items:[{id:'server-a',label:'PRIVATE_OLD_LABEL'}]}}});await f.settle();assert.equal(f.node('allow-mcp').checked,false);assert.equal(f.node('mcp-source-name').textContent,'');assert.equal(f.node('mcp-servers').children.length,0);
+ f.node('allow-mcp').checked=true;await f.fire('allow-mcp','change');resolveCatalog({ok:true,snapshot:{mcpCatalog:{state:'unknown',items:[]}}});await f.settle();assert.match(f.node('mcp-status').textContent,/unavailable/i);assert.equal(f.node('save').disabled,true);
+ await f.fire('refresh-mcp','click');resolveCatalog({ok:true,snapshot:{mcpCatalog:{state:'ready',sourceId:'source-b',revision:'revision-b',sourceName:'buddy.json',items:[]}}});await f.settle();assert.equal(f.node('mcp-status').textContent,'No available servers');assert.equal(f.node('save').disabled,true);
+});
+
+test('已选MCP服务按真实目录提交，五分钟过期后不能保存，关闭时清空授权',async t=>{
+ const a={application:'codex',provider:'official',appId:'123456',configured:true,hasSecret:true,project:{id:'a',cwd:folder,permission:'read-only',toolPolicy:{shell:true,mcp:true,mcpServerIds:['server-a']}},projects:[{id:'a',cwd:folder}],connection:{state:'connected'}},catalog={state:'ready',sourceId:'source-a',revision:'revision-a',sourceName:'mcp.json',items:[{id:'server-a',label:'Notes',transport:'stdio'}]};
+ const f=rendererFixture({...a,locale:'en',profiles:[a]},{getMcpCatalog:async()=>({ok:true,snapshot:{mcpCatalog:catalog}})});t.after(()=>f.close());await f.settle();await f.settle();
+ assert.equal(f.node('save').disabled,false);const input=f.node('mcp-servers').children[0].children[0];assert.equal(input.checked,true);await f.poll();assert.equal(f.node('mcp-servers').children[0].children[0],input,'a background refresh must not replace the focused checkbox');
+ const originalNow=Date.now;try{Date.now=()=>originalNow()+5*60_000;await f.poll();assert.equal(f.node('save').disabled,true);assert.match(f.node('mcp-status').textContent,/changed/i);}finally{Date.now=originalNow;}
+ await f.fire('refresh-mcp','click');await f.settle();await f.fire('settings','submit');const first=f.calls.find(item=>item.action==='save').body;assert.deepEqual(JSON.parse(JSON.stringify(first.toolPolicy)),{shell:true,mcp:true,mcpServerIds:['server-a']});assert.equal(first.mcpSourceId,'source-a');assert.equal(first.mcpRevision,'revision-a');assert.doesNotMatch(JSON.stringify(first),/sourcePath|command|loadedAt/);
+ f.node('allow-mcp').checked=false;await f.fire('allow-mcp','change');await f.fire('settings','submit');const last=f.calls.filter(item=>item.action==='save').at(-1).body;assert.deepEqual(JSON.parse(JSON.stringify(last.toolPolicy.mcpServerIds)),[]);assert.equal(Object.hasOwn(last,'mcpSourceId'),false);assert.equal(Object.hasOwn(last,'mcpRevision'),false);
+});
+
+test('工具目录与命令权限错误显示固定本地化恢复文案，不回传原始路径或执行信息',async t=>{
+ L.setLocale('en');t.after(()=>L.setLocale('zh-CN'));
+ for(const code of ['stale_mcp_catalog','mcp_config_changed','mcp_source_changed','mcp_catalog_unavailable','mcp_server_unavailable','shell_unavailable','shell_approval_unavailable','tool_scope_mismatch']){
+  const f=fixture({hostRequest:async()=>({status:400,body:JSON.stringify({error:{code,message:'PRIVATE_COMMAND PRIVATE_PATH 中文内部错误'}})})});t.after(()=>f.controller.dispose());await f.controller.open();const result=await f.invoke('state');assert.equal(result.ok,false);assert.equal(result.code,code);assert.doesNotMatch(result.message,/[\u3400-\u9fff]|PRIVATE_/);assert.notEqual(result.message,'The pet is unavailable. Try again.');
+ }
 });

@@ -128,6 +128,37 @@ Copyright © 2024 Mlikiowa
 
 桌宠交互参考 [jingh12312-rgb/bailong-desktop-pet](https://github.com/jingh12312-rgb/bailong-desktop-pet) 的公开说明及 v0.4.1 随包源码。该源码和素材没有另授开放许可，本项目仅借鉴交互思路，未纳入其代码、美术或声音；截图与新版发布说明不作为本项目已经支持某项功能的依据。
 
+## TOML 配置解析
+
+MCP 配置的 TOML 解析使用 [smol-toml](https://github.com/squirrelchat/smol-toml) `1.9.1`，版本及完整性固定在锁文件中。其 BSD-3-Clause 许可与版权如下：
+
+```text
+Copyright (c) Squirrel Chat et al., All rights reserved.
+
+Redistribution and use in source and binary forms, with or without
+modification, are permitted provided that the following conditions are met:
+
+1. Redistributions of source code must retain the above copyright notice, this
+   list of conditions and the following disclaimer.
+2. Redistributions in binary form must reproduce the above copyright notice,
+   this list of conditions and the following disclaimer in the
+   documentation and/or other materials provided with the distribution.
+3. Neither the name of the copyright holder nor the names of its contributors
+   may be used to endorse or promote products derived from this software without
+   specific prior written permission.
+
+THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND
+ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
+WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
+FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+```
+
 ## 其他依赖
 
 传递依赖、Electron、字体及其他随依赖安装的内容，按其各自随包提供的许可使用。`package-lock.json` 记录实际依赖版本；本项目不替代这些权利人的许可，也不将它们统一重新授权为 MIT。更改依赖或制作二进制分发包时，应重新核对实际纳入的第三方内容。

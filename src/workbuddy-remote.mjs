@@ -2,6 +2,8 @@ import {readFileSync,lstatSync,realpathSync} from 'node:fs';
 import {randomBytes} from 'node:crypto';
 import {basename,delimiter,dirname,isAbsolute,join,resolve} from 'node:path';
 import {createAcpRemote,remoteError} from './acp-remote.mjs';
+import {normalizeRemoteToolPolicy,remoteToolScope} from './remote-tool-policy.mjs';
+import {selectNativeMcp} from './native-mcp.mjs';
 
 const file=path=>{try{const s=lstatSync(path);return s.isFile()&&!s.isSymbolicLink();}catch{return false;}};
 const json=(path,limit=65536)=>{const s=lstatSync(path);if(!s.isFile()||s.isSymbolicLink()||s.size>limit)throw remoteError('invalid_native_registration');return JSON.parse(readFileSync(path,'utf8').replace(/^\uFEFF/,''));};
@@ -28,17 +30,29 @@ export function resolveWorkBuddyNative({dataRoot,projectRoot,nodePath}={}){
   }catch(error){throw remoteError(error.code==='native_version_unverified'?error.code:'not_installed');}
 }
 
-/** WorkBuddy 首版仅文件任务：固定工具和逐次规则，不继承用户保存的自动允许列表。 */
+function gitBash(){
+  if(process.platform!=='win32')return'/bin/bash';
+  const paths=[process.env.CODEBUDDY_CODE_GIT_BASH_PATH,...[process.env.ProgramFiles,'C:/Program Files'].filter(Boolean).map(root=>join(root,'Git/bin/bash.exe')),...String(process.env.PATH??process.env.Path??'').split(delimiter).filter(isAbsolute).map(root=>join(root,'../bin/bash.exe'))];
+  return paths.find(path=>isAbsolute(path??'')&&file(path));
+}
+
+/** 仅为当前原生子进程授权工具，不继承保存的自动允许规则，也不修改宿主全局设置。 */
 export function createWorkBuddyRemote(options={}){
-  const native=validateNative(options.native),permission=options.permission??'read-only';
-  const mode=permission==='read-only'?'plan':'default';
-  // 不开放搜索目录树和 Shell；原生 Read/Edit/Write 的每次路径都由 ACP 审批核验。
-  const tools=permission==='read-only'?['Read']:['Read','Write','Edit'];
-  const settings={permissions:{allow:[],ask:tools,deny:['Bash','Agent','Skill','WebFetch','WebSearch','Glob','Grep','NotebookEdit','ExitPlanMode'],additionalDirectories:[]},disableAllHooks:true};
-  return createAcpRemote({...options,host:'workbuddy',permission,closeSession:false,allowStartupPreamble:true,
+  const native=validateNative(options.native),permission=options.permission??'read-only',policy=normalizeRemoteToolPolicy(options.toolPolicy),scope=remoteToolScope(policy,options.mcpRevision);
+  if(options.toolScope!==undefined&&options.toolScope!==scope)throw remoteError('tool_scope_mismatch');
+  const mode=permission==='read-only'&&!policy.shell&&!policy.mcp?'plan':'default',bash=policy.shell?gitBash():null;if(policy.shell&&!bash)throw remoteError('shell_unavailable');
+  const selected=()=>policy.mcp?selectNativeMcp({host:'workbuddy',native,cwd:options.cwd,sourcePath:options.mcpSourcePath,revision:options.mcpRevision,serverIds:policy.mcpServerIds}).map(server=>({...server,_meta:{defer_loading:false}})):[];
+  if(policy.mcp)selected();
+  const tools=[...(permission==='read-only'?['Read']:['Read','Write','Edit']),...(policy.shell?['Bash']:[]),...policy.mcpServerIds.map(id=>'mcp__'+id+'__*')];
+  const settings={permissions:{allow:[],ask:tools,deny:[...(!policy.shell?['Bash']:[]),'PowerShell','Agent','Skill','WebFetch','WebSearch','Glob','Grep','NotebookEdit','ExitPlanMode',...(permission==='read-only'?['Write','Edit']:[])],additionalDirectories:[]},disableAllHooks:true,
+    // 该版本在 sandbox fast path 会跳过逐命令权限检查；开启命令时明确用 default + ask。
+    // 这是本机主动开启的当前用户命令权限，不能宣传成项目文件沙箱。
+    sandbox:{enabled:false,autoAllowBashIfSandboxed:false,allowUnsandboxedCommands:false,excludedCommands:[],systemToolPolicy:'disabled'}};
+  return createAcpRemote({...options,host:'workbuddy',permission,toolPolicy:policy,toolScope:scope,closeSession:false,allowStartupPreamble:true,
     // 本版随包 CLI 需 serve 策略才启动 stdio。随机密码只在本进程环境内，不写原生设置。
-    launch:async()=>({command:native.nodePath,args:[native.cliPath,'--serve','--acp','--acp-transport','stdio','--host','127.0.0.1','--port','0','--auth','password','--permission-mode',mode,'--setting-sources','none','--tools',tools.join(','),'--strict-mcp-config','--mcp-config','{"mcpServers":{}}','--settings',JSON.stringify(settings)],env:{...process.env,CODEBUDDY_CONFIG_DIR:native.configDir,WORKBUDDY_CONFIG_DIR:native.configDir,CODEBUDDY_FORCE_LITE_WB_BUNDLE:'1',CODEBUDDY_GATEWAY_PASSWORD:randomBytes(32).toString('base64url'),DISABLE_TELEMETRY:'1',NODE_OPTIONS:'',NODE_PATH:''}}),
-    checkSession:response=>{if(response?.modes?.currentModeId!==mode)throw remoteError('permission_profile_mismatch');},
+    launch:async()=>{selected();return{command:native.nodePath,args:[native.cliPath,'--serve','--acp','--acp-transport','stdio','--host','127.0.0.1','--port','0','--auth','password','--permission-mode',mode,'--setting-sources','none','--tools',tools.join(','),'--strict-mcp-config','--mcp-config','{"mcpServers":{}}','--settings',JSON.stringify(settings)],env:{...process.env,CODEBUDDY_CONFIG_DIR:native.configDir,WORKBUDDY_CONFIG_DIR:native.configDir,CODEBUDDY_FORCE_LITE_WB_BUNDLE:'1',CODEBUDDY_GATEWAY_PASSWORD:randomBytes(32).toString('base64url'),...(bash?{CODEBUDDY_CODE_GIT_BASH_PATH:bash,CODEBUDDY_CODE_SHELL:'bash',CODEBUDDY_CODE_DISABLE_BACKGROUND_TASKS:'1'}:{}),DISABLE_TELEMETRY:'1',NODE_OPTIONS:'',NODE_PATH:''}};},
+    sessionConfig:()=>({mcpServers:selected()}),checkToolContext:()=>{selected();},
+    checkSession:response=>{if(response?.modes?.currentModeId!==mode)throw remoteError('permission_profile_mismatch');if(response?.configOptions?.find(option=>option.id==='sandbox')?.currentValue!=='false')throw remoteError(policy.shell?'shell_approval_unavailable':'permission_profile_mismatch');},
     promptMeta:turnId=>({'codebuddy.ai/requestId':turnId})
   });
 }

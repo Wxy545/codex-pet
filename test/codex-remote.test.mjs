@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { EventEmitter } from 'node:events';
 import { PassThrough, Writable } from 'node:stream';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 let createCodexRemote;
@@ -25,6 +25,8 @@ function rig(t,options={}) {
       if(m.method==='initialize')reply(m,{userAgent:'synthetic-codex/1'});
       if(['thread/start','thread/resume','thread/read'].includes(m.method))reply(m,{thread:{id:m.params.threadId??'synthetic-thread',cwd,source:'appServer',name:'Synthetic conversation',updatedAt:1000,path:join(cwd,'synthetic-rollout.jsonl'),status:{type:'idle'},turns:[]}});
       if(m.method==='turn/start')reply(m,{turn:{id:'synthetic-turn',status:'inProgress',items:[]}});
+      if(m.method==='command/exec')reply(m,{exitCode:0,stdout:'synthetic execution',stderr:''});
+      if(m.method==='command/exec/terminate')reply(m,{});
       if(m.method==='turn/interrupt'){reply(m,{});notify('turn/completed',{threadId:'synthetic-thread',turn:{id:'synthetic-turn',status:'interrupted',items:[]}});}
     });}done();}});
     child.kill=()=>{child.killed=true;child.exitCode=1;queueMicrotask(()=>child.emit('close',1));return true;};
@@ -37,6 +39,11 @@ function rig(t,options={}) {
   const complete=(text='已完成项目检查',status='completed')=>notify('turn/completed',{threadId:'synthetic-thread',turn:{id:'synthetic-turn',status,items:[{id:'final',type:'agentMessage',phase:'final_answer',text}]}});
   const request=(id,method,params={})=>send({id,method,params:{threadId:'synthetic-thread',turnId:'synthetic-turn',itemId:'synthetic-item',startedAtMs:1000,...params}});
   return{remote,cwd,events,calls,spawns,start,send,reply,notify,complete,request,get child(){return child;}};
+}
+function fileApproval(r,id,params={}){
+  const turnId=params.turnId??'synthetic-turn';
+  r.notify('item/started',{threadId:'synthetic-thread',turnId,item:{id:'synthetic-item',type:'fileChange',changes:[{path:join(r.cwd,'note.txt'),kind:{type:'add'},diff:'+synthetic bounded change'}]}});
+  r.request(id,'item/fileChange/requestApproval',params);
 }
 
 test('异步显示回调拒绝不成为未捕获拒绝，也不改变任务执行结果',async t=>{
@@ -55,6 +62,63 @@ test('ready只握手不创建任务，stdio隔离父执行环境且不开放权�
   assert.ok(spawn.args.includes('stdio://'));assert.ok(!spawn.args.some(x=>x.includes('danger-full-access')));
   assert.equal(spawn.options.env.CODEX_THREAD_ID,undefined);assert.equal(spawn.options.env.CODEX_PET_HOST,undefined);
   assert.equal((await r.remote.probe()).supported,true);assert.equal(r.spawns.length,1);
+});
+
+test('默认新会话注册项目读取工具，Shell和原生MCP关闭，读取不需要第二次审批',async t=>{
+  const r=rig(t,{permission:'read-only'});writeFileSync(join(r.cwd,'note.txt'),'bounded synthetic project file');
+  const {promise}=await r.start(),args=r.spawns[0].args,tools=r.calls.find(call=>call.method==='thread/start').params.dynamicTools;
+  assert.deepEqual(tools.map(tool=>tool.name),['qq_read_file','qq_list_files']);assert.ok(tools.every(tool=>tool.type==='function'));
+  for(const key of ['shell_tool','code_mode','code_mode_host'])assert.ok(args.some((value,index)=>value==='--disable'&&args[index+1]===key));
+  assert.ok(args.includes('mcp_servers={}'));
+  r.request(801,'item/tool/call',{callId:'file-read-1',tool:'qq_read_file',arguments:{path:'note.txt'}});
+  await until(()=>r.calls.some(call=>call.id===801&&call.result));
+  assert.equal(r.calls.find(call=>call.id===801).result.success,true);assert.match(r.calls.find(call=>call.id===801).result.contentItems[0].text,/bounded synthetic project file/);
+  r.request(802,'item/tool/call',{callId:'file-read-1',tool:'qq_read_file',arguments:{path:'note.txt'}});
+  r.request(803,'item/tool/call',{callId:'wrong-turn',turnId:'earlier-turn',tool:'qq_read_file',arguments:{path:'note.txt'}});
+  r.request(804,'item/tool/call',{callId:'disabled-shell',tool:'qq_shell',arguments:{command:'echo synthetic'}});
+  r.request(805,'item/commandExecution/requestApproval',{command:'echo synthetic',cwd:r.cwd});
+  await until(()=>r.calls.filter(call=>call.id>=802&&call.id<=805&&call.result).length===4);
+  for(const id of [802,803,804])assert.equal(r.calls.find(call=>call.id===id).result.success,false);
+  assert.equal(r.calls.find(call=>call.id===805).result.decision,'decline');assert.equal(r.events.some(event=>event.type==='approval'),false);
+  assert.equal(r.calls.some(call=>call.method==='command/exec'||call.method==='thread/shellCommand'||call.method==='mcpServer/tool/call'),false);r.complete();await promise;
+});
+
+test('旧桌面会话只续文字，不伪造文件工具注册，也不分叉新thread',async t=>{
+  const mapped=[],r=rig(t,{onThread:async(id,metadata)=>mapped.push(metadata)});writeFileSync(join(r.cwd,'note.txt'),'should not be read');
+  const {promise}=await r.start({threadId:'synthetic-thread'});
+  r.request(806,'item/tool/call',{callId:'old-read',tool:'qq_read_file',arguments:{path:'note.txt'}});await until(()=>r.calls.some(call=>call.id===806&&call.result));
+  assert.equal(r.calls.find(call=>call.id===806).result.success,false);assert.doesNotMatch(JSON.stringify(r.calls.find(call=>call.id===806).result),/should not be read/);
+  assert.equal(r.calls.some(call=>call.method==='thread/start'),false);assert.equal(r.calls.find(call=>call.method==='thread/resume').params.dynamicTools,undefined);
+  assert.deepEqual(mapped,[{created:false,fileTools:false}]);r.complete();await promise;
+});
+
+test('本实例先创建的QQ会话保留文件工具注册证据后才允许恢复读取',async t=>{
+  const r=rig(t);writeFileSync(join(r.cwd,'note.txt'),'registered file tools');const thread=await r.remote.createThread();assert.equal(thread.fileTools,true);
+  const {promise}=await r.start({threadId:thread.id});r.request(807,'item/tool/call',{callId:'known-read',tool:'qq_read_file',arguments:{path:'note.txt'}});
+  await until(()=>r.calls.some(call=>call.id===807&&call.result));assert.equal(r.calls.find(call=>call.id===807).result.success,true);assert.equal(r.calls.filter(call=>call.method==='thread/start').length,1);r.complete();await promise;
+});
+
+test('动态工具初始化挂起时取消立即结束，迟到的初始化结果被关闭且不启动模型',async t=>{
+  let release,signal,closes=0;const waiting=new Promise(resolve=>{release=resolve;});
+  const r=rig(t,{createToolsImpl:async options=>{signal=options.signal;await waiting;return{specs:[],async close(){closes++;},async cancel(){}};}});
+  const prompt=r.remote.prompt({text:'cancel before initialization'});await until(()=>signal);await r.remote.cancel();
+  const result=await Promise.race([prompt,new Promise((_,reject)=>setTimeout(()=>reject(Error('initialization blocked cancellation')),150))]);assert.equal(result.status,'cancelled');assert.equal(signal.aborted,true);
+  release();await until(()=>closes===1);assert.equal(r.calls.some(call=>call.method==='thread/start'||call.method==='turn/start'),false);
+});
+
+test('MCP代理需逐次确认且拒绝不执行，批准不阻塞取消，迟到执行结果不能回传',async t=>{
+  let executions=0,cancels=0,resolveExecution;
+  const r=rig(t,{toolPolicy:{shell:false,mcp:true,mcpServerIds:['selected']},mcpRevision:'synthetic-revision',createToolsImpl:async()=>({
+    specs:[{type:'function',name:'qq_mcp_synthetic',description:'Synthetic selected tool',inputSchema:{type:'object'}}],
+    prepare(name,input){assert.equal(name,'qq_mcp_synthetic');return{kind:'mcp',summary:'Synthetic MCP operation: '+JSON.stringify(input),name,input};},
+    execute(){executions++;return new Promise(resolve=>{resolveExecution=resolve;});},async cancel(){cancels++;},async close(){},
+  })});
+  const {promise}=await r.start();r.request(808,'item/tool/call',{callId:'mcp-decline',tool:'qq_mcp_synthetic',arguments:{action:'synthetic'}});await until(()=>r.events.some(event=>event.type==='approval'));
+  let approval=r.events.find(event=>event.type==='approval');assert.equal(approval.kind,'mcp');assert.equal(executions,0);await r.remote.approve({approvalId:approval.id,decision:'decline'});assert.equal(executions,0);assert.equal(r.calls.find(call=>call.id===808).result.success,false);
+  r.request(809,'item/tool/call',{callId:'mcp-accept',tool:'qq_mcp_synthetic',arguments:{action:'synthetic'}});await until(()=>r.events.filter(event=>event.type==='approval').length===2);approval=r.events.filter(event=>event.type==='approval').at(-1);
+  await r.remote.approve({approvalId:approval.id,decision:'accept'});await until(()=>executions===1);assert.equal(r.calls.some(call=>call.id===809&&call.result),false);
+  await r.remote.cancel();assert.equal((await promise).status,'cancelled');assert.ok(cancels>=1);assert.equal(r.calls.find(call=>call.id===809).result.success,false);
+  resolveExecution({success:true,contentItems:[{type:'inputText',text:'late synthetic external result'}]});await pause();assert.equal(r.calls.filter(call=>call.id===809&&call.result).length,1);assert.doesNotMatch(JSON.stringify(r.calls.find(call=>call.id===809).result),/late synthetic/);
 });
 
 test('会话列表仅查询当前项目交互源的十条元数据，正文、日志路径和回合不外传',async t=>{
@@ -80,8 +144,8 @@ test('立即创建受限持久会话并等待映射，但不提交模型回合',
   const r=rig(t,{onThread:async(id,info)=>{mapped.push({id,info});await saved;}});
   const creation=r.remote.createThread();await until(()=>mapped.length===1);
   let finished=false;creation.then(()=>{finished=true;});await pause();assert.equal(finished,false);release();
-  assert.deepEqual(await creation,{id:'synthetic-thread',title:'Synthetic conversation',cwd:r.cwd,status:'idle',updatedAt:1000});
-  assert.deepEqual(mapped,[{id:'synthetic-thread',info:{created:true}}]);
+  assert.deepEqual(await creation,{id:'synthetic-thread',title:'Synthetic conversation',cwd:r.cwd,status:'idle',updatedAt:1000,fileTools:true});
+  assert.deepEqual(mapped,[{id:'synthetic-thread',info:{created:true,fileTools:true}}]);
   const params=r.calls.find(m=>m.method==='thread/start').params;assert.equal(params.ephemeral,false);assert.equal(params.cwd,r.cwd);assert.equal(params.config.default_permissions,':workspace');assert.equal(params.approvalPolicy.granular.sandbox_approval,false);assert.equal(r.calls.some(m=>m.method==='turn/start'),false);
 });
 
@@ -119,7 +183,7 @@ test('目录响应不接受跨项目、超大分页、非法状态或游标，�
 test('恢复已有会话前后都经外部活动检查，日志路径仅交给私有guard',async t=>{
   const checks=[],mapped=[],r=rig(t,{beforeResume:async(id,metadata)=>{checks.push({id,metadata});return true;},onThread:async(id,info)=>mapped.push({id,info})}),{promise}=await r.start({threadId:'synthetic-thread'});
   assert.equal(checks.length,2);for(const check of checks)assert.deepEqual(check,{id:'synthetic-thread',metadata:{logPath:join(r.cwd,'synthetic-rollout.jsonl'),cwd:r.cwd,status:'idle'}});
-  assert.equal(r.calls.filter(m=>m.method==='thread/read').length,1);assert.deepEqual(mapped,[{id:'synthetic-thread',info:{created:false}}]);r.complete();await promise;
+  assert.equal(r.calls.filter(m=>m.method==='thread/read').length,1);assert.deepEqual(mapped,[{id:'synthetic-thread',info:{created:false,fileTools:false}}]);r.complete();await promise;
   for(const verdict of [false,undefined,'unknown']){
     const denied=rig(t,{beforeResume:async()=>verdict});await assert.rejects(denied.remote.prompt({text:'existing thread',threadId:'synthetic-thread'}),e=>e.code===(verdict===false?'thread_busy':'thread_state_unknown'));assert.equal(denied.calls.some(m=>m.method==='thread/resume'||m.method==='turn/start'),false);
   }
@@ -188,7 +252,7 @@ test('thread创建后必须等映射持久化成功才提交turn',async t=>{
 
 test('权威回合身份保存完成前缓冲早到审批，保存后才发布',async t=>{
   let release,recorded=false;const stored=new Promise(resolve=>{release=resolve;}),seen=[];
-  const r=rig(t,{onTurn:async(threadId,turnId)=>{seen.push({threadId,turnId});await stored;recorded=true;},dispatch(m,{reply,notify,cwd}){if(m.method==='turn/start'){reply(m,{turn:{id:'synthetic-turn',status:'inProgress',items:[]}});notify('item/started',{threadId:'synthetic-thread',turnId:'synthetic-turn',item:{id:'synthetic-item',type:'commandExecution'}});queueMicrotask(()=>r.request(701,'item/commandExecution/requestApproval',{command:'npm test',cwd}));return false;}}});
+  const r=rig(t,{onTurn:async(threadId,turnId)=>{seen.push({threadId,turnId});await stored;recorded=true;},dispatch(m,{reply}){if(m.method==='turn/start'){reply(m,{turn:{id:'synthetic-turn',status:'inProgress',items:[]}});queueMicrotask(()=>fileApproval(r,701));return false;}}});
   const {promise}=await r.start();await until(()=>seen.length===1);await pause();
   assert.deepEqual(seen,[{threadId:'synthetic-thread',turnId:'synthetic-turn'}]);assert.equal(r.events.some(event=>event.type==='approval'),false);assert.equal(recorded,false);
   release();await until(()=>r.events.some(event=>event.type==='approval'));assert.equal(recorded,true);await r.remote.approve({approvalId:r.events.find(event=>event.type==='approval').id,decision:'decline'});r.complete();assert.equal((await promise).status,'completed');
@@ -210,15 +274,15 @@ test('取消或超时不等待回合存储回调，晚到回调不能发布缓�
 });
 
 test('命令审批携带实际有界内容，未回答挂起，单次同意不可重放',async t=>{
-  const r=rig(t),{promise}=await r.start();
-  r.request(44,'item/commandExecution/requestApproval',{command:'npm test',cwd:r.cwd,reason:'运行项目检查'});
+  const r=rig(t,{toolPolicy:{shell:true,mcp:false,mcpServerIds:[]}}),{promise}=await r.start();
+  r.request(44,'item/tool/call',{callId:'call-44',tool:'qq_shell',arguments:{command:'npm test'}});
   await until(()=>r.events.some(x=>x.type==='approval'));
   const approval=r.events.find(x=>x.type==='approval');assert.equal(approval.kind,'command');assert.match(approval.summary,/npm test/);
-  r.request(44,'item/commandExecution/requestApproval',{command:'npm test',cwd:r.cwd});await pause();
+  r.request(44,'item/tool/call',{callId:'call-44',tool:'qq_shell',arguments:{command:'npm test'}});await pause();
   assert.equal(r.events.filter(x=>x.type==='approval').length,1);
   assert.equal(r.calls.some(m=>m.id===44&&Object.hasOwn(m,'result')),false);assert.equal(r.events.at(-1).type,'approval');
   await r.remote.approve({approvalId:approval.id,decision:'accept'});
-  assert.deepEqual(r.calls.find(m=>m.id===44).result,{decision:'accept'});
+  await until(()=>r.calls.some(m=>m.id===44&&m.result));assert.equal(r.calls.find(m=>m.id===44).result.success,true);assert.equal(r.calls.filter(m=>m.method==='command/exec').length,1);
   await assert.rejects(r.remote.approve({approvalId:approval.id,decision:'accept'}),e=>e.code==='stale_approval');
   r.complete();await promise;
 });
@@ -284,7 +348,7 @@ test('非secret问题逐项作答，secret请求不向外发布，取消后旧�
   r.request(81,'item/tool/requestUserInput',{isBlocking:true,questions:[{id:'secret',header:'密钥',question:'输入秘密',isSecret:true}]});
   await until(()=>r.calls.some(m=>m.id===81));assert.deepEqual(r.calls.find(m=>m.id===81).result,{answers:{}});
   assert.equal(r.events.filter(x=>x.type==='input').length,1);
-  r.request(82,'item/commandExecution/requestApproval',{command:'npm test',cwd:r.cwd});await until(()=>r.events.some(x=>x.type==='approval'));
+  fileApproval(r,82);await until(()=>r.events.some(x=>x.type==='approval'));
   const approval=r.events.find(x=>x.type==='approval');await r.remote.cancel();
   assert.equal((await promise).status,'cancelled');assert.equal(r.calls.find(m=>m.id===82).result.decision,'decline');
   assert.ok(r.calls.some(m=>m.method==='turn/interrupt'));
@@ -311,7 +375,7 @@ test('turn或审批到期时中断无终态也按超时报错，未完成不能�
   for(const approval of [false,true]){
     const r=rig(t,{requestTimeoutMs:30,turnTimeoutMs:approval?1000:20,approvalTimeoutMs:20,dispatch(m,{reply}){if(m.method==='turn/interrupt'){reply(m,{});return false;}}});
     const {promise}=await r.start();
-    if(approval)r.request(90,'item/commandExecution/requestApproval',{command:'npm test',cwd:r.cwd});
+    if(approval)fileApproval(r,90);
     await assert.rejects(promise,e=>e.code===(approval?'approval_timeout':'turn_timeout'));assert.equal(r.child.killed,true);
   }
 });
@@ -320,7 +384,7 @@ test('超时后再次cancel与close保留最先的超时错误，不能降格为
   for(const approval of [false,true]){
     const r=rig(t,{requestTimeoutMs:200,turnTimeoutMs:approval?1000:20,approvalTimeoutMs:20,dispatch(m,{reply}){if(m.method==='turn/interrupt'){reply(m,{});return false;}}});
     const {promise}=await r.start();
-    if(approval)r.request(304,'item/commandExecution/requestApproval',{command:'npm test',cwd:r.cwd});
+    if(approval)fileApproval(r,304);
     await new Promise(resolve=>setTimeout(resolve,35));assert.ok(r.calls.some(m=>m.method==='turn/interrupt'));
     await r.remote.cancel();await r.remote.close();
     await assert.rejects(promise,e=>e.code===(approval?'approval_timeout':'turn_timeout'));
@@ -354,7 +418,7 @@ test('新回合响应前的迟到旧审批不能绑定当前turn，先等权威t
   let starts=0;
   const r=rig(t,{dispatch(m,{send,cwd}){
     if(m.method==='turn/start'&&++starts===2){
-      for(const [id,turnId]of [[222,'synthetic-turn'],[223,'synthetic-turn-2']])send({id,method:'item/commandExecution/requestApproval',params:{threadId:'synthetic-thread',turnId,itemId:'approval-item',startedAtMs:1,command:'npm test',cwd}});
+      for(const [id,turnId]of [[222,'synthetic-turn'],[223,'synthetic-turn-2']])fileApproval(r,id,{turnId});
       return false;
     }
   }});

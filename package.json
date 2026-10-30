@@ -1,6 +1,6 @@
 {
   "name": "codex-pet",
-  "version": "0.11.0",
+  "version": "0.12.0",
   "private": true,
   "type": "module",
   "description": "Codex Pet: a Windows desktop companion for Codex and WorkBuddy, based on dsh-pet",
@@ -24,6 +24,7 @@
     "node": ">=22.12.0"
   },
   "dependencies": {
-    "dsh-pet": "0.3.8"
+    "dsh-pet": "0.3.8",
+    "smol-toml": "1.9.1"
   }
 }

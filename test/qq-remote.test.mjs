@@ -32,6 +32,16 @@ async function fixture(t,{delayRemote=false,replyText,approvalCount=1,activityGa
   return{bridge,root,sent,packets,prompts,states,approvals,catalogCalls,factories,threads,receive,pair,factoryOptions,get approval(){return approval;},set fail(v){failSend=v;},releaseRemote(){releaseRemote?.();},finish(){resolveTurn?.({threadId:'synthetic-thread',text:'done',status:'completed'});}};
 }
 
+test('关闭工具后官方会话列表不会重新混入已登记的旧工具会话，仍保留普通桌面会话',async t=>{
+ const f=await fixture(t);t.after(()=>f.bridge.dispose());
+ await f.bridge.configure({action:'save',appId:'123456',cwd:f.root,permission:'read-only',enabled:true,toolPolicy:{shell:true,mcp:false,mcpServerIds:[]}});
+ await f.pair();await f.receive('/新建 旧工具会话','new-tools');
+ await f.bridge.configure({action:'save',appId:'123456',cwd:f.root,permission:'read-only',enabled:true,toolPolicy:{shell:false,mcp:false,mcpServerIds:[]}});
+ f.threads.push({id:'ordinary-desktop',title:'普通桌面会话',cwd:f.root,status:'idle',updatedAt:1001});
+ await f.receive('/会话','files-list');assert.match(f.sent.at(-1),/普通桌面会话/);assert.doesNotMatch(f.sent.at(-1),/旧工具会话/);
+ await f.receive('/权限','tool-switch-status');assert.match(f.sent.at(-1),/Shell: 关闭/);assert.match(f.sent.at(-1),/MCP: 关闭/);
+});
+
 test('native Harness admission blocks only new QQ tasks and conversations, keeping the paired owner and existing approval, cancel and result commands',async t=>{
   let allowed=true;const f=await fixture(t,{canStart:()=>allowed});t.after(()=>f.bridge.dispose());await f.pair();
   await f.receive('wait','existing-job');await new Promise(resolve=>setTimeout(resolve,5));
