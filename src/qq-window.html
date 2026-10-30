@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="en">
+<head>
+ <meta charset="utf-8">
+ <meta name="viewport" content="width=device-width, initial-scale=1">
+ <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'; frame-src 'none'">
+ <title>Codex Pet · QQ remote tasks</title>
+ <link rel="stylesheet" href="qq-window.css">
+ <script defer src="qq-window.js"></script>
+</head>
+<body>
+ <main>
+  <form id="settings">
+   <fieldset>
+    <legend data-copy="bot">1 · Connect a QQ bot</legend>
+    <div class="platform-row"><p class="note" data-copy="create-note">Create a bot on the QQ Open Platform, then copy its AppID and AppSecret.</p><button id="platform" type="button" data-copy="platform">Create QQ bot</button></div>
+    <div class="credentials">
+     <div class="field"><label for="app-id">AppID</label><input id="app-id" type="text" inputmode="numeric" autocomplete="off" maxlength="32" required></div>
+     <div class="field"><label for="app-secret">AppSecret</label><input id="app-secret" type="password" autocomplete="new-password" maxlength="4096" aria-describedby="secret-note"><small id="secret-note" class="note" data-copy="secret-new">Enter the AppSecret from QQ Open Platform.</small></div>
+    </div>
+   </fieldset>
+   <fieldset>
+    <legend data-copy="project">2 · Choose a project</legend>
+    <div class="field"><label for="directory" data-copy="folder">Project folder</label><div class="directory-row"><input id="directory" type="text" readonly><button id="choose-directory" type="button" data-copy="choose-folder">Choose folder</button></div></div>
+    <div class="permissions">
+     <label class="permission"><input type="radio" name="permission" value="read-only" checked><span data-copy="read-only">Read only</span></label>
+     <label class="permission"><input type="radio" name="permission" value="workspace-write"><span data-copy="workspace-write">Allow edits in this folder</span></label>
+    </div>
+    <div class="actions"><button id="save" type="submit" class="primary" data-copy="save">Save and connect</button><button id="disable" type="button" data-copy="disable" disabled>Disconnect</button><button id="refresh" type="button" data-copy="refresh">Refresh</button></div>
+    <dl class="status"><div><dt data-copy="connection">Connection</dt><dd id="connection" role="status">Loading…</dd></div><div><dt data-copy="task">Task</dt><dd id="task">—</dd></div><div id="pending-row" hidden><dt data-copy="pending">Replies awaiting delivery</dt><dd id="pending">0</dd></div></dl>
+   </fieldset>
+   <fieldset>
+    <legend data-copy="pairing">3 · Pair your QQ account</legend>
+    <p id="pair-status" class="pair-status" role="status">Not paired</p>
+    <p class="note" id="pair-note" data-copy="pair-note">Generate a code, then send the pairing message to your bot in a private QQ chat.</p>
+    <div id="pair-code-row" class="pair-code-row" hidden><input id="pair-code" type="text" readonly aria-label="Pairing message"><button id="copy-pair" type="button" data-copy="copy-pair">Copy message</button><span id="expires" class="note"></span></div>
+    <div class="actions"><button id="pair" type="button" data-copy="generate" disabled>Generate pairing code</button><button id="unlink" type="button" class="danger" data-copy="unlink" hidden>Unpair</button></div>
+   </fieldset>
+  </form>
+  <div id="message" class="message" role="alert" hidden></div>
+ </main>
+</body>
+</html>

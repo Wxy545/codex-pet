@@ -11,18 +11,20 @@
   function filter(nodes){return nodes.flatMap(node=>{
     if(node.action==='third-party')return[node];
     if(host==='workbuddy'&&node.action==='open-site')return[{...node,label:(window.CodexLocale?.getLocale()||navigator.language).startsWith('zh')?'打开 WorkBuddy':'Open WorkBuddy'}];
-    if(host==='workbuddy'&&['chat','codex-task-panel','show-balance','balance','say','whisper','open-ai-settings'].includes(node.action))return[];
+    if(host==='workbuddy'&&['chat','codex-task-panel','qq-remote-settings','show-balance','balance','say','whisper','open-ai-settings'].includes(node.action))return[];
     return[{...node,...(node.children?{children:filter(node.children)}:{})}];
   });}
   shared.mountContextMenu=function(options){
     if(!options?.tree?.some(item=>['chat','open-site','home','reload'].includes(item.action)))return mount.apply(this,arguments);
     const zh=(window.CodexLocale?.getLocale()||navigator.language).startsWith('zh');
     const tree=filter(options.tree);
+    if(host==='codex'&&window.qqRemoteSettings?.open)tree.push({label:zh?'QQ 远程任务':'QQ remote tasks',action:'qq-remote-settings'});
     tree.push({label:zh?'联动应用':'Companion app',children:[['codex','Codex'],['workbuddy','WorkBuddy']].map(([id,label])=>({label:(id===host?'✓ ':'')+label,action:'pet-select-host',host:id}))});
     return mount.call(this,{...options,tree});
   };
   const action=PetSprite.prototype.onMenuAction;
   PetSprite.prototype.onMenuAction=function(leaf){
+    if(leaf?.action==='qq-remote-settings'&&window.qqRemoteSettings?.open){this.closeMenu();void window.qqRemoteSettings.open();return;}
     if(leaf?.action==='pet-select-host'){
       this.closeMenu();void bridge.selectHost(leaf.host).catch(()=>console.warn('[Codex Pet] Companion app could not be changed.'));return;
     }

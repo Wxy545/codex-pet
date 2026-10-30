@@ -66,6 +66,18 @@ The pet follows WorkBuddy 5.9.3 task events: thinking, using tools, waiting for 
 
 Send chats and new tasks from WorkBuddy itself. The pet's Chat (including image input), Tasks, usage, and AI chatter controls are hidden in this mode.
 
+## Codex from QQ
+
+Send Codex a task from a private QQ chat, continue the same conversation, approve an operation once, or cancel it. The desktop pet follows the task while the result comes back to QQ. Keep your computer online with Codex CLI signed in and Codex Pet running.
+
+1. Right-click the pet and open **QQ remote tasks**, then choose **Create QQ bot**. Sign in to QQ Open Platform and create a bot.
+2. Paste its AppID and AppSecret into the local settings window. Choose a project folder and read-only or edit access, then select **Save and connect**.
+3. Generate a pairing code and send the copied message to your bot in a **private chat**. Once paired, send your task in plain language.
+
+Use `/status` to check progress, `/cancel` to stop, `/result` to retrieve a saved result, and `/new` to start a fresh conversation. Approval and question messages include their own reply instructions. Replies that fail delivery are kept locally; retrieving them does not run the task again.
+
+The connection accepts only the paired QQ identity. AppSecret is encrypted for your Windows account and is never shown again. This first version handles text in private chats, with a dedicated persistent Codex conversation. QQ remote tasks are available in Codex mode.
+
 ## Characters and animations
 
 Choose a chibi character from **Character** in the right-click menu:

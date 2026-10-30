@@ -38,6 +38,14 @@ async function until(predicate, message = '等待事件适配器更新') {
   assert.fail(message);
 }
 
+test('QQ实时管理的线程不重复汇总或通知，但仍保留真实额度观测',async t=>{
+  const f=await fixture(t,{'remote.jsonl':meta('remote-thread')+event('task_started'),'local.jsonl':meta('local-thread')+event('task_started')},{excludeThread:id=>id==='remote-thread'});
+  await f.watcher.start();assert.equal(f.watcher.snapshot().activeCount,1);assert.equal(f.watcher.snapshot().threadId,'local-thread');
+  await appendFile(join(f.dir,'remote.jsonl'),event('token_count',{rate_limits:{primary:{used_percent:17,window_minutes:300}}})+event('exec_approval_request',{id:'remote-approval'})+event('task_complete',{turn_id:'remote-turn'}));
+  await until(()=>f.watcher.snapshot().usage?.usedPercent===17);
+  assert.equal(f.watcher.snapshot().activeCount,1);assert.equal(f.notifications.length,0);
+});
+
 test('English事件状态、窗口与通知固定文案可读，线程ID与自报窗口名保留', async t => {
   const f = await fixture(t, { 'a.jsonl': meta('thread-a') + event('task_started'), 'b.jsonl': meta('thread-b') + event('task_started') }, { locale: 'en' });
   await f.watcher.start(); assert.equal(f.watcher.snapshot().task, '2 chats · Thinking');

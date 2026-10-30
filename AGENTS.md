@@ -4,6 +4,7 @@
 
 - 保留 dsh-pet 的动画、物理与菜单实现；适配集中在所选应用的事件、Codex 额度与 CLI 对话、跟随启动和系统通知。上游版本与补丁定位都必须显式验证，定位失败时停止，不静默跳过。
 - Codex 与 WorkBuddy 的联动选择保存于 `data/host.json`，与角色选择分开。WorkBuddy 事件插件位于 `workbuddy/`，当前适配 Windows 5.9.3 客户端；安装和移除只操作本插件，保留其它插件及配置。WorkBuddy 在桌宠侧未证实的账号聊天、额度、图片/文件任务和 AI 碎碎念能力保持关闭，不转给 Codex 执行或显示 Codex 额度。
+- QQ 远程任务只在 Codex 模式启用。使用官方 C2C 与本机 app-server，先本机配对再接任务；AppSecret 用当前用户 DPAPI 保存于 data，不回显、不上传。线程映射只接受自产记录，审批只能消费一次，取消、超时和旧回合必须清场；不允许通过确认扩大沙箱或权限。Codex 更新时还要核对 app-server 的 thread/turn、审批和问题回包协议。
 - DeepSeek Harness 接入位于 `harness/`，使用原生 dsh-pet 角色包与 Harness 服务。运行时补丁只写所选 profile 内的依赖文件，原子替换以断开 pnpm 硬链接，不修改共享 store、Codex 宿主或其他 profile。
 - 配置、日志、会话记忆、运行令牌、截图和依赖目录留在本机。不得提交 data/、node_modules/、.env 或 Codex 用户目录；测试使用合成会话 ID，不使用真实对话或凭据。
 - 自有代码与上游代码按各自许可证维护；角色和动画按各自素材许可提供。新增或替换素材前核实来源与许可，不把素材统一标为 MIT。

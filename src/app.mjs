@@ -18,6 +18,7 @@ import Startup from './codex-startup.cjs';
 import PetHost from './pet-host.cjs';
 import { createWorkBuddyBridge } from './workbuddy-events.mjs';
 import { waitForRestartReady } from './pet-restart.mjs';
+import { createQQBridge, projectQQState } from './qq-remote.mjs';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const home = join(root, 'data');
@@ -124,6 +125,24 @@ async function start() {
   let manualTimer;
   let processTimer = null;
   let processChecking = false;
+  let qq, qqView=null, qqTerminalTimer;
+  if(isCodex)try{qq=await createQQBridge({dataRoot:home,codexPath,activityGate,locale:Locale.getLocale(),onState:view=>{
+    const previousState=qqView?.state;qqView=view;clearTimeout(qqTerminalTimer);
+    if(['success','error'].includes(view.state)){
+      qqTerminalTimer=setTimeout(()=>{qqView=null;if(eventReady)updateDisplay();},10000);qqTerminalTimer.unref();
+      if(previousState!==view.state){notices.push({id:randomBytes(12).toString('hex'),kind:view.state==='success'?'complete':'error',title:Locale.getLocale()==='zh-CN'?'QQ 任务已结束':'QQ task finished',body:Locale.getLocale()==='zh-CN'?'在 QQ 中查看任务结果。':'Check QQ for the task result.',threadId:view.threadId||null});if(notices.length>24)notices.shift();}
+    }
+    if(eventReady)updateDisplay();
+  }});}catch{logger.warn(Locale.getLocale()==='zh-CN'?'QQ 连接设置未能读取；桌宠继续运行，请检查本机 QQ 设置。':'QQ settings could not be loaded. The pet is still running; check its local QQ settings.');}
+  routes.push({kind:'exact',path:`${prefix}/qq-remote`,handler:async(req,res)=>{
+    if(req.headers['x-dsh-pet-token']!==security.token||req.headers.origin)return json(res,403,{error:{code:'unauthorized'}});
+    if(!isCodex||switchingHost)return json(res,409,{error:{code:'host_unavailable_for_qq'}});
+    if(!qq)return json(res,503,{error:{code:'storage_failed'}});
+    if(req.method==='GET')return json(res,200,qq.state());
+    if(req.method!=='POST')return json(res,405,{error:{code:'method_not_allowed'}});
+    try{json(res,200,await qq.configure(await requestJson(req,32768)));}
+    catch(error){const code=['invalid_input','invalid_directory','busy','not_configured','already_paired','secret_required','secret_store_unavailable'].includes(error.code)?error.code:'storage_failed';json(res,code==='busy'?409:400,{error:{code}});}
+  }});
   const activeTaskStates = new Set(['running', 'cancelling']);
   const terminalTaskStates = new Set(['completed', 'failed', 'cancelled', 'timed_out']);
   routes.push({ kind: 'exact', path: `${prefix}/pet-host`, handler: async (req, res) => {
@@ -250,9 +269,11 @@ async function start() {
       task: active ? t('正在处理已确认的目录任务') : manualTaskView.state === 'completed' ? t('操作任务已返回结果') : manualTaskView.state === 'cancelled' ? '' : t('操作任务未完成'),
       activeCount: (mainSnapshot.activeCount || 0) + Number(active),
     } : mainSnapshot;
-    snapshot = next;
+    snapshot = projectQQState(next,qqView,Locale.getLocale());
+    const displaySnapshot=snapshot;
     updateChain = updateChain.then(async () => {
       if (stopping) return;
+      const next=displaySnapshot;
       const stateKey = JSON.stringify([next.state, next.task]);
       if (stateKey !== lastState) {
         if (next.state === 'idle') await petRequest('DELETE', '/work-status');
@@ -281,7 +302,7 @@ async function start() {
     updateDisplay();
   };
   // 桌宠跟随用户聊天，内部子代理的中间完成不作为整项任务完成提醒。
-  const watcher = isCodex ? createCodexWatcher({ codexHome, excludeThreadSources: ['pet-chat', 'pet-task', 'subagent'], onChange: (next, event) => {
+  const watcher = isCodex ? createCodexWatcher({ codexHome, excludeThreadSources: ['pet-chat', 'pet-task', 'subagent'],excludeThread:id=>qq?.ownsThread(id)===true, onChange: (next, event) => {
     mainSnapshot = next;
     if (event) {
       // 多会话并行时，通知跳转跟随事件来源，而不是当前显示工作动画的会话。
@@ -294,6 +315,8 @@ async function start() {
     if (stopping) return;
     stopping = true;
     clearTimeout(manualTimer);
+    clearTimeout(qqTerminalTimer);
+    try{await qq?.dispose();}catch{/* QQ关闭失败不能阻止主桌宠、监听器和本机服务收尾。 */}
     clearInterval(processTimer);
     await watcher.stop();
     chatHandler?.dispose();
@@ -312,6 +335,7 @@ async function start() {
   eventReady = true;
   if (!isCodex) updateDisplay();
   await watcher.start();
+  void qq?.start();
   if (!isCodex) {
     // 仅在已核实全部WorkBuddy进程退出时清场；最小化和长任务不按超时误判。
     const checkWorkBuddyProcess = async () => {

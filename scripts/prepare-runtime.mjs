@@ -70,6 +70,7 @@ mainCode=await readFile(main,'utf8');
 const extensionHook=`// codex-pet-extensions-v2
 const codexPanelRequest = require('./codex-api.cjs').createHostRequest();
 const codexPetHost = require('./pet-host-menu.cjs').install({hostRequest:codexPanelRequest});
+const codexQQSettings = process.env.CODEX_PET_HOST === 'workbuddy' ? null : require('./qq-window.cjs').install({hostRequest:codexPanelRequest});
 const codexTaskPanel = require('./codex-task-window.cjs').install({hostRequest:codexPanelRequest});
 const codexChatPanel = require('./codex-chat-window.cjs').install({hostRequest:codexPanelRequest,openTaskPanel:()=>codexTaskPanel.open()});
 require('./codex-skins.cjs').install({hostRequest,dataRoot:process.env.DSH_HOME,onSelectionChanged:async model=>{const character=model.characters.find(item=>item.id===model.selection.character);codexChatPanel.onCharacterChanged?.({id:model.selection.character,name:character.copy.name,locale:model.locale});if(tray){tray.destroy();tray=null;}await startTray();}});
@@ -86,7 +87,9 @@ const oldTray="tray.setToolTip('dsh-pet 桌面宠物');";
 mainCode=mainCode.replace(oldTray,"tray.setToolTip('Codex Pet');").replace("tray.setToolTip('龙娘桌宠');","tray.setToolTip('Codex Pet');");
 mainCode=patchStartupMain(mainCode);
 const hostTray='...codexStartup.trayItems(), ...codexPetHost.trayItems()]';
-if(!mainCode.includes(hostTray)) mainCode=patchOnce(mainCode,'...codexStartup.trayItems()]',hostTray,'联动应用托盘');
+const qqTray='...codexStartup.trayItems(), ...codexPetHost.trayItems(), ...(codexQQSettings?.trayItems() || [])]';
+if(!mainCode.includes(hostTray)&&!mainCode.includes(qqTray)) mainCode=patchOnce(mainCode,'...codexStartup.trayItems()]',hostTray,'联动应用托盘');
+if(!mainCode.includes(qqTray))mainCode=patchOnce(mainCode,hostTray,qqTray,'QQ任务托盘');
 await writeFile(main,mainCode);
 const preload=resolve(pkg,'runtime/electron-helper/preload.js');
 let preloadCode=await readFile(preload,'utf8');
@@ -101,6 +104,9 @@ if(!preloadCode.includes(startupPreload)) await writeFile(preload,preloadCode+'\
 preloadCode=await readFile(preload,'utf8');
 const hostPreload="require('./pet-host-menu.cjs').installPreload();";
 if(!preloadCode.includes(hostPreload)) await writeFile(preload,preloadCode+'\n'+hostPreload+'\n');
+preloadCode=await readFile(preload,'utf8');
+const qqPreload="require('./qq-window.cjs').installPreload();";
+if(!preloadCode.includes(qqPreload))await writeFile(preload,preloadCode+'\n'+qqPreload+'\n');
 const html=resolve(pkg,'runtime/electron-helper/index.html');
 let htmlCode=await readFile(html,'utf8');
 htmlCode=localizeIndexHtml(htmlCode);
@@ -108,6 +114,7 @@ if(!htmlCode.includes('src="startup-menu.js"')) htmlCode=patchOnce(htmlCode,'<sc
 if(!htmlCode.includes('src="pet-host-menu.js"')) htmlCode=patchOnce(htmlCode,'<script src="./events.js"></script>','<script src="pet-host-menu.js"></script>\n    <script src="./events.js"></script>','联动应用菜单');
 await writeFile(html,htmlCode);
 for(const file of ['codex-notifications.cjs','foreground-codex.ps1','codex-api.cjs','pet-host.cjs','pet-host-menu.cjs','pet-host-menu.js',
+  'qq-window.cjs','qq-preload.cjs','qq-window.html','qq-window.js','qq-window.css',
   'workbuddy-notifications.cjs','foreground-workbuddy.ps1','workbuddy-target.ps1',
   'codex-task-window.cjs','task-preload.cjs','task-window.html','task-window.js','task-window.css',
   'codex-chat-window.cjs','chat-preload.cjs','chat-window.html','chat-window.js','chat-window.css',

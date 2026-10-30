@@ -123,12 +123,13 @@ function transitionFor(record) {
  * 只读跟随 Codex 会话日志。snapshot 与通知只包含固定状态文案，不返回对话或命令正文。
  * start/stop 可 await；snapshot 同步读取，onChange 只在快照变化或出现新通知时调用。
  */
-export function createCodexWatcher({ codexHome = process.env.CODEX_HOME || join(homedir(), '.codex'), onChange = () => {}, pollMs = 1500, excludeThreadSources = ['pet-chat'], terminalHoldMs = 10000, locale = Locale.getLocale() } = {}) {
+export function createCodexWatcher({ codexHome = process.env.CODEX_HOME || join(homedir(), '.codex'), onChange = () => {}, pollMs = 1500, excludeThreadSources = ['pet-chat'], excludeThread=()=>false, terminalHoldMs = 10000, locale = Locale.getLocale() } = {}) {
   if (typeof codexHome !== 'string' || !codexHome) throw new TypeError(Locale.t('codexHome 必须是目录路径', {}, locale));
   if (typeof onChange !== 'function') throw new TypeError(Locale.t('onChange 必须是函数', {}, locale));
   if (!Number.isFinite(pollMs) || pollMs < 10) throw new TypeError(Locale.t('pollMs 必须不少于 10 毫秒', {}, locale));
   if (!Number.isFinite(terminalHoldMs) || terminalHoldMs < 0) throw new TypeError(Locale.t('terminalHoldMs 必须是非负毫秒数', {}, locale));
   if (!Array.isArray(excludeThreadSources)) throw new TypeError(Locale.t('excludeThreadSources 必须是数组', {}, locale));
+  if(typeof excludeThread!=='function')throw new TypeError('excludeThread must be a function');
   const sessionsRoot = join(resolve(codexHome), 'sessions');
   const excludedSources = new Set(excludeThreadSources);
   const files = new Map();
@@ -147,7 +148,7 @@ export function createCodexWatcher({ codexHome = process.env.CODEX_HOME || join(
   let published;
 
   function snapshot() {
-    const all = [...threads.values()];
+    const all = [...threads.values()].filter(thread=>!excludeThread(thread.threadId));
     const active = all.filter(thread => thread.active);
     const ordered = active.length
       ? active.sort((a, b) => (ACTIVE_PRIORITY[b.state] ?? 0) - (ACTIVE_PRIORITY[a.state] ?? 0) || b.updatedAt - a.updatedAt || b.sequence - a.sequence)
@@ -182,12 +183,15 @@ export function createCodexWatcher({ codexHome = process.env.CODEX_HOME || join(
       cursor.excluded = excludedSources.has(cursor.source);
     }
     if (cursor.excluded) return;
+    // QQ会话另有实时审批和终态通道；仍读取其额度，避免重复工作状态与通知。
+    const separatelyTracked=excludeThread(cursor.threadId);
     const updatedAt = timestampOf(record, cursor.mtimeMs);
     if (record.type === 'event_msg' && payload?.type === 'token_count') {
       const next = usageFrom(payload.rate_limits, locale);
       if (next && updatedAt >= quotaTimestamp) { quota = next; quotaTimestamp = updatedAt; publish(); }
     }
     const transition = transitionFor(record);
+    if(separatelyTracked)return;
     if (!transition) return;
     const previous = threads.get(cursor.threadId);
     if (!previous || updatedAt >= previous.updatedAt) {

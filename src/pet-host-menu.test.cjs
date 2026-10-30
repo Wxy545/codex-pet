@@ -29,7 +29,7 @@ test('WorkBuddy菜单移除未接入账号入口，保留互动、动作点播�
  let mounted,selected;
  const foreign={action:'third-party',children:[{action:'chat',label:'custom'}]};
  const shared={mountContextMenu:v=>{mounted=v;return{close(){}};},displayMenuBranch:()=>({action:'display'}),buildMoreBranch:()=>foreign,buildMenuTree:()=>[{label:'Balance levels',children:[{anim:'balance-1',label:'Plenty'}]}]};
- const window={PetShared:shared,__dshPetDebug:{},petHost:{initialHost:'workbuddy',getState:async()=>({host:'workbuddy'}),selectHost:async id=>{selected=id;}},addEventListener(){},CodexLocale:{getLocale:()=> 'en'}};
+ const window={PetShared:shared,__dshPetDebug:{},qqRemoteSettings:{open(){}},petHost:{initialHost:'workbuddy',getState:async()=>({host:'workbuddy'}),selectHost:async id=>{selected=id;}},addEventListener(){},CodexLocale:{getLocale:()=> 'en'}};
  const context=vm.createContext({window,S:shared,OPEN_TARGET:'web',navigator:{language:'en',platform:'Win32'},console});
  // 执行上游实际onContextMenu；禁止假造不存在的PetSprite.mountContextMenu方法。
  vm.runInContext(readFileSync(join(__dirname,'../node_modules/dsh-pet/runtime/electron-helper/sprite.js'),'utf8'),context);
@@ -37,7 +37,7 @@ test('WorkBuddy菜单移除未接入账号入口，保留互动、动作点播�
  const sprite=vm.runInContext('Object.create(PetSprite.prototype)',context);
  Object.assign(sprite,{dragState:{},animations:{},menuItems:[],stopThrow(){},stopMove(){},setInteractive(){},syncInputBusy(){},syncInputRegions(){},visibleClampRect:()=>null,closeMenu(){}});
  sprite.onContextMenu({preventDefault(){},clientX:0,clientY:0});
- assert.ok(!mounted.tree.some(x=>['chat','balance','show-balance','codex-task-panel','whisper'].includes(x.action)));
+ assert.ok(!mounted.tree.some(x=>['chat','balance','show-balance','codex-task-panel','qq-remote-settings','whisper'].includes(x.action)));
  assert.equal(mounted.tree.find(x=>x.action==='open-site').label,'Open WorkBuddy');
  assert.ok(mounted.tree.some(x=>x.action==='home'));assert.equal(mounted.tree.find(x=>x.action==='third-party'),foreign);
  assert.ok(mounted.tree.find(x=>x.label==='Balance levels'));assert.equal(mounted.tree.at(-1).label,'Companion app');

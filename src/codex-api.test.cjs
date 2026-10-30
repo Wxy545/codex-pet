@@ -12,6 +12,11 @@ test('面板请求固定到本机白名单接口，能力令牌只在主进程�
   assert.equal(received.options.redirect,'error');
   await request('GET','/dsh-pet-7340/codex-character');
   assert.equal(received.options.headers['x-dsh-pet-token'],settings.token);
+  await request('GET','/dsh-pet-7340/qq-remote');
+  await request('POST','/dsh-pet-7340/qq-remote','{"action":"pair"}');
+  assert.equal(String(received.url),'http://127.0.0.1:3080/dsh-pet-7340/qq-remote');
+  assert.equal(received.options.headers['x-dsh-pet-token'],settings.token);
+  await assert.rejects(request('PUT','/dsh-pet-7340/qq-remote'));
   await request('POST','/dsh-pet-7340/codex-startup/pending');
   assert.equal(String(received.url),'http://127.0.0.1:3080/dsh-pet-7340/codex-startup/pending');
   await assert.rejects(request('GET','/dsh-pet-7340/codex-startup/pending'));
