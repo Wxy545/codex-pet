@@ -59,7 +59,7 @@ test('超时worker尚未退出时不再创建进程，收到close后才能恢复
  children[0].emit('close',null);const next=probe.sample();assert.equal(children.length,2);children[1].stdout.write('{"engines":[],"memory":[]}\n');assert.equal(await next,null);probe.close();
 });
 
-test('原生PowerShell worker不把CIM缺失读数强转0，保留实际零值',{skip:process.platform!=='win32',timeout:15000},async t=>{
+test('原生PowerShell worker不把CIM缺失读数强转0，保留实际零值',{skip:process.platform!=='win32',timeout:30000},async t=>{
  const fake=String.raw`
 $script:phase = 0
 function Get-CimInstance {
@@ -76,8 +76,18 @@ function Get-CimInstance {
  }
 }
 `;
- const probe=createWindowsGpuProbe({spawnImpl:(file,args,options)=>{const values=[...args],index=values.indexOf('-EncodedCommand')+1,script=Buffer.from(values[index],'base64').toString('utf16le');values[index]=Buffer.from(script.replace('while (($line =',fake+'\nwhile (($line ='),'utf16le').toString('base64');return spawn(file,values,options);}});t.after(()=>probe.close());
- assert.equal(await probe.sample(),null);assert.equal(await probe.sample(),null);assert.deepEqual(await probe.sample(),{percent:0,dedicatedUsedBytes:0});
+ // 本例验证真实PowerShell的空值/零值转换；CIM已替身，不加载无关模块或测宿主冷启动速度。
+ // 生产5秒采样上限另有虚拟时钟回归，这里只给原生测试进程独立的启动余量。
+ let frames=0;
+ const probe=createWindowsGpuProbe({timeoutMs:15000,spawnImpl:(file,args,options)=>{
+  const values=[...args],index=values.indexOf('-EncodedCommand')+1,script=Buffer.from(values[index],'base64').toString('utf16le');
+  const moduleLine="Import-Module (Join-Path $PSHOME 'Modules\\CimCmdlets\\CimCmdlets.psd1') -ErrorAction Stop";
+  assert.equal(script.split(moduleLine).length,2);values[index]=Buffer.from(script.replace(moduleLine,fake),'utf16le').toString('base64');
+  const worker=spawn(file,values,options);worker.stdout.on('data',data=>{frames+=data.toString('utf8').split('\n').length-1;});return worker;
+ }});t.after(()=>probe.close());
+ assert.equal(await probe.sample(),null);assert.equal(frames,1,'首个空值必须来自worker回复，不能把超时算作空值样本');
+ assert.equal(await probe.sample(),null);assert.equal(frames,2);
+ assert.deepEqual(await probe.sample(),{percent:0,dedicatedUsedBytes:0});assert.equal(frames,3);
 });
 
 test('监控GPU约8秒采一次、不阻塞2秒CPU；关闭阻止迟到结果，监听器异步异常被吸收',async()=>{
