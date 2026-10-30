@@ -185,3 +185,74 @@ test('页面切换已授权项目无需密钥，新增目录保留草稿并保�
   appState.task={state:'working'};intervals.find(item=>item.ms===2500).fn();await settle();assert.equal(node('project-select').disabled,true);assert.equal(node('remove-project').disabled,true);assert.equal(node('save').disabled,true);
  }finally{windowEvents.get('beforeunload')();}
 });
+
+test('多应用与连接状态逐项脱敏，NapCat只提供固定运行状态',()=>{
+ const privateValue='PRIVATE_CANARY';
+ const source={application:'workbuddy',provider:'onebot',enabled:true,configured:true,hasSecret:false,paired:true,connection:{state:'connected'},project:{cwd:folder},capabilities:{models:false,desktopSessions:false},napcat:{state:'running',phase:'ready',canLogin:true,endpoint:'ws://outside/private',token:privateValue,localLoginUrl:privateValue},profiles:[{application:'codex',provider:'official',appId:'123456',hasSecret:true,appSecret:privateValue,ownerId:privateValue,project:{cwd:other},connection:{state:'stopped'}},{application:'workbuddy',provider:'onebot',selfId:privateValue,project:{cwd:folder},connection:{state:'connected'},task:{state:'working',text:privateValue}}]};
+ const state=QQ.sanitizeState(source);assert.equal(state.application,'workbuddy');assert.equal(state.provider,'onebot');assert.equal(state.profiles.length,2);assert.equal(state.profiles[0].appId,'123456');assert.equal(state.profiles[1].project.cwd,folder);assert.deepEqual(state.capabilities,{models:false,desktopSessions:false});assert.equal(state.napcat.endpoint,'ws://127.0.0.1:17630/');assert.doesNotMatch(JSON.stringify(state),/PRIVATE_CANARY|outside|localLoginUrl|selfId|ownerId/);
+});
+
+test('保存目标profile时目录和密钥不跨应用复用，小号连接不接收页面端凭据',async t=>{
+ const posted=[];const codex={application:'codex',provider:'official',appId:'123456',configured:true,project:{cwd:folder,permission:'read-only'},connection:{state:'connected'}},buddy={application:'workbuddy',provider:'onebot',configured:false,project:{cwd:other,permission:'read-only'},connection:{state:'stopped'}};
+ const f=fixture({hostRequest:async(method,route,body)=>{if(method==='POST')posted.push(JSON.parse(body));return{status:200,body:JSON.stringify({...codex,profiles:[codex,buddy]})};}});t.after(()=>f.controller.dispose());await f.controller.open();
+ const body={application:'workbuddy',provider:'onebot',cwd:other,permission:'read-only',enabled:true};
+ assert.equal((await f.invoke('save',{...body,cwd:folder})).code,'invalid_cwd');
+ for(const extra of [{appId:'123456'},{appSecret:''},{token:'private'},{endpoint:'ws://127.0.0.1:9999/'}])assert.equal((await f.invoke('save',{...body,...extra})).code,'invalid_input');
+ assert.equal((await f.invoke('save',body)).ok,true);assert.deepEqual(posted,[{action:'save',...body}]);
+ f.setDirectory(folder);await f.invoke('directory',{application:'harness',provider:'onebot'});
+ assert.equal((await f.invoke('save',{...body,cwd:folder})).code,'invalid_cwd','a native folder draft belongs to its chosen application and connection');
+});
+
+test('扫码登录票据只由主进程打开严格本机地址，页面与外部frame收不到票据',async t=>{
+ const token='synthetic-login-token_123456789',url='http://127.0.0.1:17631/webui?token='+token;
+ for(const value of [url,'http://localhost:17631/webui?token='+token,'http://127.0.0.1:17631/webui?token='+token+'&redirect=https://example.com','http://127.0.0.1:17631/webui?token=x','https://127.0.0.1:17631/webui?token='+token,'http://127.0.0.1:17631/webui?token='+token+'\n']){
+  const f=fixture({hostRequest:async()=>({status:200,body:JSON.stringify({enabled:true,configured:true,project:{cwd:folder},connection:{state:'connecting'},napcat:{state:'running',canLogin:true},localLoginUrl:value})})});t.after(()=>f.controller.dispose());await f.controller.open();
+  const result=await f.invoke('openNapCatLogin');assert.equal(result.ok,value===url);assert.equal(f.links.length,value===url?1:0);assert.doesNotMatch(JSON.stringify(result),/synthetic-login-token|localLoginUrl/);
+  const foreign={sender:{getURL:()=>f.windows[0].url},senderFrame:{}};assert.equal((await f.invoke('openNapCatLogin',undefined,foreign)).code,'unauthorized');
+ }
+});
+
+test('首次扫码等待服务启动后仅打开一次，窗口关闭会取消等待',async t=>{
+ for(const closeEarly of [false,true]){
+  let loginCalls=0;
+  const f=fixture({hostRequest:async(method,route,body)=>{
+   const login=method==='POST'&&JSON.parse(body).action==='napcat-login';if(login)loginCalls++;
+   return{status:200,body:JSON.stringify({application:'codex',provider:'official',project:{cwd:folder},connection:{state:'connecting'},napcat:{state:loginCalls?'running':'ready',canLogin:loginCalls>0},...(login&&loginCalls>1?{localLoginUrl:'http://127.0.0.1:17631/webui?token=synthetic-login-token_123456789'}:{})})};
+  }});t.after(()=>f.controller.dispose());await f.controller.open();
+  const result=await f.invoke('openNapCatLogin');assert.equal(result.ok,true);assert.equal(result.loginPending,true);assert.equal(f.links.length,0);
+  if(closeEarly)f.windows[0].destroy();
+  await new Promise(resolve=>setTimeout(resolve,470));
+  assert.equal(f.links.length,closeEarly?0:1);assert.equal(loginCalls,closeEarly?1:2);assert.doesNotMatch(JSON.stringify(result),/localLoginUrl|synthetic-login-token/);
+ }
+});
+
+test('等待扫码期间保存的profile变化会拒绝迟到的登录票据',async t=>{
+ let loginCalls=0;
+ const f=fixture({hostRequest:async(method,route,body)=>{
+  if(method==='POST'&&JSON.parse(body).action==='napcat-login')loginCalls++;
+  return{status:200,body:JSON.stringify({application:loginCalls>1?'workbuddy':'codex',provider:'onebot',project:{cwd:folder},connection:{state:'connecting'},napcat:{state:'running',canLogin:true},...(loginCalls>1?{localLoginUrl:'http://127.0.0.1:17631/webui?token=synthetic-login-token_123456789'}:{})})};
+ }});t.after(()=>f.controller.dispose());await f.controller.open();assert.equal((await f.invoke('openNapCatLogin')).loginPending,true);await new Promise(resolve=>setTimeout(resolve,470));assert.equal(loginCalls,2);assert.equal(f.links.length,0);
+});
+
+function rendererFixture(initial){
+ const nodes=new Map(),listeners=new Map(),windowEvents=new Map(),intervals=[],calls=[],radios=new Map();let state=structuredClone(initial);
+ for(const value of ['read-only','workspace-write']){let checked=false;radios.set(value,{value,get checked(){return checked;},set checked(next){if(next)for(const[other,radio]of radios)if(other!==value)radio.checked=false;checked=next;}});}
+ function node(id){if(nodes.has(id))return nodes.get(id);const n={value:'',disabled:false,hidden:false,textContent:'',dataset:{},children:[],setAttribute(){},select(){},replaceChildren(){this.children=[];},appendChild(value){this.children.push(value);},addEventListener(type,fn){listeners.set(id+':'+type,fn);},querySelector(selector){if(selector.includes(':checked'))return[...radios.values()].find(item=>item.checked);return radios.get(/value="([^"]+)"/.exec(selector)?.[1]);},querySelectorAll:()=>[...nodes.values()]};nodes.set(id,n);return n;}
+ const response=()=>({ok:true,snapshot:structuredClone(state)}),api={getState:async()=>response(),save:async body=>{calls.push({action:'save',body});const selected=state.profiles.find(item=>item.application===body.application&&item.provider===body.provider);state={...state,...selected,application:body.application,provider:body.provider,enabled:true};return response();},chooseDirectory:async selection=>{calls.push({action:'directory',selection});return{ok:true,directory:other};},prepareNapCat:async()=>{calls.push({action:'prepare'});state.napcat={state:'ready',phase:'ready',canLogin:false};return response();},openNapCatLogin:async()=>{calls.push({action:'login'});return response();}};
+ const window={qqRemote:api,addEventListener:(name,fn)=>windowEvents.set(name,fn)},document={hidden:false,title:'',documentElement:{lang:''},getElementById:node,createElement:()=>({}),querySelectorAll:()=>[],addEventListener(){}};
+ vm.runInNewContext(readFileSync(new URL('../src/qq-window.js',import.meta.url),'utf8'),{window,document,navigator:{language:'en'},Date,setInterval:(fn,ms)=>{intervals.push({fn,ms});return intervals.length;},clearInterval(){},setTimeout:()=>1,clearTimeout(){}});
+ const settle=()=>new Promise(resolve=>setImmediate(resolve));
+ return{node,calls,get state(){return state;},setState:value=>{state=structuredClone(value);},settle,async fire(id,type){listeners.get(id+':'+type)({preventDefault(){}});await settle();},async poll(){intervals.find(item=>item.ms===2500).fn();await settle();},close(){windowEvents.get('beforeunload')();}};
+}
+
+test('应用和连接选择保持草稿，轮询不改选择，配对与凭据各归其profile',async t=>{
+ const official={application:'codex',provider:'official',enabled:true,configured:true,hasSecret:true,appId:'123456',paired:true,project:{id:'codex-project',cwd:folder,permission:'read-only'},projects:[{id:'codex-project',cwd:folder}],connection:{state:'connected'},task:{state:'idle'},pairing:{code:'123456',expiresAt:'2099-10-30T11:00:00.000Z'}},buddy={application:'workbuddy',provider:'official',enabled:false,configured:false,hasSecret:false,appId:'654321',paired:false,project:{id:'buddy-project',cwd:other,permission:'read-only'},projects:[{id:'buddy-project',cwd:other}],connection:{state:'stopped'},task:null},account={...buddy,provider:'onebot',appId:'',configured:true,connection:{state:'connecting'}};
+ const f=rendererFixture({...official,locale:'en',profiles:[official,buddy,account],napcat:{state:'ready',phase:'ready',canLogin:false}});t.after(()=>f.close());await f.settle();
+ f.node('app-secret').value='unsaved-codex-secret';f.node('application').value='workbuddy';await f.fire('application','change');
+ assert.equal(f.node('app-id').value,'654321');assert.equal(f.node('app-secret').value,'');assert.equal(f.node('directory').value,other);assert.equal(f.node('pair').disabled,true);assert.equal(f.node('copy-pair').disabled,true);assert.equal(f.node('pair-code').value,'');assert.equal(f.node('save').disabled,true);assert.equal(f.node('selection-state').hidden,false);
+ await f.poll();assert.equal(f.node('application').value,'workbuddy');assert.equal(f.node('app-id').value,'654321');assert.equal(f.calls.length,0,'choosing a draft must not save or switch a connection');
+ f.node('provider').value='onebot';await f.fire('provider','change');assert.equal(f.node('official-connection').hidden,true);assert.equal(f.node('app-id').disabled,true);assert.equal(f.node('app-secret').disabled,true);assert.equal(f.node('save').disabled,false);assert.equal(f.node('login-napcat').disabled,false,'ready can start the service even before canLogin becomes true');
+ await f.fire('settings','submit');const body=f.calls.find(item=>item.action==='save').body;assert.deepEqual(JSON.parse(JSON.stringify(body)),{application:'workbuddy',provider:'onebot',cwd:other,permission:'read-only',enabled:true});assert.equal(f.node('selection-state').hidden,true);assert.equal(f.node('connection').textContent,'Connecting…');assert.doesNotMatch(f.node('napcat-status').textContent,/connected/i);
+ f.setState({...f.state,napcat:{state:'running',phase:'running',canLogin:true},connection:{state:'connecting'}});await f.poll();assert.equal(f.node('connection').textContent,'Connecting…');assert.match(f.node('napcat-status').textContent,/service is running/);assert.equal(f.node('pair').disabled,true);
+ f.setState({...f.state,task:{state:'working'}});await f.poll();assert.equal(f.node('application').disabled,true);assert.equal(f.node('provider').disabled,true);assert.equal(f.node('save').disabled,true);
+});

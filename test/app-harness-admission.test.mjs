@@ -42,7 +42,7 @@ test('原生Harness移交在实际HTTP入口阻止新Codex任务，保留既有�
   for(const path of ['/dsh-pet-7340/codex-chat','/dsh-pet-7340/codex-tasks']){
    const response=await request(path,{method:'POST',body:{messages:[]}});assert.equal(response.status,409);assert.equal((await response.json()).error.code,'host_unavailable');
   }
-  assert.equal((await internal({messages:[]})).status,409);assert.equal((await request('/dsh-pet-7340/qq-remote')).status,409);
+  assert.equal((await internal({messages:[]})).status,409);const qq=await request('/dsh-pet-7340/qq-remote');assert.equal(qq.status,200);assert.equal((await qq.json()).application,'codex');
   assert.equal((await request('/dsh-pet-7340/codex-tasks')).status,200);
   const cancellation=await request('/dsh-pet-7340/codex-tasks/cancel',{method:'POST',body:{id:'synthetic-task'}});assert.equal(cancellation.status,409);assert.equal((await cancellation.json()).error.code,'stale_task');
   await saveActive(false);assert.equal((await request('/dsh-pet-7340/codex-chat',{method:'POST',body:{messages:[]}})).status,400);assert.equal((await internal({messages:[]})).status,400);

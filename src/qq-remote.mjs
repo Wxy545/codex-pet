@@ -5,7 +5,7 @@ import {homedir} from 'node:os';
 import {protectQQSecret,unprotectQQSecret} from './qq-secrets.mjs';
 import {createQQCatalog,cleanTitle} from './qq-catalog.mjs';
 import {createQQThreadGuard} from './qq-thread-guard.mjs';
-import {normalizeQQExecution,chooseQQExecution} from './qq-execution.mjs';
+import {normalizeQQExecution,chooseQQExecution,chooseQQExecutionKind} from './qq-execution.mjs';
 
 const STATES=new Set(['idle','thinking','working','waiting','result','success','error']);
 const fail=code=>{throw Object.assign(Error(code),{code});};
@@ -19,13 +19,17 @@ export function projectQQState(base,remote,locale='zh-CN'){
   const active=Number(remote.activeCount)||0,local=Number(base.activeCount)||0;
   if(!active&&local)return base;
   if(active&&(priority[base.state]||0)>(priority[remote.state]||0))return{...base,activeCount:local+active};
-  return{...base,state:remote.state,activeCount:local+active,task:locale.startsWith('zh')?'正在处理 QQ 任务':'Processing a QQ task'};
+  const app={codex:'Codex',workbuddy:'WorkBuddy',harness:'DeepSeek Harness'}[remote.application];
+  return{...base,state:remote.state,activeCount:local+active,task:locale.startsWith('zh')?'正在处理 '+(app?app+' ':'')+'QQ 任务':'Processing '+(app?app+' ':'a ')+'QQ task'};
 }
 
 /** 本人QQ可选择本机授权项目与会话；正文只走Codex协议，不拼接shell。 */
-export async function createQQBridge({dataRoot,codexPath,codexHome=process.env.CODEX_HOME||join(homedir(),'.codex'),createTransport,createRemote,activityGate,onState=()=>{},seal=protectQQSecret,unseal=unprotectQQSecret,locale='zh-CN',now=Date.now,canStart=()=>true}={}) {
+export async function createQQBridge({dataRoot,codexPath,codexHome=process.env.CODEX_HOME||join(homedir(),'.codex'),createTransport,createRemote,activityGate,onState=()=>{},seal=protectQQSecret,unseal=unprotectQQSecret,locale='zh-CN',now=Date.now,canStart=()=>true,application='codex',provider='official',modelSelection=true,managedSessionsOnly=false}={}) {
   if(!isAbsolute(dataRoot||''))fail('invalid_directory');
-  const zh=locale.startsWith('zh'),T=(cn,en)=>zh?cn:en;
+  if(!['codex','workbuddy','harness'].includes(application)||!['official','onebot'].includes(provider))fail('invalid_input');
+  if(application!=='codex'&&typeof createRemote!=='function')fail('host_unavailable');
+  const label={codex:'Codex',workbuddy:'WorkBuddy',harness:'DeepSeek Harness'}[application];
+  const zh=locale.startsWith('zh'),T=(cn,en)=>(zh?cn:en).replaceAll('Codex',label);
   const dir=join(dataRoot,'qq-remote'),file=join(dir,'settings.json');
   let config={schemaVersion:1,enabled:false,appId:'',secret:'',cwd:'',permission:'read-only',ownerId:null,threadId:null,threads:[],seen:[],outbox:[],job:null};
   let writes=Promise.resolve(),requests=Promise.resolve(),transport,remote,running,releaseGate,pairing,approval,input,expiry,disposed=false,generation=0,cancelRequested=false;
@@ -47,13 +51,14 @@ export async function createQQBridge({dataRoot,codexPath,codexHome=process.env.C
     config={...config,...value,seen:value.seen.slice(-512),outbox:value.outbox.slice(-12)};
     if(config.job){config.outbox.push({text:T('上次连接在任务结束前中断；没有自动重做，请先检查执行结果。','The previous connection ended during a task. It was not run again; check its outcome before retrying.'),uncertain:false});config.job=null;}
   }catch(e){if(e.code!=='ENOENT')throw e;}
+  if(provider==='onebot'&&(config.endpoint!==undefined&&config.endpoint!=='ws://127.0.0.1:17630/'||config.selfId!==undefined&&config.selfId!==null&&!/^\d{5,16}$/.test(config.selfId)))fail('invalid_settings');
   if(!Array.isArray(config.threads)||config.threads.some(id=>!identity(id)))fail('invalid_settings');
   let catalog=createQQCatalog(config);const threadGuard=createQQThreadGuard({codexHome});
   const knownThreads=new Set(config.threads.slice(-256));
   if(config.turns!==undefined&&(!Array.isArray(config.turns)||config.turns.length>512||config.turns.some(t=>!t||!identity(t.threadId)||!identity(t.turnId))))fail('invalid_settings');
   config.turns??=[];const knownTurns=new Set(config.turns.map(t=>t.threadId+':'+t.turnId));
   config.execution=normalizeQQExecution(config.execution);
-  if(config.lastExecution&&(!['chat','task'].includes(config.lastExecution.kind)||typeof config.lastExecution.model!=='string'||!/^[A-Za-z0-9][A-Za-z0-9._:/-]{0,99}$/.test(config.lastExecution.model)||config.lastExecution.effort!==null&&!['none','minimal','low','medium','high','xhigh','max','ultra'].includes(config.lastExecution.effort)))fail('invalid_settings');
+  if(config.lastExecution&&(!['chat','task'].includes(config.lastExecution.kind)||config.lastExecution.model!==null&&(typeof config.lastExecution.model!=='string'||!/^[A-Za-z0-9][A-Za-z0-9._:/-]{0,99}$/.test(config.lastExecution.model))||config.lastExecution.effort!==null&&!['none','minimal','low','medium','high','xhigh','max','ultra'].includes(config.lastExecution.effort)))fail('invalid_settings');
   let modelCache=null,modelListing=null,pendingExecution=null;
   let projectListing=null,sessionListing=null;
   function persist(){const bytes=JSON.stringify(config,null,2)+'\n';writes=writes.catch(()=>{}).then(async()=>{await safeFiles();const temp=join(dir,randomUUID()+'.tmp');await writeFile(temp,bytes,{flag:'wx',mode:0o600});await rename(temp,file);});return writes;}
@@ -62,7 +67,7 @@ export async function createQQBridge({dataRoot,codexPath,codexHome=process.env.C
     try{const result=await change();await persist();return result;}
     catch(error){config=before;catalog=createQQCatalog(config);pairing=beforePairing;knownThreads.clear();for(const id of config.threads)knownThreads.add(id);knownTurns.clear();for(const turn of config.turns)knownTurns.add(turn.threadId+':'+turn.turnId);throw error;}
   }
-  function state(){const project=catalog.current();return {enabled:config.enabled,configured:!!(config.appId&&config.secret&&config.cwd),appId:config.appId,hasSecret:!!config.secret,connection:{...connection},paired:!!config.ownerId,project:project?{id:project.id,label:project.label,cwd:project.cwd,permission:project.permission,maxPermission:project.maxPermission}:{cwd:'',permission:'read-only',maxPermission:'read-only'},projects:catalog.list(),pairing:pairing&&pairing.expiresAt>now()?{code:pairing.code,expiresAt:new Date(pairing.expiresAt).toISOString()}:null,task:{...task},pendingReplies:config.outbox.length};}
+  function state(){const project=catalog.current();return {application,provider,capabilities:{models:modelSelection,desktopSessions:!managedSessionsOnly},enabled:config.enabled,configured:!!((provider==='official'?config.appId:config.endpoint)&&config.secret&&config.cwd),appId:provider==='official'?config.appId:'',hasSecret:!!config.secret,connection:{...connection},paired:!!config.ownerId,project:project?{id:project.id,label:project.label,cwd:project.cwd,permission:project.permission,maxPermission:project.maxPermission}:{cwd:'',permission:'read-only',maxPermission:'read-only'},projects:catalog.list(),pairing:pairing&&pairing.expiresAt>now()?{code:pairing.code,expiresAt:new Date(pairing.expiresAt).toISOString()}:null,task:{...task},pendingReplies:config.outbox.length};}
   function emit(value){task={state:STATES.has(value)?value:'error'};try{onState({...task,activeCount:['thinking','working','waiting','result'].includes(task.state)?1:0,threadId:config.threadId||undefined});}catch{}}
   function clearPending(clearQueue=true){clearTimeout(expiry);expiry=null;approval=null;input=null;if(clearQueue)decisionQueue.length=0;}
   async function deliver(entry,{replyTo=lastMsgId}={}){
@@ -84,32 +89,44 @@ export async function createQQBridge({dataRoot,codexPath,codexHome=process.env.C
   const permissionText=value=>value==='workspace-write'?T('可修改项目','Can edit project'):T('只读','Read only');
   const selectedTitle=()=>catalog.selected()?.title||T('未命名会话','Untitled conversation');
   const modeText=value=>({auto:T('自动','Auto'),chat:T('聊天','Chat'),task:T('任务','Task')})[value];
-  const contextText=()=>T('项目：','Project: ')+(catalog.current()?.label||T('未选择','None'))+'\n'+T('会话：','Conversation: ')+(config.threadId?selectedTitle():T('下一条消息新建','New on next message'))+'\n'+T('权限：','Permission: ')+permissionText(config.permission)+'\n'+T('模式：','Mode: ')+modeText(config.execution.mode)+(config.lastExecution?'\n'+T('最近模型：','Last model: ')+config.lastExecution.model+(config.lastExecution.effort?' · '+config.lastExecution.effort:''):'');
+  const contextText=()=>T('应用：','App: ')+label+'\n'+T('项目：','Project: ')+(catalog.current()?.label||T('未选择','None'))+'\n'+T('会话：','Conversation: ')+(config.threadId?selectedTitle():T('下一条消息新建','New on next message'))+'\n'+T('权限：','Permission: ')+permissionText(config.permission)+'\n'+T('模式：','Mode: ')+modeText(config.execution.mode)+(config.lastExecution?'\n'+T('最近模型：','Last model: ')+(config.lastExecution.model||T('由应用决定','App default'))+(config.lastExecution.effort?' · '+config.lastExecution.effort:''):'');
   const isBusy=async()=>{if(!running)return false;await send(T('当前任务仍在执行；发送 /状态 或 /取消。','A task is running. Send /status or /cancel.'));return true;};
   function invalidateLists(){projectListing=null;sessionListing=null;modelCache=null;modelListing=null;pendingExecution=null;}
   async function withCatalog(action){
     if(!acceptsNew())fail('host_unavailable');await catalog.check();
     const factory=createRemote||(await import('./codex-remote.mjs')).createCodexRemote;
-    const client=await factory({codexPath,cwd:config.cwd,permission:config.permission});
+    const client=await factory({codexPath,cwd:config.cwd,permission:config.permission,managedThreads:managedMetadata()});
     try{return await action(client);}finally{await client.close().catch(()=>{});}
   }
+  function managedMetadata(){return config.sessions.filter(s=>s.projectId===catalog.current()?.id&&s.source==='qq'&&s.permission===config.permission).map(s=>({id:s.id,title:s.title,cwd:config.cwd,permission:s.permission,updatedAt:Number.isSafeInteger(s.updatedAt)?s.updatedAt:0}));}
   function trimThreads(){while(knownThreads.size>256)knownThreads.delete(knownThreads.values().next().value);config.threads=[...knownThreads];}
   async function models(force=false){
     if(!force&&modelCache&&modelCache.projectId===catalog.current()?.id&&now()-modelCache.at<5*60_000)return modelCache.items;
     let items;try{items=await withCatalog(client=>client.listModels());}catch(error){if(error.code==='host_unavailable')throw error;fail('catalog_unavailable');}if(!Array.isArray(items)||!items.length||items.length>200)fail('catalog_unavailable');modelCache={projectId:catalog.current().id,at:now(),items};return items;
   }
   async function connect(){
-    const epoch=++connectionEpoch,settings={appId:config.appId,secret:config.secret};
+    const epoch=++connectionEpoch,settings={appId:config.appId,secret:config.secret,endpoint:config.endpoint,selfId:config.selfId};
     transport?.stop();transport=null;if(!config.enabled||!config.secret||disposed)return;
     connection={state:'connecting'};
     try{
-      const secret=await unseal(settings.secret),factory=createTransport||(await import('./qq-transport.mjs')).createQQTransport;
+      const secret=await unseal(settings.secret),factory=createTransport||(provider==='onebot'?(await import('./onebot-transport.mjs')).createOneBotTransport:(await import('./qq-transport.mjs')).createQQTransport);
       if(epoch!==connectionEpoch||!config.enabled||disposed)return;
-      const candidate=factory({appId:settings.appId,appSecret:secret,onMessage:m=>{if(transport===candidate&&epoch===connectionEpoch&&!disposed)void receive(m).catch(()=>{connection={state:'error',code:'storage_failed'};});},onStatus:s=>{if(transport===candidate&&epoch===connectionEpoch&&!disposed)connection={state:s.state, ...(s.code?{code:s.code}:{})};}});
+      let candidateReady=provider!=='onebot';
+      const candidate=factory({...provider==='onebot'?{url:settings.endpoint,accessToken:secret,selfId:settings.selfId||undefined}:{appId:settings.appId,appSecret:secret},onMessage:m=>{if(transport===candidate&&epoch===connectionEpoch&&!disposed&&candidateReady&&(!config.ownerId||m?.userId===config.ownerId))return receive(m).catch(()=>{connection={state:'error',code:'storage_failed'};});},onStatus:s=>serial(async()=>{
+        if(transport!==candidate||epoch!==connectionEpoch||disposed)return;
+        if(provider==='onebot'&&s.state==='connected'){
+          if(typeof s.selfId!=='string'||!/^\d{5,16}$/.test(s.selfId)||config.selfId&&config.selfId!==s.selfId){candidateReady=false;connectionEpoch++;transport=null;candidate.stop();connection={state:'error',code:'onebot_account_changed'};fail('onebot_account_changed');}
+          if(!config.selfId)await commitChange(()=>{config.selfId=s.selfId;});
+          if(transport!==candidate||epoch!==connectionEpoch||disposed)return;
+          candidateReady=true;
+        }
+        else if(provider==='onebot')candidateReady=false;
+        connection={state:s.state,...(s.code?{code:s.code}:{})};
+      })});
       transport=candidate;await candidate.start();
     }catch{if(epoch===connectionEpoch&&!disposed)connection={state:'error',code:'connection_failed'};}
   }
-  async function applyConfig(body){
+  async function applyConfig(body,beforeSave){
     if(disposed)fail('unavailable');
     if(!body||typeof body!=='object'||Array.isArray(body))fail('invalid_input');
     if(body.action==='disable'){config.enabled=false;cancelRequested=true;connectionEpoch++;await persist();transport?.stop();transport=null;await remote?.cancel();await remote?.close();connection={state:'stopped'};return state();}
@@ -124,16 +141,18 @@ export async function createQQBridge({dataRoot,codexPath,codexHome=process.env.C
       if(Object.keys(body).some(k=>!['action','projectId'].includes(k))||!identity(body.projectId))fail('invalid_input');
       await commitChange(async()=>{if(body.action==='project-select')await catalog.select(body.projectId);else catalog.remove(body.projectId);invalidateLists();});emit('idle');return state();
     }
-    if(body.action!=='save'||Object.keys(body).some(k=>!['action','appId','appSecret','cwd','permission','enabled'].includes(k)))fail('invalid_input');
-    if(!/^\d{3,32}$/.test(body.appId||'')||typeof body.enabled!=='boolean'||!['read-only','workspace-write'].includes(body.permission)||!isAbsolute(body.cwd||''))fail('invalid_input');
+    const allowed=provider==='onebot'?['action','endpoint','accessToken','cwd','permission','enabled']:['action','appId','appSecret','cwd','permission','enabled'];
+    if(body.action!=='save'||Object.keys(body).some(k=>!allowed.includes(k)))fail('invalid_input');
+    if((provider==='official'?!/^\d{3,32}$/.test(body.appId||''):body.endpoint!=='ws://127.0.0.1:17630/')||typeof body.enabled!=='boolean'||!['read-only','workspace-write'].includes(body.permission)||!isAbsolute(body.cwd||''))fail('invalid_input');
     const cwd=await realpath(body.cwd).catch(()=>fail('invalid_directory'));
     if(!(await stat(cwd)).isDirectory()||parse(cwd).root===cwd)fail('invalid_directory');
-    if(body.appSecret!==undefined&&typeof body.appSecret!=='string')fail('invalid_input');
-    const changedApp=body.appId!==config.appId;
-    if((changedApp||!config.secret)&&!body.appSecret)fail('secret_required');
-    if(body.appSecret&&!/^[A-Za-z0-9_-]{6,256}$/.test(body.appSecret))fail('invalid_input');
-    const secret=body.appSecret?await seal(body.appSecret):config.secret;
-    await commitChange(async()=>{await catalog.register(cwd,body.permission);if(changedApp){config.ownerId=null;config.seen=[];config.outbox=[];pairing=null;catalog.clearSelections();}Object.assign(config,{appId:body.appId,secret,enabled:body.enabled});invalidateLists();});
+    const supplied=provider==='onebot'?body.accessToken:body.appSecret;
+    if(supplied!==undefined&&typeof supplied!=='string')fail('invalid_input');
+    const changedApp=provider==='official'?body.appId!==config.appId:config.endpoint&&body.endpoint!==config.endpoint;
+    if((changedApp||!config.secret)&&!supplied)fail('secret_required');
+    if(supplied&&!/^[A-Za-z0-9_-]{6,256}$/.test(supplied))fail('invalid_input');
+    const secret=supplied?await seal(supplied):config.secret;
+    await commitChange(async()=>{await catalog.register(cwd,body.permission);if(managedSessionsOnly&&catalog.selected()?.permission!==config.permission)catalog.newSelection();if(changedApp){config.ownerId=null;config.seen=[];config.outbox=[];pairing=null;catalog.clearSelections();}Object.assign(config,{...(provider==='official'?{appId:body.appId}:{endpoint:body.endpoint}),secret,enabled:body.enabled});invalidateLists();if(beforeSave)await beforeSave();});
     void connect();return state();
   }
   async function handleEvent(event,token){
@@ -159,7 +178,9 @@ export async function createQQBridge({dataRoot,codexPath,codexHome=process.env.C
     if(!acceptsNew()){await unavailable();return;}
     if(config.outbox.length>=10){await send(T('请先发送 /结果 取回之前的结果。','Send /result to retrieve previous results first.'));return;}
     await catalog.check();
-    const execution=chooseQQExecution({...config.execution,...(kind?{mode:kind}:{})},await models(),{text,taskCommand,lastKind:catalog.selected()?.lastKind});
+    const policy={...config.execution,...(kind?{mode:kind}:{})},purpose={text,taskCommand,lastKind:catalog.selected()?.lastKind};
+    const nativeKind=modelSelection?null:chooseQQExecutionKind(policy,purpose);
+    const execution=modelSelection?chooseQQExecution(policy,await models(),purpose):nativeKind?{kind:nativeKind,model:null,effort:null}:{needsChoice:true};
     if(execution.needsChoice){pendingExecution={text,id,projectId:catalog.current().id,threadId:config.threadId,permission:config.permission,at:now()};await send(T('这条按聊天处理，还是执行任务？\n/按聊天  或  /按任务','Chat or task?\n/as-chat  or  /as-task'));return;}
     releaseGate=activityGate?.acquire('qq-task');if(activityGate&&!releaseGate){await send(T('桌宠正在处理其它任务，请稍后再试。','Another pet task is running. Try again shortly.'));return;}
     const token=++generation;cancelRequested=false;config.job={messageId:id,state:'running',context:{projectId:catalog.current().id,projectLabel:catalog.current().label,title:selectedTitle()}};
@@ -169,14 +190,14 @@ export async function createQQBridge({dataRoot,codexPath,codexHome=process.env.C
       emit('thinking');
       if(cancelRequested){emit('idle');await sendTask(T('任务已取消。','Task cancelled.'),{durable:true});return;}
       const factory=createRemote||(await import('./codex-remote.mjs')).createCodexRemote;
-      remote=await factory({codexPath,cwd:config.cwd,permission:config.permission,
-        beforeResume:async(threadId,metadata)=>{if(!catalog.session(threadId))return undefined;await catalog.check();return threadGuard({threadId,...metadata,cwd:config.cwd});},
-        onThread:async(threadId,metadata)=>{if(token!==generation||!identity(threadId))fail('invalid_thread');const previous=catalog.session(threadId);catalog.remember(threadId,{source:previous?.source||'qq'}).lastKind=execution.kind;if(config.job)Object.assign(config.job.context,{threadId,title:selectedTitle()});if(metadata?.created!==false&&!previous){knownThreads.add(threadId);trimThreads();}await persist();},
+      remote=await factory({codexPath,cwd:config.cwd,permission:config.permission,managedThreads:managedMetadata(),
+        beforeResume:async(threadId,metadata)=>{if(!catalog.session(threadId))return undefined;await catalog.check();return application==='codex'?threadGuard({threadId,...metadata,cwd:config.cwd}):true;},
+        onThread:async(threadId,metadata)=>{if(token!==generation||!identity(threadId))fail('invalid_thread');const previous=catalog.session(threadId);const saved=catalog.remember(threadId,{source:previous?.source||'qq',title:metadata?.title||''});saved.lastKind=execution.kind;saved.updatedAt=now();if(config.job)Object.assign(config.job.context,{threadId,title:selectedTitle()});if(metadata?.created!==false&&!previous){knownThreads.add(threadId);trimThreads();}await persist();},
         onTurn:async(threadId,turnId)=>{if(token!==generation||cancelRequested||!identity(threadId)||!identity(turnId))fail('invalid_thread');config.lastExecution={kind:execution.kind,model:execution.model,effort:execution.effort};const key=threadId+':'+turnId;knownTurns.add(key);config.turns.push({threadId,turnId});while(config.turns.length>512){const removed=config.turns.shift();knownTurns.delete(removed.threadId+':'+removed.turnId);}await persist();},
         onEvent:event=>handleEvent(event,token)});
       if(cancelRequested){emit('idle');await sendTask(T('任务已取消。','Task cancelled.'),{durable:true});return;}
       if(!acceptsNew()){emit('idle');await unavailable();return;}
-      const result=await remote.prompt({text,...(config.threadId?{threadId:config.threadId}:{}),model:execution.model,...(execution.effort?{effort:execution.effort}:{})});
+      const result=await remote.prompt({text,...(config.threadId?{threadId:config.threadId}:{}),...(execution.model?{model:execution.model}:{}),...(execution.effort?{effort:execution.effort}:{})});
       clearPending();
       if(token!==generation)return;
       if(result.status==='completed'){emit('result');await sendTask(result.text||T('任务完成。','Task completed.'),{durable:true});emit('success');}
@@ -202,6 +223,7 @@ export async function createQQBridge({dataRoot,codexPath,codexHome=process.env.C
         if(arg){const mode=({自动:'auto',auto:'auto',聊天:'chat',chat:'chat',任务:'task',task:'task'})[arg.toLowerCase()];if(!mode)fail('invalid_mode');await commitChange(()=>{config.execution=normalizeQQExecution({...config.execution,mode});});}
         await send(T('模式：','Mode: ')+modeText(config.execution.mode)+T('\n/模式 自动 · /模式 聊天 · /模式 任务','\n/mode auto · /mode chat · /mode task'));return true;
       }
+      if(!modelSelection){await send(T('模型和思考强度由 '+label+' 自己的设置决定。','Model and reasoning effort follow your '+label+' settings.'));return true;}
       const available=await models(!arg);
       if(['模型','models','model'].includes(name)){
         if(!arg||/^(?:下一页|next)$/i.test(arg)){
@@ -250,7 +272,7 @@ export async function createQQBridge({dataRoot,codexPath,codexHome=process.env.C
     if(next&&(!listFresh(sessionListing)||!sessionListing.nextCursor))return send(T('没有下一页，请发送 /会话 重新查看。','No next page. Send /sessions to refresh.'));
     const project=catalog.current(),previous=sessionListing,searchTerm=next?previous.search:search,needle=searchTerm.toLocaleLowerCase();
     // 新空会话尚未进入官方列表；本机受管记录只提供ID线索，展示前仍逐条读取真实元数据。
-    const listing=next?{...previous,items:[],localQueue:[...previous.localQueue],remaining:[...previous.remaining],seen:new Set(previous.seen),serverCursors:new Set(previous.serverCursors)}:{projectId:project.id,at:now(),items:[],search:searchTerm,localQueue:config.sessions.filter(item=>item.projectId===project.id&&item.source==='qq').slice(-256).reverse().map(item=>({id:item.id,title:item.title})),remaining:[],serverCursor:null,serverExhausted:false,serverCursors:new Set(),seen:new Set(),limited:false};
+    const listing=next?{...previous,items:[],localQueue:[...previous.localQueue],remaining:[...previous.remaining],seen:new Set(previous.seen),serverCursors:new Set(previous.serverCursors)}:{projectId:project.id,at:now(),items:[],search:searchTerm,localQueue:config.sessions.filter(item=>item.projectId===project.id&&item.source==='qq'&&(!managedSessionsOnly||item.permission===config.permission)).slice(-256).reverse().map(item=>({id:item.id,title:item.title})),remaining:[],serverCursor:null,serverExhausted:false,serverCursors:new Set(),seen:new Set(),limited:false};
     const titleOf=item=>catalog.session(item.id)?.title||cleanTitle(item.title)||T('未命名会话','Untitled conversation');
     async function validated(item,expectedId){
       if(!item||!identity(item.id)||expectedId&&item.id!==expectedId||!isAbsolute(item.cwd||'')||!['idle','notLoaded','active','systemError'].includes(item.status)||!Number.isSafeInteger(item.updatedAt)||item.updatedAt<0)return null;
@@ -275,7 +297,7 @@ export async function createQQBridge({dataRoot,codexPath,codexHome=process.env.C
       // 官方首屏被本地条目挤出的部分留在remaining，下页先消费，不能直接跳到官方下一游标。
       while(!listing.serverExhausted&&!listing.limited&&(listing.items.length<10||listing.remaining.length===0)&&reads++<32){
         const cursor=listing.serverCursor,key=cursor??'<first>';if(listing.serverCursors.has(key))fail('invalid_thread');if(listing.serverCursors.size>=2048){listing.limited=true;break;}listing.serverCursors.add(key);
-        const result=await client.listThreads({...(cursor?{cursor}:{}),...(searchTerm?{search:searchTerm}:{})});
+        const result=managedSessionsOnly?{items:[],nextCursor:null}:await client.listThreads({...(cursor?{cursor}:{}),...(searchTerm?{search:searchTerm}:{})});
         if(!result||!Array.isArray(result.items)||result.items.length>10||result.nextCursor!=null&&(typeof result.nextCursor!=='string'||!result.nextCursor||result.nextCursor.length>2048||/[\u0000-\u001f\u007f]/.test(result.nextCursor)))fail('invalid_thread');
         listing.serverCursor=result.nextCursor??null;listing.serverExhausted=!listing.serverCursor;
         for(const item of result.items)retain(await validated(item));
@@ -311,7 +333,7 @@ export async function createQQBridge({dataRoot,codexPath,codexHome=process.env.C
         else{const index=Number(arg)-1;if(!/^\d+$/.test(arg)||!projectListing||now()-projectListing.at>=5*60_000||!projectListing.ids[index])fail('stale_list');await commitChange(async()=>{await catalog.select(projectListing.ids[index]);invalidateLists();});emit('idle');await send(contextText());}return true;
       }
       if(permissions){
-        if(arg){const value=/^(?:只读|read-only|readonly)$/i.test(arg)?'read-only':/^(?:编辑|修改|edit|workspace-write)$/i.test(arg)?'workspace-write':null;if(!value)fail('invalid_permission');await catalog.check();await commitChange(()=>catalog.setPermission(value));}
+        if(arg){const value=/^(?:只读|read-only|readonly)$/i.test(arg)?'read-only':/^(?:编辑|修改|edit|workspace-write)$/i.test(arg)?'workspace-write':null;if(!value)fail('invalid_permission');await catalog.check();await commitChange(()=>{catalog.setPermission(value);if(managedSessionsOnly&&catalog.selected()?.permission!==value){catalog.newSelection();invalidateLists();}});}
         await send(T('当前权限：','Current permission: ')+permissionText(config.permission)+'\n'+T('电脑授权上限：','Computer-authorized limit: ')+permissionText(catalog.current()?.maxPermission));return true;
       }
       if(sessions){
@@ -369,5 +391,6 @@ export async function createQQBridge({dataRoot,codexPath,codexHome=process.env.C
   }
   const receive=message=>serial(()=>acceptMessage(message));
   async function dispose(){disposed=true;cancelRequested=true;connectionEpoch++;clearPending();pairing=null;transport?.stop();transport=null;await remote?.cancel().catch(()=>{});await remote?.close().catch(()=>{});await running?.catch(()=>{});await writes.catch(()=>{});}
-  return {state,configure:body=>serial(()=>applyConfig(body)),receive,start:connect,dispose,ownsThread:id=>knownThreads.has(id),ownsTurn:(threadId,turnId)=>identity(turnId)&&knownTurns.has(threadId+':'+turnId),idle:async()=>{await requests;await running;await writes;}};
+  const pause=()=>serial(async()=>{if(running)fail('busy');connectionEpoch++;transport?.stop();transport=null;connection={state:'stopped'};});
+  return {state,configure:body=>serial(()=>applyConfig(body)),configureWithCommit:(body,commit)=>serial(()=>applyConfig(body,commit)),receive,start:connect,pause,dispose,isOwner:id=>Boolean(config.ownerId&&config.ownerId===id),ownsThread:id=>knownThreads.has(id),ownsTurn:(threadId,turnId)=>identity(turnId)&&knownTurns.has(threadId+':'+turnId),idle:async()=>{await requests;await running;await writes;}};
 }

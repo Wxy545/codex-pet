@@ -56,6 +56,22 @@ Harness 桌面版需要先启动一次、再完全退出，用 `-Profile desktop
 
 插件层只加入指定 profile。种类文件遵循 dsh-pet 原生规则，位于各 profile 共用的 `$DSH_HOME/dsh-pet/pet`，使用独立的 `codex-white-dragon` 前缀。更新保留用户改过的文件。可以编辑 `codex-white-dragon-config.json` 调整龙娘的大小、位置、开关和显示方式；卸载插件时这些用户文件保留。
 
+## QQ tasks
+
+Codex Pet's **QQ connection** window can send private QQ messages to Harness through either an official bot or a NapCat QQ account. Choose **DeepSeek Harness** as the task app, authorize a project, and save the connection. The [QQ guide](../README.md#tasks-from-qq) covers setup and commands. This selection is separate from the companion app and character on your desktop.
+
+Install and register the native plugin above first. QQ setup checks the registered, formal Harness installation and prepares its own `codex-pet-qq-*` ACP profile for the project and permission level. It keeps your original profile intact. An isolated test CLI is not treated as an installed desktop carrier.
+
+QQ conversations are created by this bridge and resumed within the same project and permission level; existing Harness desktop conversations are not listed or taken over. Model and reasoning settings follow Harness. The first version allows controlled file reading, writing, and editing, with one-time approval for writes; Shell and arbitrary MCP tools are unavailable. Usage and balance still come from Harness's own provider.
+
+## QQ 任务
+
+Codex Pet 的「QQ 连接」可以通过官方机器人或 NapCat 小号，把私聊消息交给 Harness。在窗口中选择任务应用「DeepSeek Harness」，授权项目并保存；步骤和命令见 [QQ 使用说明](../README.zh-CN.md#在-qq-里下任务)。这里的选择与本机桌宠联动应用、角色分开。
+
+先按上文安装并登记原生插件。QQ 设置核对正式 Harness 安装，再为项目和权限档准备本项目自己的 `codex-pet-qq-*` ACP profile，保留用户原 profile；隔离验收 CLI 不能代替正式载体。
+
+QQ 只恢复本桥新建、项目与权限档相符的原生会话，不列出或接管旧桌面会话。模型和思考遵 Harness 自己的设置。首版只开放受控的文件读取、写入和修改，写操作逐次确认，暂不开放 Shell 或任意 MCP 工具。额度与余额仍由 Harness 自己的服务商提供。
+
 ## Credits and license
 
 Built on [PC2005-cloud/dsh-pet](https://github.com/PC2005-cloud/dsh-pet). The White Dragon Girl design is used with the creator's permission; credit: Xiaohongshu **233534463**. The animation videos were generated with MiniMax H3 and edited for this pet. Code uses MIT; character and animation terms are separate. See the bundled `NOTICE.md` and the repository's [third-party notices](https://github.com/Wxy545/codex-pet/blob/main/THIRD_PARTY_NOTICES.md).

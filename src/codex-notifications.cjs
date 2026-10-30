@@ -20,6 +20,7 @@ function normalizeNotice(value) {
     title: value.title.trim().slice(0, 120),
     body: typeof value.body === 'string' ? value.body.slice(0, 320) : '',
     threadId: typeof value.threadId === 'string' && UUID.test(value.threadId) ? value.threadId : null,
+    ...(value.source==='qq'?{source:'qq'}:{}),
   };
 }
 
@@ -154,7 +155,7 @@ function readForeground() {
 }
 
 /** 可注入依赖用于验证通知分支；生产入口 install 使用真实 Electron 和前台探测。 */
-function createController({ hostRequest, electron, checkForeground = readForeground, activateNotice, log = console.warn, beforeStart = () => {}, locale = Locale.getLocale() }) {
+function createController({ hostRequest, electron, checkForeground = readForeground, activateNotice, openQQ, log = console.warn, beforeStart = () => {}, locale = Locale.getLocale() }) {
   if (typeof hostRequest !== 'function') throw new TypeError('hostRequest is required');
   const { app, Notification, shell } = electron;
   const history = new NoticeHistory();
@@ -186,16 +187,16 @@ function createController({ hostRequest, electron, checkForeground = readForegro
       }
       let foreground;
       try {
-        foreground = await checkForeground();
+        foreground = notices.some(notice=>notice.source!=='qq')?await checkForeground():{ok:true,isCodexForeground:false,protocolRegistered:false};
       } catch {
         logOnce('foreground', '前台状态检查失败，本次不显示通知。');
-        return;
+        foreground={ok:false};
       }
       if (stopped) return;
       const decision = notificationDecision(foreground);
       if (decision === 'error') logOnce('foreground', '前台状态检查失败，本次不显示通知。');
-      if (decision !== 'notify') return;
       for (const notice of notices) {
+        if(notice.source!=='qq'&&decision!=='notify')continue;
         try {
           const notification = new Notification({ title: notice.title, body: notice.body });
           active.add(notification);
@@ -209,6 +210,11 @@ function createController({ hostRequest, electron, checkForeground = readForegro
           notification.once('show', () => logOnce('shown', '系统通知已提交。'));
           notification.once('click', () => {
             release();
+            // QQ 结果在消息通道中，点击固定打开其连接面板，不把其他应用会话交给 Codex。
+            if(notice.source==='qq'){
+              if(typeof openQQ==='function')Promise.resolve().then(()=>openQQ()).catch(()=>logOnce('activate-qq','无法激活通知对应的应用。'));
+              return;
+            }
             // 宿主适配可提供固定激活动作，避免把其他产品的会话交给Codex协议。
             if (typeof activateNotice === 'function') {
               Promise.resolve().then(() => activateNotice(notice, foreground)).catch(() => {
@@ -268,7 +274,7 @@ function createController({ hostRequest, electron, checkForeground = readForegro
   return { stop, poll };
 }
 
-function install({ hostRequest: _hostRequest }) {
+function install({ hostRequest: _hostRequest, openQQ }) {
   const electron = require('electron');
   // 系统通知按应用名展示，避免原始 Electron 运行时名称混淆来源。
   electron.app.setName('Codex Pet');
@@ -280,6 +286,7 @@ function install({ hostRequest: _hostRequest }) {
   return createController({
     hostRequest: createNoticeRequest(process.env.CODEX_PET_NOTICE_URL),
     electron,
+    openQQ,
     beforeStart: () => ensureShortcut(electron, process.env.CODEX_PET_LAUNCHER, console.warn),
   });
 }

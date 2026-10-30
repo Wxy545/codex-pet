@@ -19,7 +19,8 @@ import PetHost from './pet-host.cjs';
 import { createWorkBuddyBridge } from './workbuddy-events.mjs';
 import { createWorkBuddyBalance } from './workbuddy-balance.mjs';
 import { waitForRestartReady } from './pet-restart.mjs';
-import { createQQBridge, projectQQState } from './qq-remote.mjs';
+import { projectQQState } from './qq-remote.mjs';
+import { createQQService } from './qq-service.mjs';
 import { installControlResume } from './control-resume.mjs';
 import HarnessHandoff from './harness-handoff.cjs';
 
@@ -124,7 +125,7 @@ async function start() {
   const notices = [];
   function enqueueNotice(value) {
     // 原生Harness自行通知；旧宿主任务继续收尾，但移交期间不弹提醒，也不留到切回后补发。
-    if (HarnessHandoff.isActive({dataRoot:home,projectRoot:root})) { notices.length = 0; return; }
+    if (HarnessHandoff.isActive({dataRoot:home,projectRoot:root})) {for(let i=notices.length-1;i>=0;i--)if(notices[i].source!=='qq')notices.splice(i,1);if(value.source!=='qq')return;}
     notices.push(value);
     if (notices.length > 24) notices.shift();
   }
@@ -143,22 +144,22 @@ async function start() {
   let processTimer = null;
   let processChecking = false;
   let qq, qqView=null, qqTerminalTimer;
-  if(isCodex)try{qq=await createQQBridge({dataRoot:home,codexPath,codexHome,activityGate,canStart:canStartCodex,locale:Locale.getLocale(),onState:view=>{
+  try{qq=await createQQService({dataRoot:home,projectRoot:root,codexPath,codexHome,activityGate,initialApplication:companionHost,canStart:()=>!switchingHost&&!stopping,locale:Locale.getLocale(),onState:view=>{
     const previousState=qqView?.state;qqView=view;clearTimeout(qqTerminalTimer);
     if(['success','error'].includes(view.state)){
       qqTerminalTimer=setTimeout(()=>{qqView=null;if(eventReady)updateDisplay();},10000);qqTerminalTimer.unref();
-      if(previousState!==view.state)enqueueNotice({id:randomBytes(12).toString('hex'),kind:view.state==='success'?'complete':'error',title:Locale.getLocale()==='zh-CN'?'QQ 任务已结束':'QQ task finished',body:Locale.getLocale()==='zh-CN'?'在 QQ 中查看任务结果。':'Check QQ for the task result.',threadId:view.threadId||null});
+      if(previousState!==view.state)enqueueNotice({id:randomBytes(12).toString('hex'),source:'qq',application:view.application,kind:view.state==='success'?'complete':'error',title:Locale.getLocale()==='zh-CN'?'QQ 任务已结束':'QQ task finished',body:Locale.getLocale()==='zh-CN'?'在 QQ 中查看任务结果。':'Check QQ for the task result.',threadId:null});
     }
     if(eventReady)updateDisplay();
   }});}catch{logger.warn(Locale.getLocale()==='zh-CN'?'QQ 连接设置未能读取；桌宠继续运行，请检查本机 QQ 设置。':'QQ settings could not be loaded. The pet is still running; check its local QQ settings.');}
   routes.push({kind:'exact',path:`${prefix}/qq-remote`,handler:async(req,res)=>{
     if(req.headers['x-dsh-pet-token']!==security.token||req.headers.origin)return json(res,403,{error:{code:'unauthorized'}});
-    if(!canStartCodex())return json(res,409,{error:{code:'host_unavailable_for_qq'}});
+    if(switchingHost||stopping)return json(res,409,{error:{code:'busy'}});
     if(!qq)return json(res,503,{error:{code:'storage_failed'}});
     if(req.method==='GET')return json(res,200,qq.state());
     if(req.method!=='POST')return json(res,405,{error:{code:'method_not_allowed'}});
     try{json(res,200,await qq.configure(await requestJson(req,32768)));}
-    catch(error){const code=['invalid_input','invalid_directory','busy','not_configured','already_paired','secret_required','secret_store_unavailable'].includes(error.code)?error.code:'storage_failed';json(res,code==='busy'?409:400,{error:{code}});}
+    catch(error){const code=['invalid_input','invalid_directory','busy','not_configured','already_paired','secret_required','secret_store_unavailable','host_not_installed','native_version_unverified','remote_profile_unavailable','remote_profile_modified','profile_prepare_failed','profile_prepare_timeout','pnpm_unavailable','not_prepared','port_in_use','config_conflict','runtime_incomplete','native_runtime_unavailable'].includes(error.code)?error.code:'storage_failed';json(res,code==='busy'?409:400,{error:{code}});}
   }});
   const activeTaskStates = new Set(['running', 'cancelling']);
   const terminalTaskStates = new Set(['completed', 'failed', 'cancelled', 'timed_out']);
@@ -227,7 +228,7 @@ async function start() {
   } });
   routes.push({ kind: 'exact', path: `${prefix}/codex-notices`, handler: (req, res) => {
     if (req.method !== 'GET') return json(res, 405, { error: 'method not allowed' });
-    if (HarnessHandoff.isActive({dataRoot:home,projectRoot:root})) notices.length = 0;
+    if (HarnessHandoff.isActive({dataRoot:home,projectRoot:root})) for(let i=notices.length-1;i>=0;i--)if(notices[i].source!=='qq')notices.splice(i,1);
     json(res, 200, { notices: notices.splice(0) });
   } });
   routes.push({kind:'exact',path:`${prefix}/pet-host/presentation`,handler:async(req,res)=>{

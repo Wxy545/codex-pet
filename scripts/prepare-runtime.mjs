@@ -77,8 +77,10 @@ mainCode=patchBridgeAssets(mainCode);
 mainCode=patchHostOpenTarget(mainCode);
 await writeFile(main,mainCode);
 const oldNoticeHook="require('./codex-notifications.cjs').install({hostRequest});";
-const noticeHook="require(process.env.CODEX_PET_HOST === 'workbuddy' ? './workbuddy-notifications.cjs' : './codex-notifications.cjs').install({hostRequest});";
+const previousNoticeHook="require(process.env.CODEX_PET_HOST === 'workbuddy' ? './workbuddy-notifications.cjs' : './codex-notifications.cjs').install({hostRequest});";
+const noticeHook="require(process.env.CODEX_PET_HOST === 'workbuddy' ? './workbuddy-notifications.cjs' : './codex-notifications.cjs').install({hostRequest,openQQ:()=>codexQQSettings?.open()});";
 if(mainCode.includes(oldNoticeHook)){mainCode=mainCode.replaceAll(oldNoticeHook,noticeHook);await writeFile(main,mainCode);}
+if(mainCode.includes(previousNoticeHook)){mainCode=mainCode.replaceAll(previousNoticeHook,noticeHook);await writeFile(main,mainCode);}
 if(!mainCode.includes(noticeHook)) await writeFile(main,mainCode+'\n'+noticeHook+'\n');
 mainCode=await readFile(main,'utf8');
 const extensionHook=`// codex-pet-extensions-v2
@@ -88,7 +90,7 @@ const nativeHarness = require('./harness-handoff.cjs').install({dataRoot:process
 codexVisibility.setExternalHidden(nativeHarness.state().active===true);
 codexStartup.setSuspended(nativeHarness.state().active===true);
 const codexPetHost = require('./pet-host-menu.cjs').install({hostRequest:codexPanelRequest,harness:nativeHarness,onChanged:async()=>{if(tray){tray.destroy();tray=null;}await startTray();}});
-const codexQQSettings = process.env.CODEX_PET_HOST === 'workbuddy' ? null : require('./qq-window.cjs').install({hostRequest:codexPanelRequest,canUse:()=>codexPetHost.get().host==='codex'});
+const codexQQSettings = require('./qq-window.cjs').install({hostRequest:codexPanelRequest});
 const codexTaskPanel = require('./codex-task-window.cjs').install({hostRequest:codexPanelRequest,canUse:()=>codexPetHost.get().host==='codex'});
 const codexChatPanel = require('./codex-chat-window.cjs').install({hostRequest:codexPanelRequest,openTaskPanel:()=>codexTaskPanel.open(),canUse:()=>codexPetHost.get().host==='codex'});
 const codexSkinStore = require('./codex-skins.cjs').install({hostRequest,dataRoot:process.env.DSH_HOME,onSelectionChanged:async model=>{const character=model.characters.find(item=>item.id===model.selection.character);codexChatPanel.onCharacterChanged?.({id:model.selection.character,name:character.copy.name,locale:model.locale});if(tray){tray.destroy();tray=null;}await startTray();}});

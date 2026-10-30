@@ -7,6 +7,7 @@ const { createTargetRequest } = require('./codex-startup.cjs');
 
 /** 只消费当前宿主的通知；WorkBuddy未核实会话协议，不接收任意深链。 */
 function normalizeNotice(value) {
+  if(value?.source==='qq')return Base.normalizeNotice(value);
   if (value?.source !== 'workbuddy') return null;
   const notice = Base.normalizeNotice(value);
   return notice ? { ...notice, threadId: null, source: 'workbuddy' } : null;
@@ -50,12 +51,13 @@ function createController({ hostRequest, checkForeground = readForeground, activ
   });
 }
 
-function install() {
+function install({openQQ}={}) {
   const electron = require('electron');
   electron.app.setName('Codex Pet');
   if (process.platform === 'win32') electron.app.setAppUserModelId(Base.APP_USER_MODEL_ID);
   return createController({
     electron,
+    openQQ,
     hostRequest: Base.createNoticeRequest(process.env.CODEX_PET_NOTICE_URL),
     beforeStart: () => Base.ensureShortcut(electron, process.env.CODEX_PET_LAUNCHER, console.warn),
   });

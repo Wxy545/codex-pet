@@ -1,5 +1,9 @@
 main { max-width: 1040px; margin: auto; padding: var(--ui-space-6) var(--ui-space-7); }
 form { display: grid; gap: var(--ui-space-6); }
+.connection-choices { display: flex; flex-wrap: wrap; align-items: center; gap: var(--ui-space-4); }
+.connection-choices .field { flex: 1 1 180px; margin: 0; }
+.connection-choices select { width: 100%; }
+.connection-choices #selection-state { align-self: end; padding-block: var(--ui-space-2); }
 fieldset { min-width: 0; margin: 0; padding: var(--ui-space-5) 0 0; border: 0; border-block-start: 1px solid var(--ui-line); }
 legend { padding: 0 var(--ui-space-3) 0 0; font-size: var(--ui-text-sm); font-weight: 650; color: var(--ui-text); }
 p { margin: 0 0 var(--ui-space-3); }

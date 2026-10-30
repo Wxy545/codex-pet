@@ -2,7 +2,7 @@
 
 [English](README.md) | [简体中文](README.zh-CN.md)
 
-A Windows desktop pet for Codex and WorkBuddy. Pick a chibi dragon girl, Curly the sheep, or the original whale maid. They react to your tasks, wander around the desktop, and bounce when you pick them up.
+A Windows desktop pet for Codex, WorkBuddy, and DeepSeek Harness. Pick a chibi dragon girl, Curly the sheep, or the original whale maid. They react to your tasks, wander around the desktop, and bounce when you pick them up.
 
 Built on [dsh-pet](https://github.com/PC2005-cloud/dsh-pet), with task status, desktop interactions, and Windows notifications. Codex mode also includes usage snapshots, chat with images, and project tasks.
 
@@ -52,7 +52,7 @@ Right-click the pet and open **Control center** to preview characters and adjust
 | Usage | Available windows, including 5-hour and weekly limits | Credits from the local client | API balance configured in Harness |
 | In-pet chat, images, file tasks | Supported; tasks start read-only | Submit in WorkBuddy | Submit in Harness |
 | AI chatter | Supported | Unavailable | Harness services |
-| QQ remote tasks | Supported | Unavailable | Unavailable |
+| QQ remote tasks | Desktop and QQ conversations | New QQ conversations | New QQ conversations |
 
 Switching apps changes the source of events, usage, and notifications. A startup theme changes the visuals only; it never changes the account or task destination. Harness uses its native plugin and manages its own settings and services.
 
@@ -85,40 +85,53 @@ The pet follows WorkBuddy 5.9.3 task events: thinking, using tools, waiting for 
 
 The bar below the pet shows the current WorkBuddy personal account's remaining credits through the client's own local read-only channel. If WorkBuddy is closed, signed out, or unable to fetch credits, the balance is unavailable; it is never converted to Codex usage windows.
 
-Send chats and new tasks from WorkBuddy itself. The pet's Chat (including image input), Tasks, AI chatter, and QQ controls are hidden in this mode.
+The pet's Chat (including image input), Tasks, and AI chatter remain unavailable in this mode. Submit tasks in WorkBuddy itself, or use the QQ connection below.
 
-## Codex from QQ
+## Tasks from QQ
 
-Continue Codex conversations, choose a project, and send tasks from a private QQ chat. The pet follows the task while the result comes back to QQ. Regular messages get the actual answer; approvals and questions appear when needed. Keep your computer online with Codex CLI signed in and Codex Pet running.
+Choose **Codex**, **WorkBuddy**, or **DeepSeek Harness** as the task app, then send messages from a private QQ chat. The pet shows task progress and the answer comes back to QQ, with approval prompts when needed. Keep the computer online, the selected app signed in, and Codex Pet running.
 
-1. Right-click the pet and open **QQ remote tasks**, then choose **Create QQ bot**. Sign in to QQ Open Platform and create a bot.
-2. Paste its AppID and AppSecret into the local settings window. Add a project folder, set its **Maximum permission allowed**, and select **Save and connect**. You can authorize more than one project.
-3. Generate a pairing code and send the copied message to your bot in a **private chat**. Once paired, send your task in plain language.
+Open **QQ connection** from the pet or tray menu. Each task app and connection type keeps its own projects, conversations, permissions, pairing, and results. **Save and connect** activates the selection; only one connection runs at a time. Choosing a QQ task app does not change your desktop companion app or character.
+
+### Use a QQ account
+
+1. Select the task app and **QQ account**.
+2. Click **Prepare connection**. Codex Pet downloads the original, checksum-verified [NapCat portable package](https://github.com/NapNeko/NapCatQQ/releases/tag/v4.18.42), about 124 MB, with its own QQ and Node runtime. Your existing QQ stays untouched. OneBot is the connection protocol; no separate installation is needed.
+3. Click **Start and sign in**, scan the code, and confirm on your phone. The sign-in page opens automatically when ready.
+4. Add a project folder, set **Maximum permission allowed**, and click **Save and connect**. Once connected, generate a pairing code. Add the signed-in QQ account as a friend, then send it the copied message from your own QQ in a **private chat**.
+
+QQ controls sign-in and account checks; this connection does not bypass them.
+
+### Use an official QQ bot
+
+Select **Official QQ bot**, then **Create QQ bot**. Create a bot on QQ Open Platform with private-chat access, and enter its AppID and AppSecret in the local window. Add a project and permission limit, then **Save and connect**. Generate a pairing code and send the copied message privately to your bot.
 
 | Command | Action |
 | --- | --- |
 | `/projects`, `/project 2` | List authorized projects or switch by number |
-| `/sessions`, `/session 2` | List desktop and QQ conversations in the current project or switch by number |
+| `/sessions`, `/session 2` | List the selected app's conversations in this project or switch by number |
 | `/sessions search name`, `/sessions next` | Find a conversation by name or open the next page |
-| `/new name` | Create and name a persistent Codex conversation |
+| `/new name` | Create and name a conversation in the selected app |
 | `/task 2 your request` | Send a task to the second conversation in the list |
 | `/mode auto`, `/mode chat`, `/mode task` | Switch automatically or keep one profile selected |
-| `/models`, `/models next`, `/model chat 2`, `/model task 1` | List available models and choose each profile's model by number or full ID |
-| `/effort chat low`, `/effort task high` | Set a reasoning effort supported by the selected model |
+| `/models`, `/models next`, `/model chat 2`, `/model task 1` | Codex: list available models and choose by number or full ID |
+| `/effort chat low`, `/effort task high` | Codex: set a supported reasoning effort |
 | `/as-chat`, `/as-task` | Run the message waiting for your choice once |
 | `/permissions`, `/permissions read-only`, `/permissions edit` | View or change access within the limit set on your computer |
-| `/current`, `/status` | Show the project, conversation, permissions, progress, and last model and effort actually used |
+| `/current`, `/status` | Show the task app, project, conversation, permissions, and progress; Codex also shows the last model and effort used |
 | `/cancel`, `/result`, `/help` | Cancel, retrieve a saved result, or show commands |
 
-Auto mode is the default. Everyday chat prefers a Luna model available to your account at `low` effort, or your account's default model when Luna is unavailable. File changes, code, and execution requests use your default model at `high`; if that default is Luna, an available Astra or Sol model takes priority. The effort is adjusted to what the model supports. Local rules choose the profile without another model call. Ambiguous messages with no prior context wait for `/as-chat` or `/as-task`.
+**Codex** can continue existing desktop conversations as well as conversations created from QQ. Auto mode is the default: everyday chat prefers an available Luna model at `low` effort, while file and code tasks prefer the account's default model at `high`; an available Astra or Sol takes priority when that default is Luna. Effort follows the model's supported levels. Local rules make this choice without another model call. Ambiguous messages with no prior context wait for `/as-chat` or `/as-task`.
 
-Choose a fixed mode when automatic selection does not fit, or use `/task` to specify a task in auto mode. An unavailable model catalog or manually selected model prompts you to choose again. Model and effort settings do not change file permissions.
+Choose a fixed mode when automatic selection does not fit, or use `/task` to specify a task in auto mode. An unavailable Codex model catalog or manually selected model prompts you to choose again. Model and effort settings do not change file permissions.
 
-Choosing an existing conversation continues that same conversation. Busy conversations, or those whose idle state cannot be confirmed, reject new tasks. You cannot switch projects, conversations, or permissions during a task. QQ explicitly sets the model, effort, and permissions for each remote turn; those settings also affect the conversation's defaults for later turns.
+**WorkBuddy and Harness** create their own native QQ conversations; they do not take over existing desktop conversations. Conversations are kept separately for read-only and editing access. Their model and reasoning settings follow the host app. This first version supports controlled file reading, writing, and editing, with one-time approval for writes; Shell and arbitrary MCP tools are unavailable. First register Harness through the [native plugin setup](harness/README.md). QQ setup prepares a separate task environment and keeps your existing settings.
+
+Selecting a listed conversation continues that same conversation. Busy conversations, or those whose idle state cannot be confirmed, reject new tasks. You cannot switch projects, conversations, or permissions during a task. Codex sets model, effort, and permissions on each remote turn; those choices also affect that conversation's later defaults.
 
 Approval messages show the operation and a one-time code. Questions include reply instructions. Failed deliveries are kept locally and show their source when retrieved from another conversation; retrieving them does not run the task again.
 
-The connection accepts only the paired QQ identity and handles private text chats in Codex mode. Authorize project folders on your computer, then select them by list number in QQ. Conversation lists show names and states only. AppSecret is encrypted for your Windows account and is never shown again.
+Only the paired QQ account can send private text commands. Group chats, self-sent messages, and non-text messages are ignored. Authorize folders on your computer and select them by number in QQ; conversation lists show names and states only. AppSecret is encrypted for your Windows account. NapCat's native configuration contains local connection tokens, so keep the installation's `data/` folder private.
 
 ## Characters and animations
 
@@ -199,6 +212,8 @@ The white dragon girl is used with the creator's permission, credited as Xiaohon
 Curly's AI-created character reference was supplied by **Wxy545**, who authorized its use and distribution with Codex Pet. Her clips have their own [asset notice](assets/curly-sheep/NOTICE.md).
 
 This project’s code and documentation use the [MIT license](LICENSE). The original animations retain dsh-pet’s noncommercial terms, and the whale character uses [CC BY-NC-SA 4.0](https://creativecommons.org/licenses/by-nc-sa/4.0/). Full credits and terms are in [third-party notices](THIRD_PARTY_NOTICES.md).
+
+QQ account support uses an independently written OneBot adapter. [NapCat](https://github.com/NapNeko/NapCatQQ/tree/v4.18.42) is downloaded unmodified from its official release and follows its own noncommercial [Limited Redistribution License](https://github.com/NapNeko/NapCatQQ/blob/v4.18.42/LICENSE), separate from this project's MIT code.
 
 ## Contribute
 

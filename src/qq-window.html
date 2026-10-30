@@ -14,12 +14,22 @@
  <main>
   <dl class="status connection-strip"><div><dt data-copy="connection">Connection</dt><dd id="connection" role="status">Loading…</dd></div><div><dt data-copy="task">Task</dt><dd id="task">—</dd></div><div id="pending-row" hidden><dt data-copy="pending">Replies awaiting delivery</dt><dd id="pending">0</dd></div></dl>
   <form id="settings">
+   <div class="connection-choices">
+    <div class="field"><label for="application" data-copy="application">Task app</label><select id="application"><option value="codex">Codex</option><option value="workbuddy">WorkBuddy</option><option value="harness">DeepSeek Harness</option></select></div>
+    <div class="field"><label for="provider" data-copy="provider">QQ connection</label><select id="provider"><option value="official" data-copy="official">Official QQ bot</option><option value="onebot" data-copy="onebot">QQ account</option></select></div>
+    <span id="selection-state" class="note" role="status" data-copy="selection-draft" hidden>Not saved</span>
+   </div>
    <fieldset>
-    <legend data-copy="bot">1 · Connect a QQ bot</legend>
+    <legend data-copy="bot">QQ connection</legend>
+    <div id="official-connection">
     <div class="platform-row"><p class="note" data-copy="create-note">Create a bot on the QQ Open Platform, then copy its AppID and AppSecret.</p><button id="platform" type="button" data-copy="platform">Create QQ bot</button></div>
     <div class="credentials">
      <div class="field"><label for="app-id">AppID</label><input id="app-id" type="text" inputmode="numeric" autocomplete="off" maxlength="32" required></div>
      <div class="field"><label for="app-secret">AppSecret</label><input id="app-secret" type="password" autocomplete="new-password" maxlength="4096" aria-describedby="secret-note"><small id="secret-note" class="note" data-copy="secret-new">Enter the AppSecret from QQ Open Platform.</small></div>
+    </div>
+    </div>
+    <div id="onebot-connection" hidden>
+     <div class="actions"><button id="prepare-napcat" type="button" data-copy="prepare-napcat">Prepare connection</button><button id="login-napcat" type="button" data-copy="login-napcat" disabled>Start and sign in</button><span id="napcat-status" class="note" role="status"></span></div>
     </div>
    </fieldset>
    <fieldset>

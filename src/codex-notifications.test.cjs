@@ -45,6 +45,7 @@ function fixture(foreground, options = {}) {
     electron: { app, Notification, shell: { openExternal: async (url) => { opened.push(url); } } },
     log: (value) => logs.push(value),
     activateNotice: options.activateNotice,
+    openQQ: options.openQQ,
   });
   return { controller, app, shown, opened, logs, checks: () => checks };
 }
@@ -60,6 +61,13 @@ test('foreground and failed checks suppress notifications; errors never disclose
     f.controller.stop();
   }
   assert.equal(notificationDecision(null), 'error');
+});
+
+test('QQ任务通知不被其他宿主前台状态吞掉，点击固定打开QQ面板',async()=>{
+ let qqOpened=0;
+ const f=fixture({ok:true,isCodexForeground:true},{hostRequest:async()=>({status:200,body:{notices:[{...notice('qq-result'),source:'qq'}]}}),openQQ:()=>{qqOpened++;}});
+ await f.controller.poll();assert.equal(f.shown.length,1);assert.equal(f.checks(),0);
+ f.shown[0].emit('click');await new Promise(setImmediate);assert.equal(qqOpened,1);assert.deepEqual(f.opened,[]);f.controller.stop();
 });
 
 test('English通知诊断不翻译通知正文，也不泄漏原生错误正文', async () => {

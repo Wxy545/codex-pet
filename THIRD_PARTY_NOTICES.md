@@ -1,6 +1,6 @@
 # 第三方来源与许可
 
-本文记录 codex-pet 使用的主要第三方来源与许可边界，由项目维护者随依赖和分发方式更新。适用范围为本仓库及其运行时准备流程；核对日期为 2026-10-30。
+本文记录 codex-pet 使用的主要第三方来源与许可边界，由项目维护者随依赖和分发方式更新。适用范围为本仓库及其运行时准备流程；核对日期为 2026-10-31。
 
 根目录 [LICENSE](LICENSE) 只适用于本项目自有代码与文档，不替代第三方软件、角色或素材的许可。安装依赖、公开源代码与分发成品时，都应保留所用第三方内容要求的版权和许可说明。
 
@@ -79,6 +79,38 @@ WorkBuddy 接入使用用户本机 Windows 客户端提供的插件与 Hook 接�
 积分查询的调查参考了 [zhujiaowo-sudo/workbuddy-desktop-pet](https://github.com/zhujiaowo-sudo/workbuddy-desktop-pet/tree/30749c66a28ffd2f52d03d6b416a4540d4e8486a) 和 [pigeon189/zcode-fox-widget 的 workbuddy 分支](https://github.com/pigeon189/zcode-fox-widget/tree/5456f05a9f9f887cfed01e3859c0f94f508874e3)。前者没有授予代码开源许可，本项目未复制其实现；后者代码采用 MIT，其记录的单次消耗和上下文余量不能当作 WorkBuddy 剩余积分。
 
 本项目另行核对用户本机 WorkBuddy 5.9.3 的 WBIPC 和账单响应，独立实现固定的本机只读查询。仅在 WorkBuddy 模式使用本机通道票据完成双向认证，不读取或导出账号访问令牌。该通道随客户端版本变化，不视为腾讯提供了稳定的公开余额 API。
+
+## QQ、OneBot 与 NapCat 接入
+
+QQ 官方机器人连接使用用户申请的 QQ 开放平台机器人。普通 QQ 小号连接由本项目独立实现 [OneBot 11 正向 WebSocket 协议](https://github.com/botuniverse/onebot-11/blob/master/communication/ws.md)及其[鉴权约定](https://github.com/botuniverse/onebot-11/blob/master/communication/authorization.md)。OneBot 是协议，无需另外安装同名软件。
+
+小号运行时来自 [NapNeko/NapCatQQ v4.18.42](https://github.com/NapNeko/NapCatQQ/tree/v4.18.42)，作者版权为 **Copyright © 2024 Mlikiowa**。本项目从[官方发布地址](https://github.com/NapNeko/NapCatQQ/releases/download/v4.18.42/NapCat.Shell.Windows.Node.zip)原样下载 `NapCat.Shell.Windows.Node.zip`，核对大小 `124162399` 字节和 SHA256 `77397ac38d66f46383e48f08f35d5f9d37ec575c22069f62d6c600e73b4521ed`，运行时保留来源清单与完整许可证。扫码接入方式参考了[官方创建机器人指南](https://napneko.github.io/NapCatQQ-Desktop/docs/first-bot/)。
+
+NapCat 采用 [Limited Redistribution License for NapCat](https://github.com/NapNeko/NapCatQQ/blob/v4.18.42/LICENSE)，禁止商用，要求再分发时保留完整许可、来源与版权，且修改后的代码不得公开发布。本仓库只提供独立的协议适配与本机准备代码；NapCat 官方运行时在用户端另行下载，未纳入本项目的 MIT 授权，也不作为 MIT 安装包重新分发。包内 QQ、Node 及其他第三方组件仍遵循各自条款。
+
+NapCat 许可证全文：
+
+```text
+Limited Redistribution License for NapCat
+
+Copyright © 2024 Mlikiowa
+
+1. Usage and Reproduction:
+   - Unauthorized use, reproduction, modification, or distribution of this code is prohibited without explicit permission from the main author of the NapCat repository.
+
+2. Redistribution:
+   - Redistribution of this code is permitted, provided that the full text of this license is included, and the source and copyright information is clearly stated.
+   - Minor modifications and extensions are allowed for redistribution purposes, but the modified code must not be publicly released.
+
+3. Non-Commercial Use:
+   - This code is not to be used for any commercial purposes.
+
+4. Additional Permissions:
+   - Any rights not explicitly addressed in this license must be requested from and granted by the main author of the NapCat repository.
+
+5. Disclaimer:
+   - This code is provided "as is," without any express or implied warranties, including but not limited to the implied warranties of merchantability and fitness for a particular purpose. In no event shall the author be liable for any damages or other liability arising from, out of, or in connection with the use or distribution of this code.
+```
 
 ## 启动动画实现参考
 

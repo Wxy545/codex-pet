@@ -38,11 +38,13 @@ for (const locale of ['zh-CN', 'en']) {
 }
 await mkdir(join(output, 'assets'), { recursive: true });
 await mkdir(join(output, 'runtime'), { recursive: true });
-for (const file of ['index.mjs', 'pack.mjs', 'motion-fix.mjs', 'native-balance.mjs', 'cordis.patch.yml', 'README.md']) await copyFile(join(root, 'harness', file), join(output, file));
+for (const file of ['index.mjs', 'pack.mjs', 'motion-fix.mjs', 'native-balance.mjs', 'native-remote-state.mjs', 'cordis.patch.yml', 'README.md']) await copyFile(join(root, 'harness', file), join(output, file));
 for (const file of ['pet-status-strip.js', 'pet-status-strip.css']) await copyFile(join(root, 'src', file), join(output, 'runtime', file));
 await copyFile(join(root, 'LICENSE'), join(output, 'LICENSE'));
 await copyFile(join(source, 'NOTICE.md'), join(output, 'NOTICE.md'));
 for (const file of Object.keys(hashes)) await copyFile(join(nativeSource, file), join(output, 'assets', file));
 await writeFile(join(output, 'package.json'), JSON.stringify(bundle, null, 2) + '\n');
+// 本地持久 checkout 链接的来源仅进入构建目录，公开仓库不包含个人路径或令牌。
+await writeFile(join(output,'bridge.json'),JSON.stringify({schemaVersion:1,dataRoot:join(root,'data')})+'\n');
 await writeFile(join(output, 'pack.json'), JSON.stringify({ schemaVersion: 1, version: meta.version, locales }, null, 2) + '\n');
 console.log(JSON.stringify({ package: bundle.name, version: meta.version, directory: output, videos: Object.keys(hashes).length, locales: Object.keys(locales) }));

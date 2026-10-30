@@ -20,7 +20,7 @@ function createController({electron,openPanel,fileRoot=__dirname,host=process.en
   async function navigate(event,name){
     const from=source(event);
     if(!from)return{ok:false,code:'unauthorized'};
-    if(!Object.hasOwn(PAGES,name)||currentHost()!=='codex'&&name!=='settings')return{ok:false,code:'unavailable'};
+    if(!Object.hasOwn(PAGES,name)||currentHost()!=='codex'&&!['settings','qq'].includes(name))return{ok:false,code:'unavailable'};
     try{
       await openPanel(name);
       if(from.file!=='index.html'&&from.file!==PAGES[name]&&!from.win.isDestroyed())from.win.hide();

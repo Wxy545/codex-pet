@@ -89,18 +89,19 @@ test('本地宠物页的查询参数不影响身份，导航不会隐藏宠物',
  assert.deepEqual(f.opened,['settings']);assert.equal(win.hidden,0);
 });
 
-test('WorkBuddy只能打开控制中心，不泄露Codex聊天、任务和QQ入口',async t=>{
+test('WorkBuddy开放独立QQ连接面板，仍拒绝Codex聊天和任务入口',async t=>{
  const f=fixture({host:'workbuddy'});t.after(()=>f.controller.dispose());const {event}=f.makeWindow('control-window.html');
- for(const name of ['chat','tasks','qq'])assert.deepEqual(await f.navigate(event,name),{ok:false,code:'unavailable'});
+ for(const name of ['chat','tasks'])assert.deepEqual(await f.navigate(event,name),{ok:false,code:'unavailable'});
  assert.equal(f.opened.length,0);assert.deepEqual(await f.navigate(event,'settings'),{ok:true});assert.deepEqual(f.opened,['settings']);
+ assert.deepEqual(await f.navigate(event,'qq'),{ok:true});assert.deepEqual(f.opened,['settings','qq']);
 });
 
 test('宿主动态切到原生Harness时现有面板不能继续导航Codex功能，恢复后重新开放',async t=>{
  let host='codex';const f=fixture({host:()=>host});t.after(()=>f.controller.dispose());const {event}=f.makeWindow('control-window.html');
  assert.equal((await f.navigate(event,'chat')).ok,true);
  host='harness';assert.deepEqual(f.handlers.get('codex-panels:state')(event),{ok:true,host:'harness'});
- for(const name of ['chat','tasks','qq'])assert.deepEqual(await f.navigate(event,name),{ok:false,code:'unavailable'});
- assert.deepEqual(await f.navigate(event,'settings'),{ok:true});assert.deepEqual(f.opened,['chat','settings']);
+ for(const name of ['chat','tasks'])assert.deepEqual(await f.navigate(event,name),{ok:false,code:'unavailable'});
+ assert.deepEqual(await f.navigate(event,'settings'),{ok:true});assert.deepEqual(await f.navigate(event,'qq'),{ok:true});assert.deepEqual(f.opened,['chat','settings','qq']);
  host='codex';assert.deepEqual(await f.navigate(event,'tasks'),{ok:true});
 });
 

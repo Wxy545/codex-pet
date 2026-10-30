@@ -78,3 +78,9 @@ export function chooseQQExecution(policy,models,{text='',taskCommand=false,lastK
  }
  return{kind,model:model.model,effort:effortFor(model,config[kind+'Effort']),reason};
 }
+
+/** 原生宿主没有模型目录时只判断用途，模型与思考仍由该宿主决定。 */
+export function chooseQQExecutionKind(policy,{text='',taskCommand=false,lastKind}={}){
+ const config=normalizeQQExecution(policy);
+ return config.mode==='auto'?(taskCommand?'task':automaticKind(text,lastKind)):config.mode;
+}
