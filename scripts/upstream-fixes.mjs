@@ -1,5 +1,6 @@
 // 固定0.3.8上的小范围移植；原项目版权和许可保留在THIRD_PARTY_NOTICES.md。
 // 来源：PC2005-cloud/dsh-pet 的4864269（Range）、86181ce（负距离走位）、e0c5f97（独立菜单）。
+// 1f191657：只移植隐藏宠物的自动碎念门控，不引入该提交的语音协议。
 function replaceOne(source, before, after, label) {
   const oldCount = source.split(before).length - 1, newCount = source.split(after).length - 1;
   if (oldCount === 0 && newCount === 1) return source;
@@ -36,7 +37,18 @@ const newSendFile = `function sendFile(req, res, file, contentType) {
 }`;
 const rangeImport = 'import CodexRuntimeRange from "../runtime/electron-helper/runtime-range.cjs";\n';
 
+function patchHostWhisperVisibility(source) {
+  return replaceOne(source,
+    '\t\t\t\t\tif (!schedule.enabled) continue;\n\t\t\t\t\tconst sec = schedule.periodSec;',
+    '\t\t\t\t\tif (!schedule.enabled) continue;\n' +
+    '\t\t\t\t\t// 隐藏时不调模型，也不推进周期；重新显示后仍遵循用户与AI开关。\n' +
+    '\t\t\t\t\tif (!displayCovers("any", String(pet.display ?? ""))) continue;\n' +
+    '\t\t\t\t\tconst sec = schedule.periodSec;',
+    '隐藏宠物自动碎念');
+}
+
 export function patchHostAssets(source) {
+  source = patchHostWhisperVisibility(source);
   source = replaceOne(source, oldSendFile, newSendFile, 'HTTP素材Range');
   source = replaceOne(source, 'else sendFile(res, result.file, result.contentType);', 'else sendFile(req, res, result.file, result.contentType);', 'HTTP素材请求');
   const imports = source.split(rangeImport).length - 1;

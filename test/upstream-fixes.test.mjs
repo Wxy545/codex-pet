@@ -25,6 +25,57 @@ test('上游修复在原0.3.8及已准备代码上幂等，锚点缺失或重复
   }
 });
 
+function whisperPoll(config, policy) {
+  const fixed = patchHostAssets(host);
+  const end = fixed.indexOf('}, "dsh-pet: whisper poll");');
+  const start = fixed.lastIndexOf('ctx.effect(() => {', end);
+  assert.ok(start >= 0 && end > start);
+  const helpers = ['flattenPetList', 'findPetInstance', 'automaticWhisperSchedule', 'displayCovers'].map(name => {
+    const declaration = fixed.match(new RegExp('function ' + name + '\\([^)]*\\) \\{[\\s\\S]*?^\\}', 'm'))?.[0];
+    assert.ok(declaration, name);
+    return declaration;
+  }).join('\n');
+  const period = fixed.match(/const whisperPeriodSec = \(conf\) => \{[\s\S]*?\n\t\};/)?.[0];
+  assert.ok(period);
+  let now = 1_000_000, pending;
+  const generated = [], lastWhisperAt = new Map();
+  const scope = {
+    ctx: { standaloneAi: policy, effect: callback => callback() },
+    configPaths: [], readAllConfig: () => config, lastWhisperAt,
+    lock: { locked: () => false }, publishWhisper: async id => { generated.push(id); },
+    Date: { now: () => now }, setTimeout: (callback, ms) => { pending = { callback, ms }; return 1; },
+    clearTimeout() {},
+  };
+  vm.runInNewContext(helpers + '\n' + period + '\n' + fixed.slice(start, end) + '}, "dsh-pet: whisper poll");', scope);
+  return { generated, lastWhisperAt, delay: () => pending.ms, tick: (advanceMs = 0) => { now += advanceMs; pending.callback(); } };
+}
+
+test('隐藏宠物不生成碎碎念或推进周期，恢复显示后仍遵循用户和AI开关', () => {
+  const pet = { id: 'synthetic-hidden', display: 'none', whisperEnabled: true };
+  let automatic = true;
+  const policy = { whisperIntervalSec: () => 600, isReady: () => true, canWhisper: () => automatic };
+  const poll = whisperPoll({ main: { pets: [pet], eventsRefreshSec: { whisper: 600 } } }, policy);
+  assert.deepEqual(poll.generated, []);
+  assert.equal(poll.lastWhisperAt.has(pet.id), false);
+  pet.display = 'desktop'; poll.tick();
+  assert.deepEqual(poll.generated, ['synthetic-hidden']);
+  pet.whisperEnabled = false; poll.tick(600_000);
+  assert.deepEqual(poll.generated, ['synthetic-hidden']);
+  pet.whisperEnabled = true; automatic = false; poll.tick();
+  assert.deepEqual(poll.generated, ['synthetic-hidden']);
+  automatic = true; poll.tick();
+  assert.deepEqual(poll.generated, ['synthetic-hidden', 'synthetic-hidden']);
+});
+
+test('隐藏宠物不缩短调度周期，web、desktop和both仍可生成', () => {
+  const config = { hidden: { pets: [{ id: 'synthetic-none', display: 'none', whisperEnabled: true }], eventsRefreshSec: { whisper: 60 } } };
+  for (const display of ['web', 'desktop', 'both']) config[display] = { pets: [{ id: 'synthetic-' + display, display, whisperEnabled: true }], eventsRefreshSec: { whisper: 600 } };
+  const poll = whisperPoll(config);
+  assert.deepEqual(poll.generated, ['synthetic-web', 'synthetic-desktop', 'synthetic-both']);
+  assert.equal(poll.delay(), 600_000);
+  assert.equal(poll.lastWhisperAt.has('synthetic-none'), false);
+});
+
 test('冻结只保留最新工作快照，解冻同步当前档位和文字，终态不补播',()=>{
  const shared={};vm.runInNewContext(readFileSync(new URL('../node_modules/dsh-pet/runtime/electron-helper/shared-core.js',import.meta.url),'utf8'),shared);
  const work=patchDesktopWorkEvents(events).match(/PetSprite\.prototype\.onWorkTick = function onWorkTick\([\s\S]*?\n\};/)?.[0];

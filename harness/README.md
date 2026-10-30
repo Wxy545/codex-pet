@@ -8,7 +8,7 @@ You can ask Codex: **Install White Dragon Girl from https://github.com/Wxy545/co
 
 ## Install
 
-On Windows, use DeepSeek Harness **0.2.1-rc.2**, `dsh-pet` **0.3.8**, and Node.js **22.12 or newer**. The npm Harness CLI also needs `pnpm` on PATH. From the Codex Pet checkout, run:
+On Windows, use DeepSeek Harness **0.2.1-rc.2 or 0.2.1-rc.5**, `dsh-pet` **0.3.8**, and Node.js **22.12 or newer**. The npm Harness CLI also needs `pnpm` on PATH. From the Codex Pet checkout, run:
 
 ```powershell
 powershell -File scripts/install-harness.ps1 -Profile web
@@ -36,7 +36,7 @@ At startup, this bundle applies the upstream leftward-walk correction to the sel
 
 也可以直接对 Codex 说：**把 https://github.com/Wxy545/codex-pet 的白龙娘插件装到我正在用的 DeepSeek Harness，按 harness/README.md 选择对应的官方 CLI，保留现有宠物设置。**
 
-Windows 上需要 DeepSeek Harness **0.2.1-rc.2**、`dsh-pet` **0.3.8** 和 Node.js **22.12 或更新版**。普通 npm 版 Harness CLI 还需要 PATH 中有 `pnpm`。在 Codex Pet 项目目录运行：
+Windows 上需要 DeepSeek Harness **0.2.1-rc.2 或 0.2.1-rc.5**、`dsh-pet` **0.3.8** 和 Node.js **22.12 或更新版**。普通 npm 版 Harness CLI 还需要 PATH 中有 `pnpm`。在 Codex Pet 项目目录运行：
 
 ```powershell
 powershell -File scripts/install-harness.ps1 -Profile web

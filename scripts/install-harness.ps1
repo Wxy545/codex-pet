@@ -11,7 +11,7 @@ $taskRoot = Split-Path $PSScriptRoot -Parent
 if (-not $NodeCommand) { $NodeCommand = (Get-Command node -ErrorAction Stop).Source }
 if (-not $DshCommand) {
     $taskDshExecutable = Get-Command dsh -ErrorAction SilentlyContinue
-    if (-not $taskDshExecutable) { throw 'Install DeepSeek Harness first: npm install -g @deepseek-ai/dsh@0.2.1-rc.2' }
+    if (-not $taskDshExecutable) { throw 'Install DeepSeek Harness first: npm install -g @deepseek-ai/dsh@0.2.1-rc.5' }
     $DshCommand = $taskDshExecutable.Source
 }
 $taskBundledCli = $DshCommand -match '[\\/]resources[\\/]runtime[\\/]cli[\\/]bin[\\/]dsh(?:\.cmd)?$'
@@ -22,7 +22,7 @@ if (-not $taskBundledCli -and -not (Get-Command pnpm -ErrorAction SilentlyContin
     throw 'The npm Harness CLI needs pnpm on PATH. Install pnpm first, then retry.'
 }
 $taskVersion = (& $DshCommand --version | Out-String).Trim()
-if ($LASTEXITCODE -ne 0 -or $taskVersion -notmatch '^0\.2\.1-rc\.2$') { throw 'This bundle requires DeepSeek Harness 0.2.1-rc.2. Other versions have not been verified.' }
+if ($LASTEXITCODE -ne 0 -or $taskVersion -notmatch '^0\.2\.1-rc\.(2|5)$') { throw 'This bundle requires DeepSeek Harness 0.2.1-rc.2 or 0.2.1-rc.5. Other versions have not been verified.' }
 
 $taskPreviousHome = [Environment]::GetEnvironmentVariable('DSH_HOME', 'Process')
 try {

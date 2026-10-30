@@ -205,7 +205,13 @@ Codex 的 CLI 参数与会话事件可能随版本变化，dsh-pet 补丁也绑�
 
 2026-10-29 复核上游 `973a451` 至 [e77a6f5](https://github.com/PC2005-cloud/dsh-pet/commit/e77a6f571929eb88296a756ffcd5b57541b61203)。旧三个语音提交在当前分支重放，整棵 tree 与旧基线相同；后续改动集中在语音、浏览器聊天和设置界面，代码许可与素材未变。本项目继续固定 npm `0.3.8`，保留已验证补丁。上游菜单三态调整经核对不影响当前两条接入：Codex 独立版打开 AI 设置，Harness 原生版打开网站。Harness 包另将已选用的负距离走位修复应用到该 profile 的 Web 与桌面播放实现。
 
+2026-10-30 复核上游 `8963384` 至 [34cf7ec](https://github.com/PC2005-cloud/dsh-pet/commit/34cf7ec4dd1ca99a9a9ac5bcb4571d887862e226) 的 17 个提交。仅从 [1f191657](https://github.com/PC2005-cloud/dsh-pet/commit/1f1916573b4cca13299aabcff5e748e4f9c6ba2a) 择取自动碎念的显示门控：`display: none` 的角色不调用模型，也不推进碎念周期；重新显示后仍遵守用户开关及 AI 设置。固定 `0.3.8` 的调度锚点不匹配时停止准备，重复准备保持幂等。待办、语音新协议、网页配图等改动未纳入本项目。
+
+Harness 已验证版本为 `0.2.1-rc.2` 和 `0.2.1-rc.5`，插件声明与 Windows 安装器只接受这两版。官方 npm 包的 CLI、app-boot、plugin-manager 和 profileContext 实现保持一致，clientModules 的注册接口未变。rc.5 已用真实官方 CLI 在隔离 home 中安装 `dsh-pet@0.3.8` 与本项目 bundle，并通过配置合成；未启动用户 profile 或调用账号。Harness 桌面应用载体仍未验收，不能用这次 CLI 验证替代。
+
 ## 验证记录
+
+2026-10-30 在 Windows 的完整回归 419/419 通过；上游修复相关 11/11、Harness 相关 16/16 通过。Codex CLI `0.165.0-alpha.1.2`、桌面版 `26.1023.6621.0` 的参数、隔离权限配置与近期事件字段检查通过，未发送模型请求。WorkBuddy `5.9.3`、随包 CLI `2.165.0` 和本插件摘要未变。rc.5 的官方 CLI 隔离验收还核对了 23 段种类文件、6/3/6 事件槽、所选 profile 内的走位修补与客户端缓存刷新；不替代浏览器或桌面应用验收。
 
 0.6.2 在 Windows 的完整回归 417/417 通过，[GitHub CI 的 Node 22、24 两组检查](https://github.com/Wxy545/codex-pet/actions/runs/40816640921)均通过。WorkBuddy 的卷卷启动演出用准备后的生产脚本和真实 Electron 隐藏实播，待机、工作、招手三条媒体均自然结束，演出退出后没有残留窗口；这组检查不代表实际前台焦点与听感验收。
 

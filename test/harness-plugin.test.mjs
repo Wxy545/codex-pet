@@ -212,34 +212,40 @@ test('native repair rejects a package internal junction before modifying externa
   assert.equal(readFileSync(join(pkg,'runtime','electron-helper','sprite.js'),'utf8'),oldMotion);
 });
 
-test('Windows installer preserves Chinese spaced checkout paths and rejects the npm CLI for desktop before build', {skip:process.platform!=='win32'},t=>{
+test('Windows installer accepts verified releases in Chinese spaced paths and refuses other versions or the npm desktop CLI before build', {skip:process.platform!=='win32'},t=>{
   const temp=mkdtempSync(join(tmpdir(),'harness-installer-'));t.after(()=>rmSync(temp,{recursive:true,force:true}));
   const root=join(temp,'中文 空格 project'),scripts=join(root,'scripts');mkdirSync(scripts,{recursive:true});
   const installer=join(scripts,'install-harness.ps1');
   writeFileSync(installer,readFileSync(fileURLToPath(new URL('../scripts/install-harness.ps1',import.meta.url))));
   writeFileSync(join(scripts,'build-harness-plugin.mjs'),`import{mkdirSync,writeFileSync}from'node:fs';import{dirname,resolve,join}from'node:path';import{fileURLToPath}from'node:url';const r=resolve(dirname(fileURLToPath(import.meta.url)),'..');mkdirSync(join(r,'data/harness-plugin'),{recursive:true});writeFileSync(join(r,'data/harness-plugin/pack.json'),'{}');writeFileSync(join(r,'built.txt'),'yes');console.log(JSON.stringify({directory:join(r,'data/harness-plugin')}));`);
-  const stub=join(root,'dsh.cmd'),log=join(root,'calls.jsonl');
-  writeFileSync(join(root,'dsh-stub.mjs'),`import{appendFileSync}from'node:fs';const a=process.argv.slice(2);if(a[0]==='--version')console.log('0.2.1-rc.2');else appendFileSync(${JSON.stringify(log)},JSON.stringify(a)+'\\n');`);
+  const stub=join(root,'dsh.cmd'),log=join(root,'calls.jsonl'),versionFile=join(root,'version.txt');
+  writeFileSync(join(root,'dsh-stub.mjs'),`import{appendFileSync,readFileSync}from'node:fs';const a=process.argv.slice(2);if(a[0]==='--version')console.log(readFileSync(${JSON.stringify(versionFile)},'utf8'));else appendFileSync(${JSON.stringify(log)},JSON.stringify(a)+'\\n');`);
   writeFileSync(stub,`@"${process.execPath}" "%~dp0dsh-stub.mjs" %*\r\n`);
   writeFileSync(join(root,'pnpm.cmd'),'@echo 10.20.0\r\n');
   const env={...process.env,PATH:root+';'+process.env.PATH};
   const args=['-NoProfile','-ExecutionPolicy','Bypass','-File',installer,'-Profile','web','-DshHome',join(temp,'isolated-home'),'-DshCommand',stub,'-NodeCommand',process.execPath];
-  const run=spawnSync('powershell.exe',args,{encoding:'utf8',env,windowsHide:true,timeout:15000});
-  assert.equal(run.status,0,run.stderr||run.stdout);
-  const calls=readFileSync(log,'utf8').trim().split('\n').map(line=>JSON.parse(line));
-  assert.deepEqual(calls[0],['plugin','--profile','web','add','dsh-pet@0.3.8']);
-  assert.deepEqual(calls[1].slice(0,4),['plugin','--profile','web','add']);
-  assert.equal(calls[1].length,5);
-  // Windows可能保留8.3短名拼写，用卷号和文件ID确认仍是同一中文空格目录。
-  const actualTarget=statSync(calls[1][4],{bigint:true}),expectedTarget=statSync(join(root,'data/harness-plugin'),{bigint:true});
-  assert.ok(actualTarget.isDirectory());
-  assert.equal(actualTarget.dev,expectedTarget.dev);
-  assert.equal(actualTarget.ino,expectedTarget.ino);
-  rmSync(join(root,'built.txt'));writeFileSync(log,'');args[args.indexOf('web')]='desktop';
+  for(const version of ['0.2.1-rc.2','0.2.1-rc.5']){
+    writeFileSync(versionFile,version);writeFileSync(log,'');
+    const run=spawnSync('powershell.exe',args,{encoding:'utf8',env,windowsHide:true,timeout:15000});
+    assert.equal(run.status,0,run.stderr||run.stdout);
+    const calls=readFileSync(log,'utf8').trim().split('\n').map(line=>JSON.parse(line));
+    assert.deepEqual(calls[0],['plugin','--profile','web','add','dsh-pet@0.3.8']);
+    assert.deepEqual(calls[1].slice(0,4),['plugin','--profile','web','add']);assert.equal(calls[1].length,5);
+    // Windows可能保留8.3短名拼写，用卷号和文件ID确认仍是同一中文空格目录。
+    const actualTarget=statSync(calls[1][4],{bigint:true}),expectedTarget=statSync(join(root,'data/harness-plugin'),{bigint:true});
+    assert.ok(actualTarget.isDirectory());assert.equal(actualTarget.dev,expectedTarget.dev);assert.equal(actualTarget.ino,expectedTarget.ino);
+    rmSync(join(root,'built.txt'));
+  }
+  for(const version of ['0.2.1-rc.3','0.2.1-rc.6','0.2.1']){
+    writeFileSync(versionFile,version);writeFileSync(log,'');
+    const denied=spawnSync('powershell.exe',args,{encoding:'utf8',env,windowsHide:true,timeout:15000});
+    assert.notEqual(denied.status,0);assert.match(denied.stderr,/Other versions have not been verified/);
+    assert.throws(()=>readFileSync(join(root,'built.txt')),/ENOENT/);assert.equal(readFileSync(log,'utf8'),'');
+  }
+  writeFileSync(log,'');args[args.indexOf('web')]='desktop';
   const denied=spawnSync('powershell.exe',args,{encoding:'utf8',env,windowsHide:true,timeout:15000});
   assert.notEqual(denied.status,0);assert.match(denied.stderr,/official Desktop|npm CLI/);
-  assert.throws(()=>readFileSync(join(root,'built.txt')),/ENOENT/);
-  assert.equal(readFileSync(log,'utf8'),'');
+  assert.throws(()=>readFileSync(join(root,'built.txt')),/ENOENT/);assert.equal(readFileSync(log,'utf8'),'');
 });
 
 test('pack language follows Windows display language before regional format and honors an explicit override',()=>{

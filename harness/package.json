@@ -8,10 +8,10 @@
   "repository": { "type": "git", "url": "git+https://github.com/Wxy545/codex-pet.git", "directory": "harness" },
   "license": "MIT",
   "files": ["index.mjs", "pack.mjs", "motion-fix.mjs", "pack.json", "cordis.patch.yml", "assets", "NOTICE.md", "LICENSE", "README.md"],
-  "engines": { "node": ">=22.12.0", "dsh": "0.2.1-rc.2" },
+  "engines": { "node": ">=22.12.0", "dsh": "0.2.1-rc.2 || 0.2.1-rc.5" },
   "peerDependencies": { "dsh-pet": "0.3.8" },
   "dsh": {
     "bundle": { "patch": "./cordis.patch.yml" },
-    "compatibility": { "dshReleases": { "0.2.1-rc.2": "compatible" } }
+    "compatibility": { "dshReleases": { "0.2.1-rc.2": "compatible", "0.2.1-rc.5": "compatible" } }
   }
 }
