@@ -3,6 +3,9 @@ const test=require('node:test'),assert=require('node:assert/strict');
 const {EventEmitter}=require('node:events');
 const {PassThrough}=require('node:stream');
 const {spawn}=require('node:child_process');
+const {mkdtempSync,readFileSync,appendFileSync,unlinkSync,rmdirSync}=require('node:fs');
+const {tmpdir}=require('node:os');
+const {join}=require('node:path');
 const {createSystemMonitor,createWindowsGpuProbe,aggregateGpuSample}=require('./system-monitor.cjs');
 
 function clock(){let time=0,id=0;const tasks=new Map();return{now:()=>time,setTimeout(fn,ms){const token={id:++id,unref(){}};tasks.set(token,{fn,at:time+ms});return token;},clearTimeout(token){tasks.delete(token);},advance(ms){const end=time+ms;for(;;){const next=[...tasks].filter(([,value])=>value.at<=end).sort((a,b)=>a[1].at-b[1].at)[0];if(!next)break;time=next[1].at;tasks.delete(next[0]);next[1].fn();}time=end;},pending:()=>tasks.size};}
@@ -78,16 +81,49 @@ function Get-CimInstance {
 `;
  // 本例验证真实PowerShell的空值/零值转换；CIM已替身，不加载无关模块或测宿主冷启动速度。
  // 生产5秒采样上限另有虚拟时钟回归，这里只给原生测试进程独立的启动余量。
- let frames=0;
+ const traceRoot=mkdtempSync(join(tmpdir(),'codex-pet-gpu-test-')),traceFile=join(traceRoot,'stages.txt');
+ const stages=new Set(['entry','encoding','ready','read','emit','exit']);
+ const workers=[];let frames=0,failed=false;
+ const readStages=()=>{try{return readFileSync(traceFile,'utf8').split(/\r?\n/).filter(value=>stages.has(value)).slice(-64);}catch{return[];}};
+ const prelude=String.raw`
+function Write-TestStage([string]$stage) {
+ try { [Console]::Error.WriteLine('gpu-test:' + $stage) } catch {}
+ try { [System.IO.File]::AppendAllText('__TRACE_FILE__', $stage + [Environment]::NewLine) } catch {}
+}
+Write-TestStage 'entry'
+`.replace('__TRACE_FILE__',traceFile.replace(/'/g,"''"));
  const probe=createWindowsGpuProbe({timeoutMs:15000,spawnImpl:(file,args,options)=>{
   const values=[...args],index=values.indexOf('-EncodedCommand')+1,script=Buffer.from(values[index],'base64').toString('utf16le');
   const moduleLine="Import-Module (Join-Path $PSHOME 'Modules\\CimCmdlets\\CimCmdlets.psd1') -ErrorAction Stop";
-  assert.equal(script.split(moduleLine).length,2);values[index]=Buffer.from(script.replace(moduleLine,fake),'utf16le').toString('base64');
-  const worker=spawn(file,values,options);worker.stdout.on('data',data=>{frames+=data.toString('utf8').split('\n').length-1;});return worker;
- }});t.after(()=>probe.close());
- assert.equal(await probe.sample(),null);assert.equal(frames,1,'首个空值必须来自worker回复，不能把超时算作空值样本');
- assert.equal(await probe.sample(),null);assert.equal(frames,2);
- assert.deepEqual(await probe.sample(),{percent:0,dedicatedUsedBytes:0});assert.equal(frames,3);
+  let traced=script;
+  const inject=(anchor,replacement)=>{assert.equal(traced.split(anchor).length,2,'诊断注入锚点必须唯一');traced=traced.replace(anchor,replacement);};
+  inject(moduleLine,fake);
+  const encoding='$OutputEncoding = [Console]::OutputEncoding = New-Object System.Text.UTF8Encoding($false)';
+  inject(encoding,encoding+"\nWrite-TestStage 'encoding'");
+  const loop='while (($line = [Console]::ReadLine()) -ne $null) {';
+  inject(loop,"Write-TestStage 'ready'\n"+loop+"\n Write-TestStage 'read'");
+  const output=' [Console]::WriteLine((@{ engines = $engines; memory = $memory } | ConvertTo-Json -Compress -Depth 4))';
+  inject(output," $testJson = (@{ engines = $engines; memory = $memory } | ConvertTo-Json -Compress -Depth 4)\n Write-TestStage 'emit'\n [Console]::WriteLine($testJson)");
+  values[index]=Buffer.from(prelude+traced,'utf16le').toString('base64');
+  const worker=spawn(file,values,options),record={spawned:false,exit:null,closed:false,errorCode:null,stderr:''};
+  record.done=new Promise(resolve=>worker.once('close',(code,signal)=>{record.closed=true;record.closeCode=code;record.closeSignal=signal;resolve();}));
+  workers.push(record);worker.once('spawn',()=>{record.spawned=true;});
+  worker.once('error',error=>{record.errorCode=typeof error.code==='string'?error.code:'spawn_error';});
+  worker.once('exit',(code,signal)=>{record.exit={code,signal};try{appendFileSync(traceFile,'exit\n');}catch{}});
+  worker.stderr.on('data',data=>{record.stderr=(record.stderr+data.toString('utf8')).slice(-16384);});
+  worker.stdout.on('data',data=>{frames+=data.toString('utf8').split('\n').length-1;});return worker;
+ }});
+ try {
+  assert.equal(await probe.sample(),null);assert.equal(frames,1,'首个空值必须来自worker回复，不能把超时算作空值样本');
+  assert.equal(await probe.sample(),null);assert.equal(frames,2);
+  assert.deepEqual(await probe.sample(),{percent:0,dedicatedUsedBytes:0});assert.equal(frames,3);
+ } catch(error) { failed=true;throw error; }
+ finally {
+  // 只输出固定阶段与退出码；不输出临时路径、原始stderr、环境或账户信息。
+  probe.close();await Promise.all(workers.map(worker=>worker.done));
+  if(failed)t.diagnostic('gpu-native-trace '+JSON.stringify({frames,stages:readStages(),workers:workers.map(worker=>({spawned:worker.spawned,exit:worker.exit,closed:worker.closed,closeCode:worker.closeCode,closeSignal:worker.closeSignal,errorCode:worker.errorCode,stderrStages:[...worker.stderr.matchAll(/gpu-test:(entry|encoding|ready|read|emit|exit)\b/g)].map(match=>match[1])}))}));
+  try{unlinkSync(traceFile);}catch{}rmdirSync(traceRoot);
+ }
 });
 
 test('监控GPU约8秒采一次、不阻塞2秒CPU；关闭阻止迟到结果，监听器异步异常被吸收',async()=>{
