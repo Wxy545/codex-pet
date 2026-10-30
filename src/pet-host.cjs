@@ -34,7 +34,7 @@ function publicHost(host) {
   if (!validHost(host)) throw new Error('invalid-pet-host');
   const codex = host === 'codex';
   return {schemaVersion: 1, host, label: codex ? 'Codex' : 'WorkBuddy', capabilities: {
-    events: true, chat: codex, images: codex, tasks: codex, quota: codex, chatter: codex,
+    events: true, chat: codex, images: codex, tasks: codex, quota: true, chatter: codex,
   }};
 }
 

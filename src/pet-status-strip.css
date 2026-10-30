@@ -7,10 +7,12 @@
 .pet-sprite.has-status-quota>.pet-bubble[data-slot='balance']{display:none!important}
 .pet-status-quota{border:1px solid var(--status-line);border-radius:12px;background:var(--status-bg);box-shadow:0 2px 8px #251b401a;pointer-events:none;overflow:hidden}
 .pet-status-quota.is-interactive{pointer-events:auto}
-.pet-status-quota-toggle{position:relative;display:block;width:100%;height:26px;padding:3px 10px;border:0;background:transparent;color:inherit;font:inherit;cursor:pointer;overflow:hidden}
+.pet-status-quota-toggle{position:relative;display:block;width:100%;min-height:26px;height:auto;padding:3px 8px;border:0;background:transparent;color:inherit;font:inherit;cursor:pointer;overflow:hidden}
 .pet-status-quota-toggle:disabled{cursor:default}
 .pet-status-quota-toggle:focus-visible{outline:2px solid var(--status-accent);outline-offset:-3px}
-.pet-status-quota-label{position:relative;z-index:1;white-space:nowrap}
+.pet-status-quota-label{position:relative;z-index:1;display:flex;flex-wrap:wrap;align-items:center;justify-content:center;column-gap:4px;row-gap:2px;line-height:16px;white-space:normal}
+.pet-status-quota-summary-window{white-space:nowrap;font-variant-numeric:tabular-nums}
+.pet-status-quota-summary-window+.pet-status-quota-summary-window::before{content:'·';margin-right:4px;color:var(--status-muted)}
 .pet-status-quota-track{position:absolute;inset:3px;border-radius:8px;overflow:hidden;background:rgba(155,130,195,.13);pointer-events:none}
 .pet-status-quota-fill{display:block;height:100%;border-radius:8px;background:rgba(170,145,212,.3)}
 .pet-status-quota-details{padding:3px 8px 5px;border-top:1px solid var(--status-line)}

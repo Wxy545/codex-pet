@@ -5,6 +5,7 @@ contextBridge.exposeInMainWorld('petTelemetry',Object.freeze({getState:()=>ipcRe
 contextBridge.exposeInMainWorld('controlCenter',Object.freeze({
  get:section=>ipcRenderer.invoke('codex-control:state',section),
  selectCharacter:character=>ipcRenderer.invoke('codex-control:character',character),
+ playAction:value=>ipcRenderer.invoke('codex-control:play',value),
  saveInteraction:value=>ipcRenderer.invoke('codex-control:interaction',value),
  saveChatter:value=>ipcRenderer.invoke('codex-control:chatter',value),
  setStartup:mode=>ipcRenderer.invoke('codex-control:startup',mode),

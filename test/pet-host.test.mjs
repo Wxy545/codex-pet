@@ -9,6 +9,8 @@ test('宿主选择保留旧安装Codex默认，已保存选择优先于重启子
   const root=fixture(t);assert.equal(Host.readHost(root,''),'codex');
   Host.writeHost(root,'workbuddy');assert.equal(Host.readHost(root,'codex'),'workbuddy');
   assert.equal(Host.publicHost('workbuddy').capabilities.chat,false);
+  assert.equal(Host.publicHost('workbuddy').capabilities.quota,true);
+  assert.equal(Host.publicHost('workbuddy').capabilities.chatter,false);
   assert.equal(Host.publicHost('codex').capabilities.quota,true);
   assert.throws(()=>Host.writeHost(root,'harness'));assert.equal(Host.readHost(root,''),'workbuddy');
 });

@@ -7,22 +7,26 @@
   void bridge.getState().then(value=>{if(!closed&&['codex','workbuddy','harness'].includes(value?.host))host=value.host;}).catch(()=>{});
   window.addEventListener('beforeunload',()=>{closed=true;},{once:true});
   const mount=shared.mountContextMenu;
-  // 没有接入的账号能力不提供入口，动作点播中的余额和碎念视频仍可观看。
+  const registered=node=>node.action==='third-party'||node.children?.some(registered);
+  const managed=new Set(['open-ai-settings','set-display','display','reload','codex-select-skin','codex-startup-mode','codex-startup-preview','pet-select-host','qq-remote-settings']);
+  // 管理项和长动作表进入控制中心；注册协议分支整体保留，不能递归改掉owner或label。
   function filter(nodes){return nodes.flatMap(node=>{
-    if(node.action==='third-party')return[node];
-    if(host==='harness'&&node.action==='open-site')return[];
+    if(registered(node))return[node];
+    if(node.anim||managed.has(node.action))return[];
+    if(host!=='workbuddy'&&node.action==='open-site')return[];
     if(host==='workbuddy'&&node.action==='open-site')return[{...node,label:(window.CodexLocale?.getLocale()||navigator.language).startsWith('zh')?'打开 WorkBuddy':'Open WorkBuddy'}];
-    if(host!=='codex'&&['chat','codex-task-panel','qq-remote-settings','show-balance','balance','say','whisper','open-ai-settings'].includes(node.action))return[];
-    return[{...node,...(node.children?{children:filter(node.children)}:{})}];
+    if(host!=='codex'&&['chat','codex-task-panel','qq-remote-settings','say','whisper','open-ai-settings'].includes(node.action))return[];
+    if(host==='harness'&&['show-balance','balance'].includes(node.action))return[];
+    const children=node.children?filter(node.children):null;if(children&&!children.length)return[];
+    return[{...node,...(children?{children}:{})}];
   });}
   shared.mountContextMenu=function(options){
     if(!options?.tree?.some(item=>['chat','open-site','home','reload'].includes(item.action)))return mount.apply(this,arguments);
     const zh=(window.CodexLocale?.getLocale()||navigator.language).startsWith('zh');
     const tree=filter(options.tree);
     if(window.codexControl?.open)tree.unshift({label:zh?'控制中心':'Control center',action:'pet-control-center'});
+    tree.push(...(window.CodexPetActions?.quickMenu?.()||[]).slice(0,3));
     if(window.petVisibility?.setManualHidden)tree.push({label:zh?'隐藏桌宠':'Hide pet',action:'pet-hide'});
-    if(host==='codex'&&window.qqRemoteSettings?.open)tree.push({label:zh?'QQ 远程任务':'QQ remote tasks',action:'qq-remote-settings'});
-    tree.push({label:zh?'联动应用':'Companion app',children:[['codex','Codex'],['workbuddy','WorkBuddy'],['harness',zh?'DeepSeek Harness（原生插件）':'DeepSeek Harness (native plugin)']].map(([id,label])=>({label:(id===host?'✓ ':'')+label,action:'pet-select-host',host:id}))});
     return mount.call(this,{...options,tree});
   };
   const action=PetSprite.prototype.onMenuAction;

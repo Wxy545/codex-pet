@@ -12,6 +12,7 @@ function fixture({locale='en',host='codex',deferInitial=false}={}) {
  vm.runInContext(readFileSync(join(__dirname,'../node_modules/dsh-pet/runtime/electron-helper/sprite.js'),'utf8'),context);
  if(host==='workbuddy'){
   window.petHost={initialHost:host,getState:async()=>({host}),selectHost:async()=>{}};window.CodexLocale={getLocale:()=>locale};
+  window.codexControl={open(){}};window.CodexPetActions={quickMenu:()=>[{label:'Idle',anim:'idle'}]};
   vm.runInContext(readFileSync(join(__dirname,'pet-host-menu.js'),'utf8'),context);
  }
  vm.runInContext(readFileSync(join(__dirname,'startup-menu.js'),'utf8'),context);
@@ -31,14 +32,14 @@ test('原sprite真实右键出现启动演出菜单，中英文模式及预览�
  }
 });
 
-test('WorkBuddy过滤账号入口后启动演出和联动应用共存，不丢动作或恢复聊天余额',async()=>{
+test('WorkBuddy完整装饰链将启动与长动作管理项收进控制中心，保留余额和快捷互动',async()=>{
  const f=fixture({host:'workbuddy'});await f.flush();const tree=f.open().tree;
- assert.ok(tree.find(node=>node.label==='Startup scene'));assert.ok(tree.find(node=>node.label==='Companion app'));assert.ok(tree.find(node=>node.label==='Actions'));
+ assert.ok(tree.find(node=>node.action==='pet-control-center'));assert.ok(!tree.some(node=>['Startup scene','Companion app','Actions'].includes(node.label)));assert.ok(tree.find(node=>node.anim==='idle'));
  assert.equal(tree.find(node=>node.action==='open-site')?.label,'Open WorkBuddy');
- assert.ok(!tree.some(node=>['chat','show-balance','whisper','codex-task-panel'].includes(node.action)));
- // home/reload是主菜单稳定技术ID；没有chat/open-site时仍能加启动选项。
+ assert.ok(tree.some(node=>node.action==='show-balance'));assert.ok(!tree.some(node=>['chat','whisper','codex-task-panel'].includes(node.action)));
+ // 即使只剩稳定工具ID，最后一层仍移除后来追加的管理菜单。
  f.shared.mountContextMenu({tree:[{action:'home'},{action:'reload'}]});
- assert.ok(f.mounted.tree.find(node=>node.label==='Startup scene'));
+ assert.ok(f.mounted.tree.find(node=>node.action==='pet-control-center'));assert.ok(!f.mounted.tree.some(node=>node.label==='Startup scene'));
 });
 
 test('启动偏好广播优先于迟到初始GET，卸载释放订阅，第三方小菜单不追加启动项',async()=>{

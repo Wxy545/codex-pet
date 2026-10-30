@@ -46,6 +46,17 @@ test('按当前分区读取，角色卡只返回展示所需媒体，不透传�
  const interaction=await f.invoke(CHANNELS.state,'interaction');assert.equal(interaction.state.pets[0].id,'main');assert.equal(interaction.state.pets[0].whisperPrompt,undefined);assert.equal(interaction.state.meta,undefined);assert.equal(interaction.state.animations,undefined);
  assert.equal((await f.invoke(CHANNELS.state,'unknown')).code,'invalid_input');
 });
+
+test('动作分区仅复用原宠物实时目录与固定点播控制器，不读取或改写偏好',async t=>{
+ const calls=[],value={petId:'main',anim:'walk',revision:'current'},actions={state:()=>({pets:[{petId:'main',name:'Dragon',revision:'current',groups:[{label:'Move',items:[{anim:'walk',label:'Walk'}]}]}]}),play:async input=>{calls.push(input);return true;}};
+ const f=fixture({dependencies:{actions}});t.after(()=>f.controller.dispose());await f.controller.open();const state=await f.invoke(CHANNELS.state,'actions');assert.equal(state.ok,true);assert.equal(state.state.pets[0].groups[0].items[0].anim,'walk');assert.equal(f.calls.length,0);
+ const result=await f.invoke(CHANNELS.play,value);assert.equal(result.playing,true);assert.deepEqual(calls,[value]);assert.equal(f.calls.length,0);
+});
+
+test('动作不可用和原生Harness返回准确错误，不使用保存配置文案',async t=>{
+ const actions={state:()=>({pets:[]}),play:async()=>{throw new Error('closed');}};const f=fixture({dependencies:{actions}});t.after(()=>f.controller.dispose());await f.controller.open();assert.equal((await f.invoke(CHANNELS.play,{petId:'main',anim:'idle',revision:'old'})).code,'play_failed');
+ const native=fixture({dependencies:{actions,petHost:{get:()=>({host:'harness',external:true}),select:async()=>{}}}});t.after(()=>native.controller.dispose());await native.controller.open();assert.equal((await native.invoke(CHANNELS.play,{})).code,'host_unavailable');
+});
 test('互动保存只改目标宠物和允许的顶层偏好，保留其它宠物、自定义人设及高级配置',async t=>{
  const f=fixture();t.after(()=>f.controller.dispose());await f.controller.open();
  const result=await f.invoke(CHANNELS.interaction,{petId:'main',size:380,fixedEnabled:true,workStatusEnabled:false,confineToScreen:false});assert.equal(result.ok,true);
@@ -77,6 +88,10 @@ test('WorkBuddy模式不读取AI设置且拒绝碎念保存，角色、互动、
  const f=fixture({host:'workbuddy'});t.after(()=>f.controller.dispose());await f.controller.open();
  assert.equal((await f.invoke(CHANNELS.state,'chatter')).code,'host_unavailable');assert.equal((await f.invoke(CHANNELS.chatter,{automaticWhispers:true})).code,'host_unavailable');assert.equal(f.calls.length,0);
  assert.equal((await f.invoke(CHANNELS.state,'startup')).state.host.host,'workbuddy');assert.equal((await f.invoke(CHANNELS.character,'bluefish')).ok,true);
+ assert.equal((await f.invoke(CHANNELS.interaction,{petId:'main',balanceEnabled:false})).ok,true);assert.equal(f.config().main.pets[0].balanceEnabled,false);
+ const calls=f.calls.length;
+ for(const whisperEnabled of [true,false])assert.equal((await f.invoke(CHANNELS.interaction,{petId:'main',whisperEnabled})).code,'host_unavailable');
+ assert.equal(f.calls.length,calls);assert.equal(f.config().main.pets[0].whisperEnabled,false);
 });
 
 test('Harness原生移交只返回宿主选择页，不能修改隐藏的Codex角色、互动或启动电影',async t=>{

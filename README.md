@@ -39,22 +39,33 @@ New Codex installations start with White Dragon Girl. Both options enable launch
 
 The default folder is `%LOCALAPPDATA%\codex-pet`; Git is optional. The interface follows your Windows display language: Chinese for Chinese-language systems, English for all others.
 
-The pet starts with your selected app after installation. Use **Companion app** in the right-click menu to switch between Codex and WorkBuddy, or connect the [native DeepSeek Harness pet](#deepseek-harness). You can also double-click `Start Codex Pet.vbs` or `Stop Codex Pet.vbs` in the installation folder. After a manual stop, it stays stopped until the next launch of the selected app. See [INSTALL.md](INSTALL.md) for WorkBuddy setup, custom paths, and manual installation.
+The pet starts with your selected app after installation. Use **Companion app** in the control center or tray menu to switch between Codex and WorkBuddy, or connect the [native DeepSeek Harness pet](#deepseek-harness). You can also double-click `Start Codex Pet.vbs` or `Stop Codex Pet.vbs` in the installation folder. After a manual stop, it stays stopped until the next launch of the selected app. See [INSTALL.md](INSTALL.md) for WorkBuddy setup, custom paths, and manual installation.
 
 ## Control center
 
-Right-click the pet and open **Control center** to preview characters and adjust size, wandering, drag and bounce, chatter, and startup scenes. Light and dark colors follow your system. Chat, Tasks, and QQ connection share a sidebar. Tasks still start read-only; image chat and copying results work as before.
+Right-click the pet and open **Control center** to preview characters and adjust size, wandering, drag and bounce, and startup scenes. Light and dark colors follow your system. The sidebar shows the features available for your selected app.
+
+| Feature | Codex | WorkBuddy | DeepSeek Harness |
+| --- | --- | --- | --- |
+| Poke, drag, wander, pick an action | Supported | Supported | Native pet |
+| Task status, launch with app, completion alerts | Codex sessions | WorkBuddy tasks | Harness services |
+| Usage | Available windows, including 5-hour and weekly limits | Credits from the local client | API balance configured in Harness |
+| In-pet chat, images, file tasks | Supported; tasks start read-only | Submit in WorkBuddy | Submit in Harness |
+| AI chatter | Supported | Unavailable | Harness services |
+| QQ remote tasks | Supported | Unavailable | Unavailable |
+
+Switching apps changes the source of events, usage, and notifications. A startup theme changes the visuals only; it never changes the account or task destination. Harness uses its native plugin and manages its own settings and services.
 
 Turn off **Show pet** in **Interactions**, or use **Hide pet** in the tray menu to hide her. Fullscreen apps, including games, hide the pet automatically by default; turn this off with **Hide during fullscreen apps**. The tray's **Show pet** brings her back. Chat, tasks, and notifications keep running while she is hidden.
 
-The usage bar now sits directly below the character. Click it to expand the available usage windows and reset times. A second row shows CPU, memory, and GPU usage; unavailable readings show **—**. You can turn off **System monitor** in **Interactions**.
+The usage bar sits directly below the character. Codex shows each available window, such as **5h 81% · Week 33%**; click for reset times. WorkBuddy shows credits, and Harness shows its own API balance. The standalone pet can also show CPU, memory, and GPU usage. Unavailable readings show **—**; turn off **System monitor** in **Interactions** to hide this row.
 
 ## Give her a poke
 
 - **Poke:** get a bouncy reaction, a wave, or a slightly embarrassed look.
 - **Pick her up:** drag her across the desktop, or give her a toss and watch her bounce.
 - **Let her wander:** watch her stroll, tend to her wings, snack, or curl up for a nap. Switch to the whale maid for her Rubik’s cube and hot pot.
-- **Pick an animation:** open the right-click menu and choose what to play.
+- **Pick an animation:** open **Control center → Actions** for the full collection. The right-click menu keeps a few quick interactions.
 
 ## While your assistant works
 
@@ -72,7 +83,9 @@ Chat and idle chatter count toward your Codex usage. Chatter runs every ten minu
 
 The pet follows WorkBuddy 5.9.3 task events: thinking, using tools, waiting for confirmation, and finishing a turn. It starts with WorkBuddy and sends completion or confirmation notifications when you are in another app.
 
-Send chats and new tasks from WorkBuddy itself. The pet's Chat (including image input), Tasks, usage, AI chatter, and QQ controls are hidden in this mode.
+The bar below the pet shows the current WorkBuddy personal account's remaining credits through the client's own local read-only channel. If WorkBuddy is closed, signed out, or unable to fetch credits, the balance is unavailable; it is never converted to Codex usage windows.
+
+Send chats and new tasks from WorkBuddy itself. The pet's Chat (including image input), Tasks, AI chatter, and QQ controls are hidden in this mode.
 
 ## Codex from QQ
 
@@ -88,7 +101,7 @@ The connection accepts only the paired QQ identity. AppSecret is encrypted for y
 
 ## Characters and animations
 
-Choose a chibi character from **Character** in the right-click menu:
+Choose a chibi character under **Characters** in the control center:
 
 - **White Dragon Girl:** the default for new Codex installations, with 23 chibi clips. She can read a spellbook, hug a little gem, tend to her wings, snack, or take a cushion break, alongside her walking, click and work reactions.
 - **Blue whale maid:** the original dsh-pet character and its full animation set.
@@ -110,7 +123,7 @@ New installations enable the pet and a startup scene. By default, WorkBuddy open
 
 The cinematic uses her full-size form. The desktop companions stay chibi, with no random transformations.
 
-Open **Startup scene** in the right-click or tray menu to choose **Pet only**, **Startup scene only**, or **Pet and startup scene**. **Preview scene** plays it immediately. Updates keep your saved mode.
+Open **Startup & app** in the control center, or **Startup scene** in the tray menu, to choose **Pet only**, **Startup scene only**, or **Pet and startup scene**. **Preview scene** plays it immediately. Updates keep your saved mode.
 
 In **Control center → Startup & app → Theme & video**, choose **Follow companion app**, **ChatGPT**, **DeepSeek**, or **WorkBuddy**. DeepSeek has a blue tech-themed animation; WorkBuddy uses Curly. The theme changes the visuals; the selected companion app still receives focus when the scene ends.
 
@@ -137,9 +150,9 @@ After updating the source, run `node scripts/prepare-runtime.mjs` to prepare the
 
 ## DeepSeek Harness
 
-Choose **Companion app → DeepSeek Harness (native plugin)** to select an installed Harness and its profile, then install the dragon girl's 23 clips into its native dsh-pet. For Harness Desktop, open it once to initialize the profile, then fully quit it before installation. Reopen that profile afterward.
+Choose **Companion app → DeepSeek Harness (native plugin)** in the control center or tray menu to select an installed Harness and its profile, then install the dragon girl's 23 clips into its native dsh-pet. For Harness Desktop, open it once to initialize the profile, then fully quit it before installation. Reopen that profile afterward.
 
-Harness uses its own account, sessions, balance, and chat. Switch back to Codex or WorkBuddy from the tray or control center to restore the standalone pet and your saved character. Startup themes and imported videos currently apply to the standalone pet, not Harness's native startup page. See the [Harness guide](harness/README.md) for supported versions and manual installation.
+Harness uses its own account, sessions, balance, and chat. The bar below the pet shows its provider's API balance, credits, or available usage windows; click a window summary for reset details. Switch back to Codex or WorkBuddy from the tray or control center to restore the standalone pet and your saved character. Startup themes and imported videos currently apply to the standalone pet, not Harness's native startup page. See the [Harness guide](harness/README.md) for supported versions and manual installation.
 
 ## Buy me a coffee
 

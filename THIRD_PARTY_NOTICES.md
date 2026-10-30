@@ -76,6 +76,10 @@ SOFTWARE.
 
 WorkBuddy 接入使用用户本机 Windows 客户端提供的插件与 Hook 接口，目前适配 5.9.3。仓库提供桌宠侧接入代码与事件插件，安装方法及接口资料来源见 [workbuddy/README.md](workbuddy/README.md)。
 
+积分查询的调查参考了 [zhujiaowo-sudo/workbuddy-desktop-pet](https://github.com/zhujiaowo-sudo/workbuddy-desktop-pet/tree/30749c66a28ffd2f52d03d6b416a4540d4e8486a) 和 [pigeon189/zcode-fox-widget 的 workbuddy 分支](https://github.com/pigeon189/zcode-fox-widget/tree/5456f05a9f9f887cfed01e3859c0f94f508874e3)。前者没有授予代码开源许可，本项目未复制其实现；后者代码采用 MIT，其记录的单次消耗和上下文余量不能当作 WorkBuddy 剩余积分。
+
+本项目另行核对用户本机 WorkBuddy 5.9.3 的 WBIPC 和账单响应，独立实现固定的本机只读查询。仅在 WorkBuddy 模式使用本机通道票据完成双向认证，不读取或导出账号访问令牌。该通道随客户端版本变化，不视为腾讯提供了稳定的公开余额 API。
+
 ## 启动动画实现参考
 
 启动动画方案参考 [884048454/codex-startup-animation](https://github.com/884048454/codex-startup-animation) 的 Windows 进程监听、独立覆盖窗口和演出结束后交还应用窗口的做法。

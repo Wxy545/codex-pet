@@ -7,6 +7,7 @@ const PATHS = new Map([
   ['/dsh-pet-7340/control-resume', new Set(['POST'])],
   ['/standalone-ai/settings', new Set(['GET', 'POST'])],
   ['/dsh-pet-7340/pet-host', new Set(['GET', 'POST'])],
+  ['/dsh-pet-7340/pet-host/presentation', new Set(['POST'])],
   ['/dsh-pet-7340/qq-remote', new Set(['GET', 'POST'])],
   ['/dsh-pet-7340/codex-character', new Set(['GET'])],
   ['/dsh-pet-7340/codex-chat', new Set(['POST'])],

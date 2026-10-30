@@ -14,6 +14,7 @@
  <main class="control-shell">
   <div class="section-tabs" role="tablist" aria-label="Settings sections">
    <button id="tab-character" type="button" role="tab" aria-selected="true" aria-controls="section-character" data-section="character" data-copy="character">Characters</button>
+   <button id="tab-actions" type="button" role="tab" aria-selected="false" aria-controls="section-actions" tabindex="-1" data-section="actions" data-copy="actions">Actions</button>
    <button id="tab-interaction" type="button" role="tab" aria-selected="false" aria-controls="section-interaction" tabindex="-1" data-section="interaction" data-copy="interaction">Interactions</button>
    <button id="tab-chatter" type="button" role="tab" aria-selected="false" aria-controls="section-chatter" tabindex="-1" data-section="chatter" data-copy="chatter">Chatter</button>
    <button id="tab-startup" type="button" role="tab" aria-selected="false" aria-controls="section-startup" tabindex="-1" data-section="startup" data-copy="startup">Startup &amp; app</button>
@@ -21,6 +22,11 @@
   <div id="loading" class="loading" role="status" data-copy="loading">Loading…</div>
   <section id="section-character" class="settings-section" role="tabpanel" aria-labelledby="tab-character" hidden>
    <div id="character-cards" class="character-cards"></div>
+  </section>
+  <section id="section-actions" class="settings-section" role="tabpanel" aria-labelledby="tab-actions" hidden>
+   <div id="action-pet-field" class="field action-pet-field" hidden><label for="action-pet" data-copy="pet">Pet</label><select id="action-pet"></select></div>
+   <div id="action-groups" class="action-groups"></div>
+   <p id="actions-empty" class="actions-empty" data-copy="actions-empty" hidden>No pet is available for playback.</p>
   </section>
   <section id="section-interaction" class="settings-section" role="tabpanel" aria-labelledby="tab-interaction" hidden>
    <div class="settings-card"><label class="setting-toggle"><span data-system-monitor-label>System monitor</span><input id="system-monitor" type="checkbox" disabled></label></div>
@@ -36,7 +42,7 @@
      <label class="setting-toggle"><span data-copy="roaming">Wander around the desktop</span><input id="roaming" type="checkbox"></label>
      <label class="setting-toggle"><span data-copy="confine">Stay on the current screen</span><input id="confine" type="checkbox"></label>
      <label class="setting-toggle"><span data-copy="work-status">React to task status</span><input id="work-status" type="checkbox"></label>
-     <label class="setting-toggle codex-only"><span data-copy="balance">Usage bubbles and reactions</span><input id="balance" type="checkbox"></label>
+     <label class="setting-toggle"><span data-copy="balance">Usage display and reactions</span><input id="balance" type="checkbox"></label>
      <label class="setting-toggle codex-only"><span data-copy="pet-chatter">Show automatic chatter</span><input id="pet-chatter" type="checkbox"></label>
     </div>
     <div class="settings-card position-fields">

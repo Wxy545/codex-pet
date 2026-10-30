@@ -21,6 +21,10 @@ test('面板请求固定到本机白名单接口，能力令牌只在主进程�
   await request('POST','/dsh-pet-7340/control-resume');
   assert.equal(received.options.headers['x-codex-pet-control'],undefined);
   await assert.rejects(request('GET','/dsh-pet-7340/control-resume'));
+  await request('POST','/dsh-pet-7340/pet-host/presentation','{"mode":"resume"}');
+  assert.equal(String(received.url),'http://127.0.0.1:3080/dsh-pet-7340/pet-host/presentation');
+  assert.equal(received.options.headers['x-dsh-pet-token'],settings.token);
+  for(const method of ['GET','PUT','DELETE'])await assert.rejects(request(method,'/dsh-pet-7340/pet-host/presentation'));
   await request('GET','/dsh-pet-7340/qq-remote');
   await request('POST','/dsh-pet-7340/qq-remote','{"action":"pair"}');
   assert.equal(String(received.url),'http://127.0.0.1:3080/dsh-pet-7340/qq-remote');

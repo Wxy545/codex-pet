@@ -26,6 +26,8 @@ Already have a prebuilt bundle? Install `dsh-pet@0.3.8` first, then run `dsh plu
 
 The original dsh-pet host supplies Harness session states, six balance tiers, three chatter slots, chat, click physics, dragging, the action menu, and its notification handling. Balance, chatter, and some work slots reuse the available dragon videos. Model calls and balance queries follow the Harness account and dsh-pet settings.
 
+The bar below the pet shows the API balance returned by Harness's active provider: account money, credits, or every available usage window. Click a window summary for reset details. Work and chatter bubbles stay above the pet. Unsupported providers and failed queries show an unavailable state; no balance is estimated, and the native pet does not display standalone system-monitor placeholders.
+
 The dragon's action names and personality default to Chinese on Chinese-language systems and English elsewhere. Other controls retain the upstream dsh-pet wording. Set `locale: en` or `locale: zh-CN` on the `codex-pet-harness` plugin row to override the pack language. Existing edited dragon configuration is kept.
 
 The bundle is enabled only in the selected profile. Native dsh-pet stores pet packs under `$DSH_HOME/dsh-pet/pet`, shared by profiles in that home. The files use the separate `codex-white-dragon` prefix; updates preserve edited dragon files and leave other pets alone. Removing the bundle keeps these user files. The original dsh-pet settings page manages its own main pet; edit this pack's `codex-white-dragon-config.json` to change the dragon's size, position, switches, or display mode.
@@ -49,6 +51,8 @@ powershell -File scripts/install-harness.ps1 -Profile web
 Harness 桌面版需要先启动一次、再完全退出，用 `-Profile desktop -DshCommand '<安装目录>/resources/runtime/cli/bin/dsh.cmd'` 指定桌面版自带命令。npm 安装的普通 dsh 不能管理 desktop profile；脚本会在构建和安装前检查。当前项目尚未实测 Harness 桌面应用载体。
 
 角色动作、点击、拖拽、随机漫游和菜单由原版 dsh-pet 播放；工作状态、余额、碎碎念、聊天和通知沿用 Harness 接口与账号。龙娘有 23 段 Q 版视频，含抱书阅读、护住小宝石；余额六档、碎念三档及部分工作状态共用现有片段。
+
+脚下额度条显示 Harness 当前服务商实际返回的 API 余额：金额、积分，或各个用量窗口；点击窗口摘要可看重置时间。工作和碎念气泡仍在头顶。服务商不支持查询或查询失败时显示未知，不估算余额；原生桌宠不显示独立宿主的系统监控占位读数。
 
 插件层只加入指定 profile。种类文件遵循 dsh-pet 原生规则，位于各 profile 共用的 `$DSH_HOME/dsh-pet/pet`，使用独立的 `codex-white-dragon` 前缀。更新保留用户改过的文件。可以编辑 `codex-white-dragon-config.json` 调整龙娘的大小、位置、开关和显示方式；卸载插件时这些用户文件保留。
 

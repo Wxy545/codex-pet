@@ -2,14 +2,15 @@
 const path=require('node:path');
 const {pathToFileURL}=require('node:url');
 const L=require('./codex-locale.cjs');
-const CHANNELS=Object.freeze({open:'codex-control:open',state:'codex-control:state',character:'codex-control:character',interaction:'codex-control:interaction',chatter:'codex-control:chatter',startup:'codex-control:startup',preview:'codex-control:preview',host:'codex-control:host',reload:'codex-control:reload'});
-const SECTIONS=['character','interaction','chatter','startup'];
+const CHANNELS=Object.freeze({open:'codex-control:open',state:'codex-control:state',character:'codex-control:character',interaction:'codex-control:interaction',chatter:'codex-control:chatter',startup:'codex-control:startup',preview:'codex-control:preview',host:'codex-control:host',reload:'codex-control:reload',play:'codex-control:play'});
+const SECTIONS=['character','actions','interaction','chatter','startup'];
 const CHARACTER_IDS=['white-dragon','bluefish','curly-sheep'];
 const own=(value,key)=>Object.hasOwn(value??{},key);
 const record=value=>value&&typeof value==='object'&&!Array.isArray(value);
 const pick=(value,keys)=>Object.fromEntries(keys.filter(key=>own(value,key)).map(key=>[key,value[key]]));
 const TEXT={unauthorized:['此窗口不能修改设置。','This window cannot change settings.'],invalid_input:['请检查填写的内容。','Check the entered values.'],unavailable:['设置暂时无法读取，请重试。','Settings are unavailable. Try again.'],save_failed:['设置未能保存，请重试。','Settings could not be saved. Try again.'],config_conflict:['配置文件无法解析，未保存更改。','The configuration file could not be parsed. No changes were saved.'],host_unavailable:['当前联动应用不支持这项功能。','This feature is unavailable for the selected app.'],busy:['正在保存，请稍后再试。','A change is being saved. Try again shortly.'],task_busy:['请等当前任务结束后再保存或重载设置。','Wait for the current task to finish before saving or reloading settings.']};
 const failure=code=>({ok:false,code,message:(TEXT[code]||TEXT.unavailable)[L.getLocale()==='zh-CN'?0:1]});
+TEXT.play_failed=['暂时无法点播，请刷新动作列表后再试。','Could not play that action. Refresh the list and try again.'];
 const fault=code=>Object.assign(new Error(code),{code});
 const PET_FIELDS=['id','name','size','display','balanceEnabled','whisperEnabled','workStatusEnabled','fixedEnabled','position'];
 const BOOLEAN_FIELDS=['fixedEnabled','workStatusEnabled','balanceEnabled','whisperEnabled'];
@@ -42,7 +43,7 @@ function validInteraction(value) {
 }
 function validChatter(value){return record(value)&&Object.keys(value).length>0&&Object.keys(value).every(key=>['enabled','automaticWhispers','whisperIntervalSec','maxTokens','timeoutMs'].includes(key))&&['enabled','automaticWhispers'].every(key=>!own(value,key)||typeof value[key]==='boolean')&&[['whisperIntervalSec',60,86400],['maxTokens',128,4096],['timeoutMs',1000,60000]].every(([key,min,max])=>!own(value,key)||Number.isInteger(value[key])&&value[key]>=min&&value[key]<=max);}
 
-function createController({electron,hostRequest,apiRequest,skins,startup,petHost,fileRoot=__dirname}) {
+function createController({electron,hostRequest,apiRequest,skins,startup,petHost,actions,fileRoot=__dirname}) {
  if(typeof hostRequest!=='function'||typeof apiRequest!=='function'||!skins?.readModel||!skins?.select||!startup?.state||!startup?.setMode||!petHost?.get||!petHost?.select)throw new TypeError('control dependencies required');
  const {app,BrowserWindow,ipcMain}=electron,panelFile=path.join(fileRoot,'control-window.html'),panelUrl=pathToFileURL(panelFile).href,petUrl=pathToFileURL(path.join(fileRoot,'index.html')).href;
  let win=null,disposed=false,opening=null,busy=false;
@@ -68,6 +69,7 @@ function createController({electron,hostRequest,apiRequest,skins,startup,petHost
   const common={section,locale:L.getLocale(),host:hostState()};
   if(nativeHarness())return{...common,section:'startup',external:true,startup:startup.state()};
   if(section==='character'){const model=await skins.readModel();return{...common,selection:model.selection,characters:characterCards(model,fileRoot)};}
+  if(section==='actions'){if(!actions?.state)throw fault('unavailable');return{...common,...actions.state()};}
   if(section==='interaction'){const data=await editable();return{...common,...interactionView(data.merged)};}
   if(section==='chatter'){if(!codex())throw fault('host_unavailable');return{...common,chatter:chatterView(await request(apiRequest,'GET','/standalone-ai/settings'))};}
   return{...common,startup:startup.state()};
@@ -75,6 +77,8 @@ function createController({electron,hostRequest,apiRequest,skins,startup,petHost
  async function saveInteraction(value){
   if(nativeHarness())throw fault('host_unavailable');
   if(!validInteraction(value))throw fault('invalid_input');
+  // WorkBuddy没有AI碎念入口，也不能借互动保存改动Codex的碎念偏好。
+  if(!codex()&&own(value,'whisperEnabled'))throw fault('host_unavailable');
   const {merged,user}=await editable();
   if(!merged.pets.some(p=>p.id===value.petId))throw fault('invalid_input');
   // 用户层是保存基底，必需值由未经过角色投影的成品补全；不固化生成的人设。
@@ -109,6 +113,7 @@ function createController({electron,hostRequest,apiRequest,skins,startup,petHost
  const handlers={
   [CHANNELS.state]:async(event,section)=>{if(!owned(event))return failure('unauthorized');try{return{ok:true,state:await state(section)};}catch(error){return failure(own(TEXT,error?.code)?error.code:'unavailable');}},
   [CHANNELS.character]:(event,character)=>mutate(event,async()=>{if(nativeHarness())throw fault('host_unavailable');if(!CHARACTER_IDS.includes(character))throw fault('invalid_input');await skins.select({character,mode:'q'});return{ok:true,state:await state('character')};}),
+  [CHANNELS.play]:(event,value)=>mutate(event,async()=>{if(nativeHarness())throw fault('host_unavailable');if(!actions?.play)throw fault('play_failed');try{await actions.play(value);return{ok:true,playing:true};}catch(error){throw fault(error?.code==='invalid_input'?'invalid_input':'play_failed');}}),
   [CHANNELS.interaction]:(event,value)=>mutate(event,()=>saveInteraction(value)),
   [CHANNELS.chatter]:(event,value)=>mutate(event,async()=>{if(!codex())throw fault('host_unavailable');if(!validChatter(value))throw fault('invalid_input');return{ok:true,chatter:chatterView(await request(apiRequest,'POST','/standalone-ai/settings',value))};}),
   [CHANNELS.startup]:(event,mode)=>mutate(event,async()=>{if(nativeHarness())throw fault('host_unavailable');if(!['pet','startup','both'].includes(mode))throw fault('invalid_input');return{ok:true,startup:await startup.setMode(mode)};}),

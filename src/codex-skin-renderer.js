@@ -9,6 +9,7 @@
     return;
   }
   const controllers = new Set();
+  const menuListeners = new Set();
   const decodedImages = new Map();
   const failedAssets = new Set();
   const pendingAssets = new Map();
@@ -567,6 +568,8 @@
       return [copy];
     });
   }
+  // 完整动作页和右键共用这份实时菜单投影，不另存一份动作或素材表。
+  window.CodexSkinMenu = Object.freeze({getTree:animations=>decorateTree(shared.buildMenuTree(animations)),identity:()=>model?`${model.selection.character}:${assetRevision}`:'',subscribe:callback=>{if(typeof callback!=='function')return()=>{};menuListeners.add(callback);return()=>menuListeners.delete(callback);}});
   const mountContextMenu = shared.mountContextMenu;
   shared.mountContextMenu = function (options) {
     if (!options.tree.some(item => ['chat', 'open-site'].includes(item.action))) return mountContextMenu.apply(this, arguments);
@@ -608,12 +611,14 @@
         if (!controller.sprite.resumeWorkStatusAnim()) controller.sprite.playIdle();
       } else refresh(controller);
     }
+    for (const callback of menuListeners) callback();
   }
   const unsubscribe = bridge.onChanged(applyModel);
   const initialRevision = modelRevision;
   void bridge.getState().then(value => { if (modelRevision === initialRevision) applyModel(value); }).catch(() => console.warn('[龙娘桌宠] 形象读取失败，保留原版显示。'));
   window.addEventListener('beforeunload', () => {
     closed = true; unsubscribe?.();
+    menuListeners.clear();
     if (timer !== null) window.clearInterval(timer);
     for (const controller of [...controllers]) disposeController(controller);
     clearPendingAssets();

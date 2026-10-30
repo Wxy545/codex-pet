@@ -6,6 +6,14 @@ const {join}=require('node:path');
 const {pathToFileURL}=require('node:url');
 const vm=require('node:vm');
 const Host=require('./pet-host-menu.cjs');
+test('原生Harness托盘只留宿主切换和控制中心，不借用独立宿主启动、隐藏或QQ菜单',()=>{
+ const source=readFileSync(join(__dirname,'../scripts/prepare-runtime.mjs'),'utf8');
+ const literal=/const controlTray=('.*');/.exec(source)?.[1];assert.ok(literal);
+ const entry=id=>({trayItems:()=>[{id}]}),expected=['startup','host','control','visibility','qq'];
+ const compose=active=>vm.runInNewContext('['+vm.runInNewContext(literal),{nativeHarness:{state:()=>({active})},codexStartup:entry('startup'),codexPetHost:entry('host'),codexControl:entry('control'),codexVisibility:entry('visibility'),codexQQSettings:active?{trayItems:()=>[]}:entry('qq')});
+ assert.deepEqual(Array.from(compose(false),item=>item.id),expected);
+ assert.deepEqual(Array.from(compose(true),item=>item.id),['host','control']);
+});
 function fixture(status=202,options={}){
  const app=new EventEmitter(),handlers=new Map(),calls=[],dialogs=[],frame={};
  const sender={mainFrame:frame,getURL:()=>pathToFileURL(join(__dirname,'index.html')).href};
@@ -51,11 +59,11 @@ test('成功、取消或失败均按真实宿主刷新托盘，刷新失败不�
   try{if(outcome==='failure')await assert.rejects(f.controller.select('harness'),/synthetic failure/);else await f.controller.select('harness');assert.deepEqual(changes,[outcome==='success'?'harness':'codex']);assert.deepEqual(f.controller.trayItems()[0].submenu.map(item=>item.checked),outcome==='success'?[false,false,true]:[true,false,false]);}finally{f.controller.dispose();}
  }
 });
-test('WorkBuddy菜单移除未接入账号入口，保留互动、动作点播和第三方菜单',async()=>{
+test('WorkBuddy菜单只留必要互动与少量快捷动作，完整动作分类和第三方菜单分开',async()=>{
  let mounted,selected;
  const foreign={action:'third-party',children:[{action:'chat',label:'custom'}]};
  const shared={mountContextMenu:v=>{mounted=v;return{close(){}};},displayMenuBranch:()=>({action:'display'}),buildMoreBranch:()=>foreign,buildMenuTree:()=>[{label:'Balance levels',children:[{anim:'balance-1',label:'Plenty'}]}]};
- const window={PetShared:shared,__dshPetDebug:{},qqRemoteSettings:{open(){}},petHost:{initialHost:'workbuddy',getState:async()=>({host:'workbuddy'}),selectHost:async id=>{selected=id;}},addEventListener(){},CodexLocale:{getLocale:()=> 'en'}};
+ const window={PetShared:shared,__dshPetDebug:{},CodexPetActions:{quickMenu:()=>[{label:'Idle',anim:'idle-ready'}]},qqRemoteSettings:{open(){}},petHost:{initialHost:'workbuddy',getState:async()=>({host:'workbuddy'}),selectHost:async id=>{selected=id;}},addEventListener(){},CodexLocale:{getLocale:()=> 'en'}};
  const context=vm.createContext({window,S:shared,OPEN_TARGET:'web',navigator:{language:'en',platform:'Win32'},console});
  // 执行上游实际onContextMenu；禁止假造不存在的PetSprite.mountContextMenu方法。
  vm.runInContext(readFileSync(join(__dirname,'../node_modules/dsh-pet/runtime/electron-helper/sprite.js'),'utf8'),context);
@@ -63,10 +71,17 @@ test('WorkBuddy菜单移除未接入账号入口，保留互动、动作点播�
  const sprite=vm.runInContext('Object.create(PetSprite.prototype)',context);
  Object.assign(sprite,{dragState:{},animations:{},menuItems:[],stopThrow(){},stopMove(){},setInteractive(){},syncInputBusy(){},syncInputRegions(){},visibleClampRect:()=>null,closeMenu(){}});
  sprite.onContextMenu({preventDefault(){},clientX:0,clientY:0});
- assert.ok(!mounted.tree.some(x=>['chat','balance','show-balance','codex-task-panel','qq-remote-settings','whisper'].includes(x.action)));
+ assert.ok(!mounted.tree.some(x=>['chat','codex-task-panel','qq-remote-settings','whisper'].includes(x.action)));assert.ok(mounted.tree.some(x=>x.action==='show-balance'));
  assert.equal(mounted.tree.find(x=>x.action==='open-site').label,'Open WorkBuddy');
  assert.ok(mounted.tree.some(x=>x.action==='home'));assert.equal(mounted.tree.find(x=>x.action==='third-party'),foreign);
- assert.ok(mounted.tree.find(x=>x.label==='Balance levels'));assert.equal(mounted.tree.at(-1).label,'Companion app');
- assert.equal(mounted.tree.at(-1).children.find(item=>item.host==='harness').label,'DeepSeek Harness (native plugin)');
+ assert.ok(!mounted.tree.find(x=>x.label==='Balance levels'));assert.ok(mounted.tree.find(item=>item.anim==='idle-ready'));assert.ok(!mounted.tree.some(item=>item.action==='reload'||item.action==='display'||item.label==='Companion app'));
  sprite.onMenuAction({action:'pet-select-host',host:'codex'});await Promise.resolve();assert.equal(selected,'codex');
+});
+
+test('精简发生在完整装饰之后：去掉AI重复与管理项，保留注册owner整段和聊天任务',()=>{
+ let mounted;class PetSprite{onMenuAction(){}}const registered={label:'Other tools',children:[{label:'Vendor',children:[{label:'Raw label',action:'third-party',owner:'Vendor'}]}]},shared={mountContextMenu:value=>{mounted=value;}};
+ const window={PetShared:shared,petHost:{getState:async()=>({host:'codex'})},codexControl:{open(){}},petVisibility:{setManualHidden(){}},CodexPetActions:{quickMenu:()=>[{label:'Idle',anim:'idle'},{label:'Take a walk',anim:'walk'}]},CodexLocale:{getLocale:()=> 'en'},addEventListener(){}};
+ vm.runInNewContext(readFileSync(join(__dirname,'pet-host-menu.js'),'utf8'),{window,PetSprite,navigator:{language:'en'}});
+ shared.mountContextMenu({tree:[{action:'open-site',label:'AI settings'},{action:'open-ai-settings',label:'AI settings'},{action:'chat',label:'Chat'},{action:'codex-task-panel',label:'Tasks'},{action:'home',label:'Home'},{action:'reload',label:'Reload'},{label:'Characters',children:[{action:'codex-select-skin',character:'bluefish',label:'Whale'}]},{label:'Scenes',children:[{action:'codex-startup-mode',startupMode:'both',label:'Both'}]},{label:'Actions',children:[{anim:'long-action',label:'Long action'}]},registered]});
+ assert.equal(mounted.tree.filter(item=>item.action==='pet-control-center').length,1);assert.ok(!mounted.tree.some(item=>['open-site','open-ai-settings','reload'].includes(item.action)));assert.ok(!mounted.tree.some(item=>['Characters','Scenes','Actions'].includes(item.label)));assert.ok(mounted.tree.some(item=>item.action==='chat'));assert.ok(mounted.tree.some(item=>item.action==='codex-task-panel'));assert.strictEqual(mounted.tree.find(item=>item.label==='Other tools'),registered);assert.equal(mounted.tree.filter(item=>item.anim).length,2);
 });

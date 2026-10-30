@@ -37,7 +37,9 @@ for (const locale of ['zh-CN', 'en']) {
   locales[locale] = { ...built, files: Object.entries(built.media).map(([name, source]) => ({ name, source, ...hashes[source] })) };
 }
 await mkdir(join(output, 'assets'), { recursive: true });
-for (const file of ['index.mjs', 'pack.mjs', 'motion-fix.mjs', 'cordis.patch.yml', 'README.md']) await copyFile(join(root, 'harness', file), join(output, file));
+await mkdir(join(output, 'runtime'), { recursive: true });
+for (const file of ['index.mjs', 'pack.mjs', 'motion-fix.mjs', 'native-balance.mjs', 'cordis.patch.yml', 'README.md']) await copyFile(join(root, 'harness', file), join(output, file));
+for (const file of ['pet-status-strip.js', 'pet-status-strip.css']) await copyFile(join(root, 'src', file), join(output, 'runtime', file));
 await copyFile(join(root, 'LICENSE'), join(output, 'LICENSE'));
 await copyFile(join(source, 'NOTICE.md'), join(output, 'NOTICE.md'));
 for (const file of Object.keys(hashes)) await copyFile(join(nativeSource, file), join(output, 'assets', file));

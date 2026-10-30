@@ -14,8 +14,23 @@ test('监控只显示有限真实百分比，unknown不转0，显存只显示已
 
 test('额度使用实际已用百分比推剩余，缺少读数未知，窗口缺项不补0',()=>{
  const {quotaView}=load(),shared={balanceDetailView:()=>[{role:'quota',label:'5h',percent:25,resetText:'in 2h'},{role:'quota',label:'Week',percent:80,resetText:'in 1d'}]};
- const value=quotaView({ok:true,shape:'windows'},shared,'en');assert.equal(value.text,'Week · 20% left');assert.equal(value.remaining,20);assert.equal(value.details.length,2);
+ const value=quotaView({ok:true,shape:'windows'},shared,'en');assert.equal(value.text,'5h 75% · Week 20%');assert.equal(value.remaining,20);assert.equal(value.details.length,2);
  assert.equal(quotaView(null,shared,'en').remaining,null);assert.equal(quotaView({ok:false},shared,'zh-CN').text,'额度未知');assert.equal(quotaView({ok:true,shape:'windows'},{balanceDetailView:()=>[]},'en').remaining,null);
+});
+
+test('真实上游窗口摘要同时显示5小时、周、月，详情同名，进度仍取最紧窗口',()=>{
+ const context={};vm.runInNewContext(readFileSync(require('node:path').join(__dirname,'../node_modules/dsh-pet/runtime/electron-helper/shared-core.js'),'utf8'),context);const shared=context.PetShared,{quotaView}=load();
+ const state=shared.toBalanceState({ok:true,shape:'windows',data:{rolling:19,rollingLabel:'5h',weekly:67,monthly:10}}),zh=quotaView(state,shared,'zh-CN'),en=quotaView(state,shared,'en');
+ assert.equal(zh.text,'5小时 81% · 周 33% · 月 90%');assert.deepEqual(json(zh.details.map(row=>row.label)),['5小时','周','月']);assert.equal(zh.remaining,33);
+ assert.equal(en.text,'5h 81% · Week 33% · Month 90%');assert.deepEqual(json(en.details.map(row=>row.label)),['5h','Week','Month']);assert.equal(en.remaining,33);
+ const onlyFive=quotaView(shared.toBalanceState({ok:true,shape:'windows',data:{rolling:100,rollingLabel:'5h'}}),shared,'zh-CN');assert.equal(onlyFive.text,'5小时 0%');assert.equal(onlyFive.details.length,1);
+ const onlyWeek=quotaView(shared.toBalanceState({ok:true,shape:'windows',data:{weekly:0}}),shared,'en');assert.equal(onlyWeek.text,'Week 100%');assert.equal(onlyWeek.details.length,1);
+});
+
+test('窗口摘要不把有效0误判缺失，不补缺失项，也不改自报滚动周期',()=>{
+ const {quotaView}=load(),shared={balanceDetailView:()=>[{role:'quota',label:'2h',percent:0},{role:'quota',label:'Weekly',percent:101},{role:'sub',label:'Monthly',percent:30}]};
+ const zh=quotaView({ok:true,shape:'windows'},shared,'zh-CN');assert.equal(zh.text,'2小时 100%');assert.equal(zh.remaining,100);assert.equal(zh.details.length,1);
+ assert.equal(quotaView({ok:true,shape:'windows'},{balanceDetailView:()=>[{role:'quota',label:'Current',percent:45}]},'en').text,'Current 55%');
 });
 
 test('脚下完整footer为物理地面预留实际高度，保留各屏原横向和顶部边界',()=>{
@@ -36,10 +51,11 @@ class Element{
  setAttribute(key,value){this.attributes[key]=String(value);}removeAttribute(key){delete this.attributes[key];}addEventListener(name,fn){this.listeners.set(name,fn);}click(){if(!this.disabled)this.listeners.get('click')?.({preventDefault(){},stopPropagation(){}});}set textContent(value){this._text=String(value);this.children=[];}get textContent(){return this._text+this.children.map(node=>node.textContent).join('');}
  find(name){return this.classList.contains(name)?this:this.children.map(node=>node.find(name)).find(Boolean);}
 }
-function fixture({actualBubble=false}={}){
+function fixture({actualBubble=false,telemetry=true}={}){
  const {install}=load();let push,initialResolve,locale='en',unsubscribed=0;const events=new Map();
  class Sprite{constructor(){this.size=320;this.height=180;this.bottomPad=15;this.pet={balanceEnabled:true};this.el=new Element();this.stage=new Element();this.el.append(this.stage);this.bubble=new Element();this.bubble.dataset.slot='work';this.el.append(this.bubble);this.nativePosition=0;this.nativeRender=0;this.regionSyncs=0;this.inputRegionElements=new Set();}position(){this.nativePosition++;return'original-position';}renderBubble(){this.nativeRender++;}onBalanceTick(state){this.balanceState=state;this.renderBubble();}showBalanceNow(state){this.balanceState=state;this.renderBubble();}showBalanceNotice(state){this.balanceState=state;this.renderBubble();}inputBusy(){return false;}syncInputBusy(){this.regionSyncs++;}dispose(){this.disposed=true;}}
  const window={CodexLocale:{getLocale:()=>locale},PetShared:{balanceDetailView:state=>state.rows||[]},petTelemetry:{getState:()=>new Promise(resolve=>{initialResolve=resolve;}),onState:fn=>{push=fn;return()=>{unsubscribed++;};}},addEventListener:(name,fn)=>events.set(name,fn)};
+ if(!telemetry)delete window.petTelemetry;
  const document={createElement:tag=>new Element(tag)};
  if(actualBubble){window.__dshPetDebug={};const actual=vm.runInNewContext(readFileSync(require('node:path').join(__dirname,'../node_modules/dsh-pet/runtime/electron-helper/sprite.js'),'utf8')+'\nPetSprite.prototype',{window,document,navigator:{platform:'Win32'},S:{...window.PetShared,MEME_BUBBLE_CLASS:'has-img'}});Sprite.prototype.renderBubble=actual.renderBubble;Sprite.prototype.balanceClickable=actual.balanceClickable;}
  const installed=install({window,document,PetSprite:Sprite});
@@ -48,7 +64,7 @@ function fixture({actualBubble=false}={}){
 
 test('常驻额度与监控位于脚下，不改变stage/本体，余额状态更新沿用原事件，停监控保留额度',async()=>{
  const f=fixture(),p=new f.Sprite();assert.equal(p.position(),'original-position');const footer=p.el.find('pet-status-footer');assert.equal(p.nativePosition,1);assert.equal(footer.style.top,'188px');assert.equal(p.stage.parentNode,p.el);assert.ok(footer.textContent.includes('Usage unavailable'));
- p.onBalanceTick({ok:true,shape:'windows',rows:[{role:'quota',label:'5h',percent:40,resetText:'in 2h'}]});assert.equal(p.nativeRender,1);assert.ok(footer.textContent.includes('5h · 60% left'));assert.equal(p.bubble.dataset.slot,'work');
+ p.onBalanceTick({ok:true,shape:'windows',rows:[{role:'quota',label:'5h',percent:40,resetText:'in 2h'},{role:'quota',label:'Weekly',percent:80,resetText:'in 1d'}]});assert.equal(p.nativeRender,1);assert.ok(footer.textContent.includes('5h 60%'));assert.ok(footer.textContent.includes('Week 20%'));assert.equal(footer.find('pet-status-quota-toggle').attributes['aria-label'],'Usage remaining: 5h 60% · Week 20%');assert.equal(footer.find('pet-status-quota-fill').style.width,'20%');assert.equal(p.bubble.dataset.slot,'work');
  f.push({enabled:true,metrics:{cpuPercent:25,memory:{percent:50},gpu:null}});assert.ok(footer.textContent.includes('CPU25%'));assert.ok(footer.textContent.includes('GPU—'));f.push({enabled:false,metrics:null});assert.equal(footer.find('pet-status-strip').hidden,true);assert.equal(footer.find('pet-status-quota').hidden,false);p.dispose();assert.equal(p.disposed,true);assert.equal(p.el.find('pet-status-footer'),undefined);f.close();
 });
 
@@ -56,6 +72,11 @@ test('只有已知windows额度详情接收点击，收起和工作气泡互不�
  const f=fixture(),p=new f.Sprite();p.position();assert.equal(p.inputBusy(),false);const quota=p.el.find('pet-status-quota');assert.equal(quota.classList.contains('is-interactive'),false);
  p.showBalanceNow({ok:true,shape:'windows',rows:[{role:'quota',label:'5h',percent:10,resetText:'in 1h'}]});assert.equal(p.inputBusy(),true);quota.find('pet-status-quota-toggle').click();assert.equal(quota.find('pet-status-quota-details').hidden,false);assert.equal(p.bubble.dataset.slot,'work');assert.ok(p.regionSyncs>0);quota.find('pet-status-quota-toggle').click();assert.equal(quota.find('pet-status-quota-details').hidden,true);
  p.showBalanceNotice({ok:false});assert.equal(p.inputBusy(),false);assert.equal(quota.classList.contains('is-interactive'),false);assert.equal(quota.find('pet-status-quota-details').hidden,true);f.close();
+});
+
+test('没有系统监控桥的宿主默认不显示监控占位，真实额度仍可用',()=>{
+ const f=fixture({telemetry:false}),p=new f.Sprite();p.position();assert.equal(p.el.find('pet-status-strip').hidden,true);
+ p.showBalanceNow({ok:true,shape:'windows',rows:[{role:'quota',label:'5h',percent:10}]});assert.equal(p.el.find('pet-status-quota').hidden,false);assert.ok(p.el.find('pet-status-quota-label').textContent.includes('5h 90%'));f.close();
 });
 
 test('先到推送不会被迟到初始状态覆盖，卸载只退订一次',async()=>{

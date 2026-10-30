@@ -16,6 +16,8 @@ The installer uses that WorkBuddy installation's bundled CLI and adds only `code
 
 Reopen WorkBuddy after installation, select WorkBuddy as the pet's linked app, and start a new task. The hook reports task metadata to the running local pet. The selected app controls which account and capabilities are available; this hook provides task-state events, without a chat or account-usage API.
 
+The standalone companion queries remaining credits separately through WorkBuddy 5.9.3's local WBIPC billing channel. WorkBuddy must be running and signed in. Missing or failed queries show unavailable; chat and new tasks stay in WorkBuddy. This internal channel is version-dependent, not a stable public API.
+
 To remove the hook, use the same arguments with `workbuddy/uninstall.ps1`. Other plugins and this plugin's data remain. The installer stops if its marketplace name belongs to another directory or its managed scripts have been edited.
 
 ## 安装
@@ -25,6 +27,8 @@ To remove the hook, use the same arguments with `workbuddy/uninstall.ps1`. Other
 安装使用该客户端自带的 CLI，在当前用户下添加 `codex-pet-companion@codex-pet-workbuddy`，保留其它插件和配置。Node.js 优先使用桌宠的便携版本；也可用 `-NodePath` 指定已有程序，用 `-WorkBuddyHome` 指定自定义数据目录。
 
 安装后重新打开 WorkBuddy，在桌宠中选择联动 WorkBuddy，再开始新任务。思考、工具执行、等待确认、收尾、完成和失败会对应现有工作动画。点击、拖拽和日常随机动作继续由桌宠播放。这项 Hook 接入提供任务状态，不提供 WorkBuddy 账号的聊天或额度接口。
+
+独立桌宠另外通过 WorkBuddy 5.9.3 的本机 WBIPC 账单通道查询剩余积分，需要客户端已启动并登录。缺失或失败时显示未知；聊天和新任务仍在 WorkBuddy 中提交。该内部通道随版本变化，不视为稳定公开 API。
 
 卸载时使用相同参数运行 `workbuddy/uninstall.ps1`。脚本只移除本插件；同一市场还有其它插件时保留市场登记，插件数据也保留。市场名称被别的目录占用，或已登记脚本被修改时，安装停止并保留原文件。
 

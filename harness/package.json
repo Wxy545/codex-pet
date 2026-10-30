@@ -1,13 +1,13 @@
 {
   "name": "codex-pet-harness",
-  "version": "0.8.0",
+  "version": "0.9.0",
   "type": "module",
   "main": "index.mjs",
   "description": "The White Dragon Girl pet pack for DeepSeek Harness, powered by dsh-pet",
   "homepage": "https://github.com/Wxy545/codex-pet",
   "repository": { "type": "git", "url": "git+https://github.com/Wxy545/codex-pet.git", "directory": "harness" },
   "license": "MIT",
-  "files": ["index.mjs", "pack.mjs", "motion-fix.mjs", "pack.json", "cordis.patch.yml", "assets", "NOTICE.md", "LICENSE", "README.md"],
+  "files": ["index.mjs", "pack.mjs", "motion-fix.mjs", "native-balance.mjs", "runtime", "pack.json", "cordis.patch.yml", "assets", "NOTICE.md", "LICENSE", "README.md"],
   "engines": { "node": ">=22.12.0", "dsh": "0.2.1-rc.2 || 0.2.1-rc.5" },
   "peerDependencies": { "dsh-pet": "0.3.8" },
   "dsh": {

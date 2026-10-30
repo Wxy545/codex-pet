@@ -17,6 +17,7 @@ import Locale from './codex-locale.cjs';
 import Startup from './codex-startup.cjs';
 import PetHost from './pet-host.cjs';
 import { createWorkBuddyBridge } from './workbuddy-events.mjs';
+import { createWorkBuddyBalance } from './workbuddy-balance.mjs';
 import { waitForRestartReady } from './pet-restart.mjs';
 import { createQQBridge, projectQQState } from './qq-remote.mjs';
 import { installControlResume } from './control-resume.mjs';
@@ -113,11 +114,20 @@ async function start() {
   writeFileSync(join(home, 'dsh-pet', 'codex-ai-initialized'), '1');
   }
   const ai = isCodex ? host.createStandaloneAi(home, logger) : PetHost.unavailableAi();
+  const workbuddyBalance = isCodex ? null : createWorkBuddyBalance({locale:Locale.getLocale()});
+  // WorkBuddy只开放其本机只读积分通道，聊天与模型执行能力继续关闭。
+  if (!isCodex) ai.currentSelection = () => ({provider:'workbuddy',model:''});
   const security = host.createRequestSecurity();
   const routes = [];
   const startup = Startup.createLaunchQueue();
   startup.push(process.argv.includes('--workbuddy-startup') ? 'workbuddy' : process.argv.includes('--codex-startup') ? 'codex' : 'manual');
   const notices = [];
+  function enqueueNotice(value) {
+    // 原生Harness自行通知；旧宿主任务继续收尾，但移交期间不弹提醒，也不留到切回后补发。
+    if (HarnessHandoff.isActive({dataRoot:home,projectRoot:root})) { notices.length = 0; return; }
+    notices.push(value);
+    if (notices.length > 24) notices.shift();
+  }
   let shutdown = async () => {};
   let snapshot = { state: 'idle', task: '', activeCount: 0 };
   let mainSnapshot = snapshot;
@@ -137,7 +147,7 @@ async function start() {
     const previousState=qqView?.state;qqView=view;clearTimeout(qqTerminalTimer);
     if(['success','error'].includes(view.state)){
       qqTerminalTimer=setTimeout(()=>{qqView=null;if(eventReady)updateDisplay();},10000);qqTerminalTimer.unref();
-      if(previousState!==view.state){notices.push({id:randomBytes(12).toString('hex'),kind:view.state==='success'?'complete':'error',title:Locale.getLocale()==='zh-CN'?'QQ 任务已结束':'QQ task finished',body:Locale.getLocale()==='zh-CN'?'在 QQ 中查看任务结果。':'Check QQ for the task result.',threadId:view.threadId||null});if(notices.length>24)notices.shift();}
+      if(previousState!==view.state)enqueueNotice({id:randomBytes(12).toString('hex'),kind:view.state==='success'?'complete':'error',title:Locale.getLocale()==='zh-CN'?'QQ 任务已结束':'QQ task finished',body:Locale.getLocale()==='zh-CN'?'在 QQ 中查看任务结果。':'Check QQ for the task result.',threadId:view.threadId||null});
     }
     if(eventReady)updateDisplay();
   }});}catch{logger.warn(Locale.getLocale()==='zh-CN'?'QQ 连接设置未能读取；桌宠继续运行，请检查本机 QQ 设置。':'QQ settings could not be loaded. The pet is still running; check its local QQ settings.');}
@@ -188,7 +198,7 @@ async function start() {
   const workbuddy = createWorkBuddyBridge({locale: Locale.getLocale(), onChange: (next, event) => {
     if (companionHost !== 'workbuddy') return;
     mainSnapshot = next;
-    if (event) { notices.push({id: randomBytes(12).toString('hex'), ...event, threadId: null}); if (notices.length > 24) notices.shift(); }
+    if (event) enqueueNotice({id: randomBytes(12).toString('hex'), ...event, threadId: null});
     if (eventReady) updateDisplay();
   }});
   routes.push({kind: 'exact', path: `${prefix}/workbuddy-events`, handler: async (req, res) => {
@@ -217,8 +227,26 @@ async function start() {
   } });
   routes.push({ kind: 'exact', path: `${prefix}/codex-notices`, handler: (req, res) => {
     if (req.method !== 'GET') return json(res, 405, { error: 'method not allowed' });
+    if (HarnessHandoff.isActive({dataRoot:home,projectRoot:root})) notices.length = 0;
     json(res, 200, { notices: notices.splice(0) });
   } });
+  routes.push({kind:'exact',path:`${prefix}/pet-host/presentation`,handler:async(req,res)=>{
+    if(req.headers['x-dsh-pet-token']!==security.token||req.headers.origin)return json(res,403,{error:'unauthorized'});
+    if(req.method!=='POST')return json(res,405,{error:'method not allowed'});
+    try{
+      const body=await requestJson(req,512);
+      if(!body||Object.keys(body).length!==1||!['pause','resume'].includes(body.mode))return json(res,400,{error:'invalid presentation mode'});
+      const active=HarnessHandoff.isActive({dataRoot:home,projectRoot:root});
+      if(active!==(body.mode==='pause'))return json(res,409,{error:'host_changed'});
+      // 移交边界立即清空旧提醒，不依赖下一次通知轮询；恢复先更新真实状态再显示角色。
+      notices.length=0;lastState='';lastQuota='';
+      if(body.mode==='resume'){
+        await updateDisplay({strict:true});
+        await petRequest('POST','/balance');
+      }
+      return json(res,200,{ok:true});
+    }catch{return json(res,500,{error:'presentation_sync_failed'});}
+  }});
   routes.push({ kind: 'exact', path: `${prefix}/codex-status`, handler: (req, res) => {
     if (req.method !== 'GET') return json(res, 405, { error: 'method not allowed' });
     json(res, 200, { ...snapshot, codexHome: undefined });
@@ -261,7 +289,14 @@ async function start() {
   host.setDesktopActivityGate(activityGate);
   host.apply(context.ctx);
   const controlResume=installControlResume({routes,prefix});
-  const releaseQuota = isCodex ? context.ctx.get('petApi7340').balance.register({ id: 'standalone', fetch: async () => codexQuotaResult(snapshot.usage) }) : () => {};
+  const quotaProvider = isCodex ? 'standalone' : 'workbuddy';
+  const nativeQuotaUnavailable = () => ({ok:false,provider:quotaProvider,reason:'host-unavailable',message:Locale.getLocale()==='zh-CN'?'请在 Harness 中查看其账户额度。':'Check your account usage in Harness.'});
+  const releaseQuota = context.ctx.get('petApi7340').balance.register({id:quotaProvider,fetch:async()=>{
+    if(HarnessHandoff.isActive({dataRoot:home,projectRoot:root}))return nativeQuotaUnavailable();
+    const value = isCodex ? codexQuotaResult(snapshot.usage) : await workbuddyBalance.fetch();
+    // 在途积分查询可以正常关闭连接，但移交后不能把旧宿主的值发布给新宿主。
+    return HarnessHandoff.isActive({dataRoot:home,projectRoot:root}) ? nativeQuotaUnavailable() : value;
+  }});
   async function petRequest(method, path, body) {
     const response = await fetch(`http://127.0.0.1:${port}${prefix}${path}`, { method,
       headers: { 'x-dsh-pet-token': security.token, ...(body ? { 'content-type': 'application/json' } : {}) },
@@ -270,7 +305,7 @@ async function start() {
     return response;
   }
   // 操作面板与主聊天统一决定外观，普通轮询不能把仍在运行的操作任务切回待机。
-  function updateDisplay() {
+  function updateDisplay({strict=false}={}) {
     const active = activeTaskStates.has(manualTaskView?.state);
     const terminal = manualTerminalUntil > Date.now() && terminalTaskStates.has(manualTaskView?.state);
     const showManual = (active && mainSnapshot.state !== 'waiting') || (terminal && !mainSnapshot.activeCount);
@@ -281,8 +316,8 @@ async function start() {
     } : mainSnapshot;
     snapshot = projectQQState(next,qqView,Locale.getLocale());
     const displaySnapshot=snapshot;
-    updateChain = updateChain.then(async () => {
-      if (stopping) return;
+    const pending = updateChain.then(async () => {
+      if (stopping || HarnessHandoff.isActive({dataRoot:home,projectRoot:root})) return;
       const next=displaySnapshot;
       const stateKey = JSON.stringify([next.state, next.task]);
       if (stateKey !== lastState) {
@@ -294,7 +329,10 @@ async function start() {
       if (quotaKey !== lastQuota && next.usage && next.state === 'idle') {
         await petRequest('POST', '/balance'); lastQuota = quotaKey;
       }
-    }).catch(error => logger.warn(error.message));
+    });
+    updateChain = pending.catch(error => logger.warn(error.message));
+    // 后台更新继续自愈；恢复入口必须观察本次真实写入失败，不能带着旧工作状态显示角色。
+    return strict ? pending : updateChain;
   }
   receiveTaskChange = view => {
     const previousState = manualTaskView?.state;
@@ -304,9 +342,8 @@ async function start() {
       clearTimeout(manualTimer);
       manualTimer = setTimeout(updateDisplay, 10020);
       if (view.state !== 'cancelled') {
-        notices.push({ id: randomBytes(12).toString('hex'), kind: view.state === 'completed' ? 'success' : 'error',
+        enqueueNotice({ id: randomBytes(12).toString('hex'), kind: view.state === 'completed' ? 'success' : 'error',
           title: t(view.state === 'completed' ? '操作任务已返回结果' : '操作任务未完成'), body: t('打开 Codex Pet 的操作任务面板查看结果。'), threadId: null });
-        if (notices.length > 24) notices.shift();
       }
     }
     updateDisplay();
@@ -316,8 +353,7 @@ async function start() {
     mainSnapshot = next;
     if (event) {
       // 多会话并行时，通知跳转跟随事件来源，而不是当前显示工作动画的会话。
-      notices.push({ id: randomBytes(12).toString('hex'), ...event, title: t(event.title), body: t(event.body), threadId: event.threadId || next.threadId });
-      if (notices.length > 24) notices.shift();
+      enqueueNotice({ id: randomBytes(12).toString('hex'), ...event, title: t(event.title), body: t(event.body), threadId: event.threadId || next.threadId });
     }
     updateDisplay();
   } }) : {async start() {}, async stop() {workbuddy.dispose();}};
@@ -333,6 +369,7 @@ async function start() {
     taskHandler?.dispose();
     workbuddy.dispose();
     controlResume.dispose();
+    workbuddyBalance?.dispose();
     releaseQuota();
     await context.dispose();
     await server.close();
@@ -366,7 +403,7 @@ async function start() {
     void checkWorkBuddyProcess();
   }
   logger.info(t('Codex Pet 已启动，本机端口 {port}，动画与互动基于 dsh-pet 0.3.8。', { port }));
-  logger.info(isCodex ? t('右键可点播动作、查看额度或对话；自动碎碎念默认十分钟一次，可在 AI 设置中关闭。') : t('桌宠已联动 WorkBuddy，右键可点播动作和切换形象。'));
+  logger.info(isCodex ? Locale.getLocale()==='zh-CN'?'右键可点播动作、查看额度或对话；自动碎碎念默认十分钟一次，可在控制中心的「碎念」中关闭。':'Use the pet menu for actions, usage, or chat. Automatic chatter runs every ten minutes; turn it off under Chatter in the control center.' : t('桌宠已联动 WorkBuddy，右键可点播动作和切换形象。'));
 }
 
 function json(res, status, body) {

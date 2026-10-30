@@ -3,6 +3,13 @@
  const validPercent=value=>typeof value==='number'&&Number.isFinite(value)&&value>=0&&value<=100;
  const validBytes=value=>typeof value==='number'&&Number.isFinite(value)&&value>=0;
  const textPercent=value=>validPercent(value)?Math.round(value)+'%':'—';
+ function quotaLabel(label,locale){
+  const en=locale!=='zh-CN',value=label.trim(),hours=/^(\d+(?:\.\d+)?)\s*(?:h|小时)$/i.exec(value);
+  if(hours)return hours[1]+(en?'h':'小时');
+  if(/^(?:周|week|weekly)$/i.test(value))return en?'Week':'周';
+  if(/^(?:月|month|monthly)$/i.test(value))return en?'Month':'月';
+  return value;
+ }
  function telemetryView(metrics,locale){
   const en=locale!=='zh-CN',memory=metrics?.memory,gpu=metrics?.gpu;
   return[
@@ -16,10 +23,11 @@
   if(!state||state.ok!==true)return unknown;
   try{
    if(state.shape==='windows'){
-    const details=shared.balanceDetailView(state).filter(row=>row.role==='quota'&&typeof row.label==='string'&&validPercent(row.percent)).map(row=>({label:row.label,used:row.percent,remaining:100-row.percent,reset:typeof row.resetText==='string'?row.resetText:''}));
+    const details=shared.balanceDetailView(state).filter(row=>row.role==='quota'&&typeof row.label==='string'&&validPercent(row.percent)).map(row=>({label:quotaLabel(row.label,locale),used:row.percent,remaining:100-row.percent,reset:typeof row.resetText==='string'?row.resetText:''}));
     if(!details.length)return unknown;
     const urgent=details.reduce((best,row)=>row.used>best.used?row:best),remaining=urgent.remaining;
-    return{text:en?`${urgent.label} · ${Math.round(remaining)}% left`:`${urgent.label} · 剩余 ${Math.round(remaining)}%`,remaining,details};
+    // 摘要列出实际存在的每个窗口；最紧窗口仍决定填充比例。
+    return{text:details.map(row=>`${row.label} ${Math.round(row.remaining)}%`).join(' · '),remaining,details};
    }
    if(!['money','points'].includes(state.shape))return unknown;
    const rows=shared.balanceBubbleView(state),text=rows.filter(row=>typeof row.text==='string').map(row=>row.text).join('');
@@ -38,7 +46,7 @@
  }
  function install({window,document,PetSprite}){
   if(!PetSprite?.prototype)return{dispose(){}};
-  const proto=PetSprite.prototype,controllers=new Map();let closed=false,revision=0,telemetry={enabled:true,metrics:null},unsubscribe=()=>{};
+  const proto=PetSprite.prototype,controllers=new Map();let closed=false,revision=0,telemetry={enabled:Boolean(window.petTelemetry),metrics:null},unsubscribe=()=>{};
   const originals=new Map(),sending=new Set(),locale=()=>window.CodexLocale?.getLocale?.()==='zh-CN'?'zh-CN':'en';
   const areas=()=>typeof WORK_AREAS!=='undefined'&&Array.isArray(WORK_AREAS)?WORK_AREAS:[];
   function layout(control){return{height:control.sprite.height,canvasWidth:control.sprite.size,top:control.sprite.height+8,footerHeight:control.footerHeight||0,width:control.footerWidth||0};}
@@ -72,7 +80,10 @@
    const info=layout(control);root.style.left=sprite.size/2+'px';root.style.top=info.top+'px';root.style.width=Math.min(260,Math.max(180,sprite.size*.42))+'px';
    const enabled=sprite.pet?.balanceEnabled===true,view=quotaView(control.balance,window.PetShared||{},language);control.view=view;
    const signature=JSON.stringify([enabled,language,view,telemetry,control.expanded]);if(control.signature===signature){measure(control);return;}control.signature=signature;
-   quota.hidden=!enabled;sprite.el.classList.toggle('has-status-quota',enabled);summary.textContent=view.text;button.disabled=!view.details.length;button.setAttribute('aria-expanded',String(control.expanded&&view.details.length>0));
+   quota.hidden=!enabled;sprite.el.classList.toggle('has-status-quota',enabled);summary.textContent='';
+   if(view.details.length){for(const row of view.details){const item=element('span','pet-status-quota-summary-window');item.textContent=`${row.label} ${Math.round(row.remaining)}%`;summary.appendChild(item);}}
+   else summary.textContent=view.text;
+   button.setAttribute('aria-label',view.details.length?(language==='zh-CN'?'剩余额度：':'Usage remaining: ')+view.text:view.text);button.disabled=!view.details.length;button.setAttribute('aria-expanded',String(control.expanded&&view.details.length>0));
    quota.classList.toggle('is-interactive',enabled&&view.details.length>0);bar.hidden=view.remaining===null;
    if(view.remaining===null){bar.removeAttribute('aria-valuenow');fill.style.width='';}else{bar.setAttribute('aria-label',language==='zh-CN'?'剩余额度':'Usage remaining');bar.setAttribute('aria-valuenow',String(view.remaining));fill.style.width=view.remaining+'%';}
    if(!view.details.length)control.expanded=false;details.hidden=!control.expanded;details.replaceChildren();

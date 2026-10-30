@@ -8,7 +8,9 @@ const GPU_SCRIPT=String.raw`
 $ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue'
 # 输出仅包含固定JSON字段、数值和ASCII适配器编号，无需修改宿主控制台编码。
-Import-Module (Join-Path $PSHOME 'Modules\CimCmdlets\CimCmdlets.psd1') -ErrorAction Stop
+# 使用系统内置模块的绝对路径，避免精简环境触发用户模块发现；路径拼接本身也不依赖模块自动加载。
+Import-Module ([System.IO.Path]::Combine($PSHOME, 'Modules\Microsoft.PowerShell.Utility\Microsoft.PowerShell.Utility.psd1')) -ErrorAction Stop
+Import-Module ([System.IO.Path]::Combine($PSHOME, 'Modules\CimCmdlets\CimCmdlets.psd1')) -ErrorAction Stop
 $warmed = $false
 while (($line = [Console]::ReadLine()) -ne $null) {
  if ($line -ne 'sample') { continue }

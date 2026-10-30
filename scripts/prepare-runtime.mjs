@@ -84,7 +84,7 @@ mainCode=await readFile(main,'utf8');
 const extensionHook=`// codex-pet-extensions-v2
 const codexVisibility = require('./pet-visibility.cjs').install({getPetWindows:()=>windows.values(),dataRoot:process.env.DSH_HOME,disabled:DPI_PROBE,onChange:state=>codexTelemetry.setSuspended(state.hidden||!windows.size)});
 const codexTelemetry = require('./pet-telemetry.cjs').install({dataRoot:process.env.DSH_HOME,disabled:DPI_PROBE});
-const nativeHarness = require('./harness-handoff.cjs').install({dataRoot:process.env.DSH_HOME,onHandoff:async()=>{codexVisibility.setExternalHidden(true);codexStartup.setSuspended(true);codexChatPanel.hide();codexTaskPanel.hide();codexQQSettings?.hide();},onRestore:async()=>{codexVisibility.setExternalHidden(false);codexStartup.setSuspended(false);}});
+const nativeHarness = require('./harness-handoff.cjs').install({dataRoot:process.env.DSH_HOME,onHandoff:async()=>{const response=await codexPanelRequest('POST','/dsh-pet-7340/pet-host/presentation',JSON.stringify({mode:'pause'}));if(response.status!==200)throw Error('host-presentation-pause-failed');codexVisibility.setExternalHidden(true);codexStartup.setSuspended(true);codexChatPanel.hide();codexTaskPanel.hide();codexQQSettings?.hide();},onRestore:async()=>{const response=await codexPanelRequest('POST','/dsh-pet-7340/pet-host/presentation',JSON.stringify({mode:'resume'}));if(response.status!==200)throw Error('host-presentation-resume-failed');codexVisibility.setExternalHidden(false);codexStartup.setSuspended(false);}});
 codexVisibility.setExternalHidden(nativeHarness.state().active===true);
 codexStartup.setSuspended(nativeHarness.state().active===true);
 const codexPetHost = require('./pet-host-menu.cjs').install({hostRequest:codexPanelRequest,harness:nativeHarness,onChanged:async()=>{if(tray){tray.destroy();tray=null;}await startTray();}});
@@ -92,7 +92,8 @@ const codexQQSettings = process.env.CODEX_PET_HOST === 'workbuddy' ? null : requ
 const codexTaskPanel = require('./codex-task-window.cjs').install({hostRequest:codexPanelRequest,canUse:()=>codexPetHost.get().host==='codex'});
 const codexChatPanel = require('./codex-chat-window.cjs').install({hostRequest:codexPanelRequest,openTaskPanel:()=>codexTaskPanel.open(),canUse:()=>codexPetHost.get().host==='codex'});
 const codexSkinStore = require('./codex-skins.cjs').install({hostRequest,dataRoot:process.env.DSH_HOME,onSelectionChanged:async model=>{const character=model.characters.find(item=>item.id===model.selection.character);codexChatPanel.onCharacterChanged?.({id:model.selection.character,name:character.copy.name,locale:model.locale});if(tray){tray.destroy();tray=null;}await startTray();}});
-const codexControl = require('./control-window.cjs').install({hostRequest,apiRequest:codexPanelRequest,skins:codexSkinStore,startup:codexStartup,petHost:codexPetHost});
+const codexActions = require('./pet-actions.cjs').install({host:()=>codexPetHost.get().host});
+const codexControl = require('./control-window.cjs').install({hostRequest,apiRequest:codexPanelRequest,skins:codexSkinStore,startup:codexStartup,petHost:codexPetHost,actions:codexActions});
 require('./panel-navigation.cjs').install({host:()=>codexPetHost.get().host,openPanel:name=>({settings:()=>codexControl.open(),chat:()=>codexChatPanel.open(),tasks:()=>codexTaskPanel.open(),qq:()=>codexQQSettings?.open()}[name])()});
 void codexPanelRequest('POST','/dsh-pet-7340/control-resume').then(response=>{if(response.status===200&&JSON.parse(response.body).resumeSettings===true)return codexControl.open();}).catch(()=>{});
 // codex-pet-extensions-end`;
@@ -117,10 +118,11 @@ const hostTray='...codexStartup.trayItems(), ...codexPetHost.trayItems()]';
 const qqTray='...codexStartup.trayItems(), ...codexPetHost.trayItems(), ...(codexQQSettings?.trayItems() || [])]';
 const oldControlTray='...codexStartup.trayItems(), ...codexPetHost.trayItems(), ...codexControl.trayItems(), ...(codexQQSettings?.trayItems() || [])]';
 const visibilityTray='...codexStartup.trayItems(), ...codexPetHost.trayItems(), ...codexControl.trayItems(), ...codexVisibility.trayItems(), ...(codexQQSettings?.trayItems() || [])]';
-const controlTray='...codexStartup.trayItems(), ...codexPetHost.trayItems(), ...codexControl.trayItems(), ...(nativeHarness.state().active?[]:codexVisibility.trayItems()), ...(codexQQSettings?.trayItems() || [])]';
+const previousControlTray='...codexStartup.trayItems(), ...codexPetHost.trayItems(), ...codexControl.trayItems(), ...(nativeHarness.state().active?[]:codexVisibility.trayItems()), ...(codexQQSettings?.trayItems() || [])]';
+const controlTray='...(nativeHarness.state().active?[]:codexStartup.trayItems()), ...codexPetHost.trayItems(), ...codexControl.trayItems(), ...(nativeHarness.state().active?[]:codexVisibility.trayItems()), ...(codexQQSettings?.trayItems() || [])]';
 if(!mainCode.includes(controlTray)) {
-  if(!mainCode.includes(hostTray)&&!mainCode.includes(qqTray)&&!mainCode.includes(oldControlTray)&&!mainCode.includes(visibilityTray)) mainCode=patchOnce(mainCode,'...codexStartup.trayItems()]',hostTray,'联动应用托盘');
-  mainCode=patchOnce(mainCode,mainCode.includes(visibilityTray)?visibilityTray:mainCode.includes(oldControlTray)?oldControlTray:mainCode.includes(qqTray)?qqTray:hostTray,controlTray,'控制中心托盘');
+  if(!mainCode.includes(hostTray)&&!mainCode.includes(qqTray)&&!mainCode.includes(oldControlTray)&&!mainCode.includes(visibilityTray)&&!mainCode.includes(previousControlTray)) mainCode=patchOnce(mainCode,'...codexStartup.trayItems()]',hostTray,'联动应用托盘');
+  mainCode=patchOnce(mainCode,mainCode.includes(previousControlTray)?previousControlTray:mainCode.includes(visibilityTray)?visibilityTray:mainCode.includes(oldControlTray)?oldControlTray:mainCode.includes(qqTray)?qqTray:hostTray,controlTray,'控制中心托盘');
 }
 await writeFile(main,mainCode);
 const preload=resolve(pkg,'runtime/electron-helper/preload.js');
@@ -143,7 +145,7 @@ preloadCode=await readFile(preload,'utf8');
 const controlPreload="require('./control-window.cjs').installPreload();\nrequire('./panel-navigation.cjs').installPreload();";
 if(!preloadCode.includes("require('./control-window.cjs').installPreload();"))await writeFile(preload,preloadCode+'\n'+controlPreload+'\n');
 preloadCode=await readFile(preload,'utf8');
-for(const module of ['pet-visibility.cjs','pet-telemetry.cjs']){const hook="require('./"+module+"').installPreload();";if(!preloadCode.includes(hook)){preloadCode+='\n'+hook+'\n';await writeFile(preload,preloadCode);}}
+for(const module of ['pet-visibility.cjs','pet-telemetry.cjs','pet-actions.cjs']){const hook="require('./"+module+"').installPreload();";if(!preloadCode.includes(hook)){preloadCode+='\n'+hook+'\n';await writeFile(preload,preloadCode);}}
 const html=resolve(pkg,'runtime/electron-helper/index.html');
 let htmlCode=await readFile(html,'utf8');
 htmlCode=localizeIndexHtml(htmlCode);
@@ -151,10 +153,11 @@ if(!htmlCode.includes('src="startup-menu.js"')) htmlCode=patchOnce(htmlCode,'<sc
 if(!htmlCode.includes('src="pet-host-menu.js"')) htmlCode=patchOnce(htmlCode,'<script src="./events.js"></script>','<script src="pet-host-menu.js"></script>\n    <script src="./events.js"></script>','联动应用菜单');
 if(!htmlCode.includes('href="pet-status-strip.css"'))htmlCode=patchOnce(htmlCode,'</head>','<link rel="stylesheet" href="pet-status-strip.css">\n</head>','底部状态样式');
 if(!htmlCode.includes('src="pet-status-strip.js"'))htmlCode=patchOnce(htmlCode,'<script src="./renderer.js"></script>','<script src="pet-status-strip.js"></script>\n<script src="./renderer.js"></script>','底部状态脚本');
+if(!htmlCode.includes('src="pet-actions-renderer.js"'))htmlCode=patchOnce(htmlCode,'<script src="./renderer.js"></script>','<script src="pet-actions-renderer.js"></script>\n<script src="./renderer.js"></script>','控制中心动作桥');
 await writeFile(html,htmlCode);
 for(const file of ['codex-notifications.cjs','foreground-codex.ps1','codex-api.cjs','pet-host.cjs','pet-host-menu.cjs','pet-host-menu.js',
   'panel-theme.css','panel-navigation.cjs','panel-navigation.js','control-window.cjs','control-preload.cjs','control-window.html','control-window.css','control-window.js',
-  'pet-visibility.cjs','foreground-fullscreen.ps1','system-monitor.cjs','pet-telemetry.cjs','pet-status-strip.js','pet-status-strip.css','harness-handoff.cjs',
+  'pet-visibility.cjs','foreground-fullscreen.ps1','system-monitor.cjs','pet-telemetry.cjs','pet-status-strip.js','pet-status-strip.css','harness-handoff.cjs','pet-actions.cjs','pet-actions-renderer.js',
   'qq-window.cjs','qq-preload.cjs','qq-window.html','qq-window.js','qq-window.css',
   'workbuddy-notifications.cjs','foreground-workbuddy.ps1','workbuddy-target.ps1',
   'codex-task-window.cjs','task-preload.cjs','task-window.html','task-window.js','task-window.css',
