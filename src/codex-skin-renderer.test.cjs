@@ -5,9 +5,10 @@ function harness({deferredImages=false,deferredState=false,failImages=false,defe
  const timers=new Map(),observers=[],images=[],draws=[],media=[],positions=[],playPromises=[];let serial=0,clock=100000,changed,menu,initialState;
  const schedule=(fn,kind,delay=0)=>{const id=++serial;timers.set(id,{fn,kind,delay});return id;};
  class Element{
-  constructor(tag='div'){this.tag=tag;this.children=[];this.attrs={};this.classes=new Set();this.style=new Proxy({},{set:(target,key,value)=>{target[key]=value;this.mutate();return true;}});this.classList={add:value=>{this.classes.add(value);this.mutate();},remove:value=>{this.classes.delete(value);this.mutate();},toggle:(value,on)=>on?this.classes.add(value):this.classes.delete(value),contains:value=>this.classes.has(value)};}
+  constructor(tag='div'){this.tag=tag;this.children=[];this.attrs={};this.classes=new Set();this.dataset={};this.handlers=new Map();this.value='';this.disabled=false;this.style=new Proxy({setProperty:(key,value)=>{this.style[key]=String(value);}},{set:(target,key,value)=>{target[key]=value;this.mutate();return true;}});this.classList={add:value=>{this.classes.add(value);this.mutate();},remove:value=>{this.classes.delete(value);this.mutate();},toggle:(value,on)=>on?this.classes.add(value):this.classes.delete(value),contains:value=>this.classes.has(value)};}
   mutate(){for(const o of observers)if(o.targets.has(this))queueMicrotask(()=>{if(!o.closed)o.fn();});}
   appendChild(child){this.children.push(child);return child;} remove(){this.removed=true;} setAttribute(key,value){this.attrs[key]=value;} removeAttribute(key){delete this.attrs[key];if(key==='src')this.src='';}
+  addEventListener(name,fn){if(!this.handlers.has(name))this.handlers.set(name,new Set());this.handlers.get(name).add(fn);} removeEventListener(name,fn){this.handlers.get(name)?.delete(fn);} emit(name,event={}){for(const fn of [...(this.handlers.get(name)||[])])fn(event);} contains(target){return target===this||this.children.some(child=>child.contains?.(target));}
   getContext(){return{clearRect(){},drawImage:(...args)=>draws.push({canvas:this,args})};}
  }
  class Video extends Element{
@@ -25,18 +26,19 @@ function harness({deferredImages=false,deferredState=false,failImages=false,defe
  if(videoProfile)assets['idle.webm']={available:true,type:'video',url:'file:///idle.webm'};
  if(moveVideo)assets['walk.webm']={available:true,type:'video',url:'file:///walk.webm'};
  const character={id:'white-dragon',label:'白龙娘',copy:{name:'白龙娘',actionLabels:{'鲸鱼吐泡泡特效':'龙尾吹泡泡'}},originalVideo:false,available:{q:true},manifest,assets};
- const model={locale,selection:{character:'white-dragon',mode},characters:[character,{...character,id:'bluefish',label:'大肥鱼',originalVideo:true}],catalog:[]};
- const words={'图文对话':'Chat with images','操作任务':'Tasks','形象':'Appearance','逐帧试作':'Frame prototype','素材未就绪':'Assets not ready','基础动画代用':'Base animation substitute','专属帧待制作':'Dedicated frames pending'};
+ const model={locale,size:320,selection:{character:'white-dragon',mode},characters:[character,{...character,id:'bluefish',label:'大肥鱼',originalVideo:true}],catalog:[]};
+ const words={'图文对话':'Chat with images','操作任务':'Tasks','形象':'Appearance','大小':'Size','桌宠大小':'Pet size','拖动滑块实时预览，松开后保存':'Drag to preview, then release to save','正在应用…':'Applying…','大小已保存':'Size saved','大小保存失败，请稍后重试。':'Could not save the size. Please try again.','逐帧试作':'Frame prototype','素材未就绪':'Assets not ready','基础动画代用':'Base animation substitute','专属帧待制作':'Dedicated frames pending'};
  const L={setLocale(value){this.locale=value;},t(key){return this.locale==='en'?words[key]||key:key;}};
  const pure={};vm.runInNewContext(readFileSync(join(__dirname,'../node_modules/dsh-pet/runtime/electron-helper/shared-core.js'),'utf8'),pure);
  const shared={...pure.PetShared,mountContextMenu:options=>{menu=options;return options;}};
- const win={CodexSkinActions:A,CodexLocale:L,PetShared:shared,__dshPetDebug:{},codexSkins:{getState:()=>deferredState?new Promise(resolve=>{initialState=resolve;}):Promise.resolve(model),select:async value=>({...model,selection:value}),onChanged:fn=>{changed=fn;return()=>{};}},setTimeout:(fn,delay)=>schedule(fn,'timeout',delay),clearTimeout:id=>timers.delete(id),setInterval:(fn,delay)=>schedule(fn,'interval',delay),clearInterval:id=>timers.delete(id),requestAnimationFrame:fn=>schedule(fn,'raf'),cancelAnimationFrame:id=>timers.delete(id),queueMicrotask,addEventListener(){},matchMedia:()=>({matches:false}),codexChatPanel:{open(){}}};
- const context={window:win,document:{head:new Element(),createElement:tag=>{if(tag==='video'){const v=new Video();v.skinMedia=true;media.push(v);return v;}return new Element(tag);}},navigator:{language:'zh-CN',platform:'Win32'},VIEW:{w:1000,h:800},AREAS:[{x:0,y:0,width:1000,height:800}],toLocal:value=>value,isOpenShortcut:()=>false,MutationObserver:Observer,Image,console:{warn(){},log(){},error(){}},S:shared,BASE:'/dsh-pet-7340',Date:class extends Date{static now(){return clock;}},Math:Object.assign(Object.create(Math),{random}),queueMicrotask,performance:{now:()=>clock},setTimeout:win.setTimeout,clearTimeout:win.clearTimeout,requestAnimationFrame:win.requestAnimationFrame,cancelAnimationFrame:win.cancelAnimationFrame};
+ const win={CodexSkinActions:A,CodexLocale:L,PetShared:shared,__dshPetDebug:{},codexSkins:{getState:()=>deferredState?new Promise(resolve=>{initialState=resolve;}):Promise.resolve(model),select:async value=>({...model,selection:value}),setSize:async value=>({size:value}),onChanged:fn=>{changed=fn;return()=>{};}},innerWidth:800,innerHeight:600,setTimeout:(fn,delay)=>schedule(fn,'timeout',delay),clearTimeout:id=>timers.delete(id),setInterval:(fn,delay)=>schedule(fn,'interval',delay),clearInterval:id=>timers.delete(id),requestAnimationFrame:fn=>schedule(fn,'raf'),cancelAnimationFrame:id=>timers.delete(id),queueMicrotask,addEventListener(){},matchMedia:()=>({matches:false}),codexChatPanel:{open(){}}};
+ const documentHandlers=new Map(),documentApi={head:new Element(),body:new Element(),createElement:tag=>{if(tag==='video'){const v=new Video();v.skinMedia=true;media.push(v);return v;}return new Element(tag);},addEventListener(name,fn){if(!documentHandlers.has(name))documentHandlers.set(name,new Set());documentHandlers.get(name).add(fn);},removeEventListener(name,fn){documentHandlers.get(name)?.delete(fn);}};
+ const context={window:win,document:documentApi,navigator:{language:'zh-CN',platform:'Win32'},VIEW:{w:1000,h:800},AREAS:[{x:0,y:0,width:1000,height:800}],toLocal:value=>value,isOpenShortcut:()=>false,MutationObserver:Observer,Image,console:{warn(){},log(){},error(){}},S:shared,BASE:'/dsh-pet-7340',Date:class extends Date{static now(){return clock;}},Math:Object.assign(Object.create(Math),{random}),queueMicrotask,performance:{now:()=>clock},setTimeout:win.setTimeout,clearTimeout:win.clearTimeout,requestAnimationFrame:win.requestAnimationFrame,cancelAnimationFrame:win.cancelAnimationFrame};
  vm.createContext(context);vm.runInContext(readFileSync(join(__dirname,'../node_modules/dsh-pet/runtime/electron-helper/sprite.js'),'utf8')+'\nthis.PetSprite=PetSprite;',context);vm.runInContext(readFileSync(join(__dirname,'../node_modules/dsh-pet/runtime/electron-helper/events.js'),'utf8'),context);
  const P=context.PetSprite;P.prototype.dispose=function(){this.nativeDisposed=true;};vm.runInContext(readFileSync(join(__dirname,'codex-skin-renderer.js'),'utf8'),context);
- function sprite(){const p=Object.create(P.prototype);Object.assign(p,{stage:new Element(),hit:new Element(),tip:new Element(),videoA:new Video(),videoB:new Video(),front:0,pending:null,gen:0,anim:'呼吸',once:true,pet:{id:'main',name:'旧名字',workStatusEnabled:true},assetBase:'file:///original/',_facing:'left',playback:null,pendingSquash:false,pendingMove:null,frozen:false,moveRef:null,moveToken:0,halfW:20,halfH:40,throwRef:null,dragState:{active:false},animations:{idle:['呼吸'],clicks:['点击跳跃'],drag:['拖拽'],turn:[],categories:[],moves:{default:{leadSec:2,tailSec:2},actions:[{name:'移动'}]},events:{workStatus:[[],'工作']}},stopPosFollow(){},stopThrow(){this.throwRef=null;},sendBounds(x,y){positions.push([x,y]);},reportPlayback(id,state){this.report={id,state};},renderBubble(){},startSquash(){this.squashed=true;},closeMenu(){this.menuOpen=false;}});p.videoA.classList.add('is-front');return p;}
+ function sprite(){const p=Object.create(P.prototype),el=new Element('div');Object.assign(p,{el,stage:new Element(),hit:new Element(),tip:new Element(),videoA:new Video(),videoB:new Video(),front:0,pending:null,gen:0,anim:'呼吸',once:true,pet:{id:'main',name:'旧名字',workStatusEnabled:true,size:320},font:shared.DEFAULT_FONT,size:320,height:180,halfW:20,halfH:40,bottomPad:15,winH:195,margin:{t:160,r:160,b:160,l:160},hitRect:{x:100,y:63.75,w:120,h:142.5},sideAllow:100,pos:{x:100,y:200},customPos:null,space:null,assetBase:'file:///original/',_facing:'left',playback:null,pendingSquash:false,pendingMove:null,frozen:false,moveRef:null,moveToken:0,throwRef:null,dragState:{active:false},animations:{idle:['呼吸'],clicks:['点击跳跃'],drag:['拖拽'],turn:[],categories:[],moves:{default:{leadSec:2,tailSec:2},actions:[{name:'移动'}]},events:{workStatus:[[],'工作']}},stopPosFollow(){},stopThrow(){this.throwRef=null;},position(){const x=this.customPos?this.customPos.rx*context.VIEW.w-this.halfW:this.pos.x;const y=this.customPos?this.customPos.ry*context.VIEW.h-this.halfH:this.pos.y;this.sendBounds(x,y);},sendBounds(x,y){this.pos={x,y};positions.push([x,y]);},reportPlayback(id,state){this.report={id,state};},renderBubble(){},startSquash(){this.squashed=true;},closeMenu(){if(this.menuClose){this.menuClose();this.menuClose=null;}this.menuOpen=false;},setInteractive(flag){this.interactive=flag;},syncInputBusy(){},syncInputRegions(){},inputBusy(){return this.menuOpen;},visibleClampRect(){return{x:0,y:0,w:400,h:300};},reloadDesktop(){this.reloaded=true;}});p.videoA.classList.add('is-front');return p;}
  const flush=async()=>{for(let i=0;i<5;i++)await Promise.resolve();};
- return{sprite,model,win,timers,images,draws,media,positions,playPromises,flush,menu:()=>menu,change:value=>changed(value),now:value=>{clock=value;},ready:async p=>{(p.front===0?p.videoB:p.videoA).ready();await flush();},frame:async(p,seconds)=>{const v=p.front===0?p.videoA:p.videoB;v.currentTime=seconds;for(const[id,value]of[...timers])if(value.kind==='raf'){timers.delete(id);value.fn();}await flush();},finishImage:async image=>{image.onload?.();await flush();},finishState:async value=>{initialState(value);await flush();}};
+ return{sprite,model,win,document:documentApi,timers,images,draws,media,positions,playPromises,flush,menu:()=>menu,change:value=>changed(value),now:value=>{clock=value;},ready:async p=>{(p.front===0?p.videoB:p.videoA).ready();await flush();},frame:async(p,seconds)=>{const v=p.front===0?p.videoA:p.videoB;v.currentTime=seconds;for(const[id,value]of[...timers])if(value.kind==='raf'){timers.delete(id);value.fn();}await flush();},finishImage:async image=>{image.onload?.();await flush();},finishState:async value=>{initialState(value);await flush();}};
 }
 
 test('拖拽源pause和EOS跨微任务时不等1500ms轮询，迟到play Promise不锁住或判坏素材',async()=>{
@@ -92,7 +94,8 @@ test('小羊菜单只呈现21个真实绑定槽位、3角色可切换，余额�
  const h=sheepHarness();await h.flush();const p=h.sprite();p.animations=h.animations;p.playOnce('待机呼吸休闲');await h.ready(p);
  const S=h.win.PetShared;S.mountContextMenu({tree:[{label:'打开网站',action:'open-site'},...S.buildMenuTree(p.animations)]});
  const leaves=nodes=>nodes.flatMap(node=>node.anim?[node]:leaves(node.children??[])),actions=leaves(h.menu().tree),manifest=h.model.characters.at(-1).manifest;
- assert.equal(actions.length,21);assert.deepEqual(actions.map(node=>node.anim).sort(),Object.keys(manifest.actions).sort());assert.equal(h.menu().tree.find(node=>node.label==='Appearance').children.length,3);
+ assert.equal(actions.length,21);assert.deepEqual(actions.map(node=>node.anim).sort(),Object.keys(manifest.actions).sort());
+ const appearance=h.menu().tree.find(node=>node.label==='Appearance');assert.equal(appearance.children.length,4);assert.equal(appearance.children[0].action,'codex-pet-size');assert.equal(appearance.children[0].label,'Size');assert.equal(appearance.children.filter(node=>node.action==='codex-select-skin').length,3);
  assert.equal(actions.some(node=>['原地小憩沉眠','凭空生花','原地专心玩魔方'].includes(node.anim)),false);assert.doesNotMatch(actions.map(node=>node.label).join(''),/[\u3400-\u9fff]|Dragon|Whale/i);
  const eventIds=h.model.catalog.filter(entry=>['event:balance','event:whisper'].includes(entry.group)).map(entry=>entry.id);for(const id of eventIds)assert.equal(actions.find(node=>node.anim===id).hint,'Shared animation');
  assert.equal(p.animations,h.animations);assert.equal(h.model.catalog.length,106);assert.equal(p.hit.attrs['aria-label'],'Curly');p.dispose();
@@ -151,13 +154,40 @@ test('龙娘余额六档碎碎念三档及工作六档可点播，共用动作�
  const next=mount();assert.equal(next.find(node=>node.label==='余额档位').children.length,4);assert.equal(next.find(node=>node.label==='工作状态').children.length,5);assert.equal(p.animations.events.balance.length,6);p.dispose();
 });
 
-test('形象菜单直接两角色且旧mode不能激活非Q，轮询不再自动变身或加载姐姐图',async()=>{
+test('形象菜单提供大小和两角色且旧mode不能激活非Q，轮询不再自动变身或加载姐姐图',async()=>{
  const h=harness({videoProfile:true,mode:'occasional',random:()=>0});await h.flush();const p=h.sprite();p.playOnce('呼吸');await h.ready(p);h.media[0].ready();await h.flush();
  h.win.PetShared.mountContextMenu({tree:[{label:'对话',action:'chat'}]});const shape=h.menu().tree.find(node=>node.label==='形象');
- assert.equal(shape.children.length,2);assert.ok(shape.children.every(node=>node.action==='codex-select-skin'&&!node.children));
+ assert.equal(shape.children.length,3);assert.equal(shape.children[0].action,'codex-pet-size');assert.equal(shape.children[0].hint,'320 px');assert.ok(shape.children.slice(1).every(node=>node.action==='codex-select-skin'&&!node.children));
  let requested;h.win.codexSkins.select=async value=>{requested=value;return {...h.model,selection:value};};p.onMenuAction({action:'codex-select-skin',character:'white-dragon',mode:'sister'});await h.flush();assert.equal(requested.mode,'q');
  const interval=[...h.timers.values()].find(value=>value.kind==='interval');for(let i=0;i<5;i++){h.now(100000+i*100000);interval.fn();await h.flush();}
  assert.equal(p.__codexSkinController.transformation,undefined);assert.equal(p.__codexSkinController.expiryTimer,undefined);assert.equal(h.images.some(image=>image.url.includes('sister')),false);assert.equal(h.media.length,1);p.dispose();
+});
+
+test('大小滑块实时缩放预览，松开只保存配置并在关闭面板后原位应用',async()=>{
+ const h=harness({videoProfile:true,locale:'zh-CN'});await h.flush();const p=h.sprite();let requested;
+ h.win.codexSkins.setSize=async value=>{requested=value;return{size:value};};
+ Object.assign(p,{halfW:160,halfH:90,margin:{t:160,r:160,b:160,l:160}});
+ const initialCenter=[p.pos.x+p.halfW,p.pos.y+p.halfH];
+ p.onMenuAction({action:'codex-pet-size',anchor:{x:10,y:20,clamp:{x:0,y:0,w:400,h:300}}});
+ const root=h.document.body.children.at(-1),panel=root.children[0],head=panel.children[0],slider=panel.children[1],output=head.children[1],status=panel.children[3];
+ assert.equal(root.menuOpen,undefined);assert.equal(p.menuOpen,true);assert.equal(p.interactive,true);assert.equal(slider.min,'128');assert.equal(slider.max,'1024');assert.equal(slider.step,'1');assert.equal(slider.value,'320');assert.equal(slider.attrs['aria-label'],'桌宠大小');
+ assert.equal(p.size,1024);assert.equal(p.el.style.transform,'scale(0.3125)');assert.equal(p.margin.r,512);
+ slider.value='430';slider.emit('input');assert.equal(output.textContent,'430 px');assert.equal(requested,undefined);assert.equal(status.textContent,'拖动滑块实时预览，松开后保存');assert.equal(p.el.style.transform,`scale(${430/1024})`);
+ slider.emit('change');await h.flush();assert.equal(requested,430);assert.equal(status.textContent,'大小已保存');assert.notEqual(p.reloaded,true);assert.notEqual(root.removed,true);assert.equal(p.menuOpen,true);
+ p.menuClose();assert.equal(root.removed,true);assert.equal(p.menuOpen,false);assert.equal(p.size,430);assert.equal(p.el.style.transform,'');assert.equal(p.margin.r,215);assert.equal(p.pet.size,430);
+ assert.deepEqual([p.pos.x+p.halfW,p.pos.y+p.halfH],initialCenter);
+ p.dispose();
+});
+
+test('大小保存失败时回到上次成功的尺寸并保留滑块面板',async()=>{
+ const h=harness({videoProfile:true,locale:'zh-CN'});await h.flush();const p=h.sprite();let requested;
+ h.win.codexSkins.setSize=async value=>{requested=value;throw new Error('save failed');};
+ Object.assign(p,{halfW:160,halfH:90,margin:{t:160,r:160,b:160,l:160}});
+ p.onMenuAction({action:'codex-pet-size',anchor:{x:10,y:20,clamp:{x:0,y:0,w:400,h:300}}});
+ const root=h.document.body.children.at(-1),panel=root.children[0],head=panel.children[0],slider=panel.children[1],output=head.children[1],status=panel.children[3];
+ slider.value='500';slider.emit('input');slider.emit('change');await h.flush();
+ assert.equal(requested,500);assert.equal(slider.value,'320');assert.equal(output.textContent,'320 px');assert.equal(p.el.style.transform,'scale(0.3125)');assert.equal(status.dataset.error,'true');assert.equal(status.textContent,'大小保存失败，请稍后重试。');assert.equal(p.menuOpen,true);
+ p.menuClose();assert.equal(p.size,320);assert.equal(p.el.style.transform,'');p.dispose();
 });
 
 test('核心Q版真实playIdle只抽显式视频分类，原鱼切回完整原表且不污染catalog',async()=>{

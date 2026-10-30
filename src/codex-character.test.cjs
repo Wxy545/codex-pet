@@ -50,6 +50,28 @@ test('WorkBuddy只在配置投影禁用每只宠物的余额和自动碎念，�
   process.env.CODEX_PET_HOST='codex';const codex=C.projectConfig(config,{dataRoot:f.root});assert.ok(codex.main.pets.every(p=>p.balanceEnabled===true&&p.whisperEnabled===true));
  }finally{if(previous===undefined)delete process.env.CODEX_PET_HOST;else process.env.CODEX_PET_HOST=previous;}
 });
+
+test('桌宠大小读写只改主实例并保留其它配置字段',t=>{
+ const f=fixture(t),file='dsh-pet/main-config.jsonc';
+ assert.equal(C.readPetSize(f.root),320);
+ const config={
+  pets:[
+   {id:'second',name:'不动的角色',size:240,unknownPetField:{keep:true}},
+   {id:'main',name:'团子',size:462,position:{corner:'bottom-right',marginX:80,marginY:30}},
+  ],
+  notificationsEnabled:true,unknownRootField:['keep'],
+ };
+ f.write(file,config);
+ assert.equal(C.readPetSize(f.root),462);
+ assert.equal(C.writePetSize(f.root,580),580);
+ const expected=structuredClone(config);expected.pets[1].size=580;
+ assert.deepEqual(JSON.parse(fs.readFileSync(path.join(f.root,file),'utf8')),expected);
+ const before=fs.readFileSync(path.join(f.root,file),'utf8');
+ for(const size of [127,1025,320.5,'320',NaN])assert.throws(()=>C.writePetSize(f.root,size),/invalid-pet-size/);
+ assert.equal(fs.readFileSync(path.join(f.root,file),'utf8'),before);
+ f.write(file,{pets:[{id:'solo',size:430,custom:'keep'}]});
+ C.writePetSize(f.root,500);assert.equal(JSON.parse(fs.readFileSync(path.join(f.root,file),'utf8')).pets[0].size,500);
+});
 test('旧姐姐和偶尔选择在身份读取时归同角色Q，不依赖旧形态文件',t=>{
  const f=fixture(t);f.write('skins/white-dragon/sprites.png',f.png);
  for(const mode of ['sister','occasional']){

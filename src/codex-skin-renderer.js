@@ -16,6 +16,7 @@
   document.head.appendChild(style);
   // 覆盖层一一对应原videoA/B，沿用180ms交接；图帧不另开CSS播放时钟。
   style.textContent = '.codex-skin-active>video.pet-video{opacity:0!important}.codex-skin-layer{position:absolute;inset:0;pointer-events:none;z-index:0;opacity:0;transition:opacity .18s ease}.codex-skin-frame{position:absolute;left:50%;top:13.888889%;height:79.166667%;transform:translateX(-50%);pointer-events:none}.codex-skin-frame>canvas,.codex-skin-frame>video{display:block;width:100%;height:100%;pointer-events:none;object-fit:contain}@media(prefers-reduced-motion:reduce){.codex-skin-layer{transition:none!important}}';
+  style.textContent += '.dsh-pet-menu-column.codex-pet-size-panel{width:250px;max-width:calc(100vw - 8px);padding:12px 14px;overflow:visible;cursor:default}.codex-pet-size-head{display:flex;align-items:baseline;justify-content:space-between;gap:16px;font-weight:600}.codex-pet-size-value{color:#2b63ff;font-size:15px;font-variant-numeric:tabular-nums;white-space:nowrap}.codex-pet-size-range{display:block;width:100%;height:24px;margin:10px 0 2px;accent-color:#2b63ff;cursor:pointer}.codex-pet-size-scale{display:flex;justify-content:space-between;color:#9aa0a6;font-size:11px;font-variant-numeric:tabular-nums}.codex-pet-size-status{min-height:18px;margin-top:7px;color:#737980;font-size:11px;line-height:1.45;white-space:normal}.codex-pet-size-status[data-error="true"]{color:#c43d2f}';
   let model;
   let modelRevision = 0;
   let modelSignature = '';
@@ -23,6 +24,7 @@
   let assetRevision = 0;
   let timer = null;
   let closed = false;
+  let activeSizePanel = null;
   const t = key => L?.t(key, {}, model?.locale) ?? key;
   const defer = fn => (window.queueMicrotask || (callback => Promise.resolve().then(callback)))(fn);
 
@@ -537,6 +539,248 @@
     return dispose.apply(this, arguments);
   };
 
+  const SIZE_MIN = 128;
+  const SIZE_MAX = 1024;
+  const DEFAULT_SIZE = 320;
+
+  function normalizeSize(value) {
+    const number = Number(value);
+    return Number.isFinite(number) ? Math.max(SIZE_MIN, Math.min(SIZE_MAX, Math.round(number))) : DEFAULT_SIZE;
+  }
+
+  function spriteWindowOrigin(sprite) {
+    return {
+      x: sprite.pos.x + VIEW.x - sprite.margin.l,
+      y: sprite.pos.y + VIEW.y - sprite.margin.t,
+    };
+  }
+
+  // 尺寸面板期间先把真实窗口扩到最大尺寸，滑块只缩放 DOM，避免逐格 resize 造成拖拽抖动。
+  function applySpriteSize(sprite, value) {
+    const size = normalizeSize(value);
+    const centerX = sprite.pos.x + sprite.halfW;
+    const centerY = sprite.pos.y + sprite.halfH;
+    const marginRatio = Number.isFinite(sprite.margin?.r) && sprite.size > 0 ? sprite.margin.r / sprite.size : .5;
+    const font = sprite.font || S.DEFAULT_FONT;
+    sprite.size = size;
+    sprite.height = (size * 9) / 16;
+    sprite.halfW = size / 2;
+    sprite.halfH = sprite.height / 2;
+    sprite.bottomPad = (size * (9 / 16) * (S.CANVAS_H - S.FEET_Y)) / S.CANVAS_H;
+    sprite.winH = sprite.height + sprite.bottomPad;
+    sprite.hitRect = {
+      x: (S.HIT_BOX.x0 / 640) * size,
+      y: sprite.bottomPad + (S.HIT_BOX.y0 / 360) * sprite.height,
+      w: ((S.HIT_BOX.x1 - S.HIT_BOX.x0) / 640) * size,
+      h: ((S.HIT_BOX.y1 - S.HIT_BOX.y0) / 360) * sprite.height,
+    };
+    sprite.sideAllow = (S.HIT_BOX.x0 / 640) * size;
+    const sideMargin = size * marginRatio;
+    sprite.margin = { t: Math.max(sideMargin, S.bubbleTopMarginPx(font, size)), r: sideMargin, b: sideMargin, l: sideMargin };
+    if (sprite.pet) sprite.pet.size = size;
+    sprite.el.style.left = sprite.margin.l + 'px';
+    sprite.el.style.top = sprite.margin.t + 'px';
+    sprite.el.style.setProperty('--pet-size', size + 'px');
+    const fontPx = S.resolveFontPx(font, size);
+    sprite.el.style.setProperty('--dsh-pet-font-bubble', fontPx.bubble + 'px');
+    sprite.el.style.setProperty('--dsh-pet-font-tip', fontPx.tip + 'px');
+    sprite.stage.style.transform = 'translateY(' + sprite.bottomPad + 'px)';
+    sprite.customPos = { rx: centerX / VIEW.w, ry: centerY / VIEW.h };
+    sprite.space = null;
+    window.__dshPetDebug.hitRect = sprite.hitRect;
+    window.__dshPetDebug.winMargin = sprite.margin;
+    sprite.position();
+    sprite.syncInputRegions?.();
+  }
+
+  function previewSpriteSize(sprite, value) {
+    sprite.el.style.transformOrigin = `${sprite.halfW}px ${sprite.bottomPad + sprite.halfH}px`;
+    sprite.el.style.transform = `scale(${normalizeSize(value) / SIZE_MAX})`;
+    sprite.el.style.willChange = 'transform';
+  }
+
+  function clearSpritePreview(sprite) {
+    sprite.el.style.transform = '';
+    sprite.el.style.transformOrigin = '';
+    sprite.el.style.willChange = '';
+  }
+
+  function panelClamp(sprite, anchor) {
+    let clamp = anchor?.clamp;
+    if (!clamp || ![clamp.x, clamp.y, clamp.w, clamp.h].every(Number.isFinite)) {
+      try { clamp = sprite.visibleClampRect?.(); } catch { clamp = null; }
+    }
+    if (!clamp || ![clamp.x, clamp.y, clamp.w, clamp.h].every(Number.isFinite)) {
+      clamp = { x: 0, y: 0, w: Number(window.innerWidth) || 0, h: Number(window.innerHeight) || 0 };
+    }
+    return clamp;
+  }
+
+  function closeSizePanel(target = activeSizePanel) {
+    if (!target || target.closed) return;
+    if (target.saving) {
+      target.closePending = true;
+      return;
+    }
+    target.closed = true;
+    if (activeSizePanel === target) activeSizePanel = null;
+    target.cleanup();
+    target.root.remove?.();
+    const sprite = target.sprite;
+    clearSpritePreview(sprite);
+    applySpriteSize(sprite, target.savedSize);
+    if (sprite?.menuClose === target.close) sprite.menuClose = null;
+    if (sprite) {
+      sprite.menuOpen = false;
+      window.__dshPetDebug.menuOpen = false;
+      sprite.syncInputBusy?.();
+      if (!sprite.inputBusy?.()) sprite.setInteractive?.(false);
+    }
+  }
+
+  function openSizePanel(sprite, anchor) {
+    if (!sprite || !model) return;
+    closeSizePanel();
+    const current = normalizeSize(model.size);
+    const root = document.createElement('div');
+    root.className = 'dsh-pet-menu codex-pet-size-menu';
+    root.addEventListener?.('contextmenu', event => event.preventDefault());
+    const panel = document.createElement('div');
+    panel.className = 'dsh-pet-menu-column codex-pet-size-panel';
+    const head = document.createElement('div');
+    head.className = 'codex-pet-size-head';
+    const label = document.createElement('span');
+    label.textContent = t('桌宠大小');
+    const output = document.createElement('span');
+    output.className = 'codex-pet-size-value';
+    output.textContent = `${current} px`;
+    head.appendChild(label);
+    head.appendChild(output);
+    const slider = document.createElement('input');
+    slider.className = 'codex-pet-size-range';
+    slider.type = 'range';
+    slider.min = String(SIZE_MIN);
+    slider.max = String(SIZE_MAX);
+    slider.step = '1';
+    slider.value = String(current);
+    slider.setAttribute?.('aria-label', t('桌宠大小'));
+    slider.setAttribute?.('aria-valuetext', `${current} px`);
+    const scale = document.createElement('div');
+    scale.className = 'codex-pet-size-scale';
+    const minimum = document.createElement('span');
+    minimum.textContent = `${SIZE_MIN} px`;
+    const maximum = document.createElement('span');
+    maximum.textContent = `${SIZE_MAX} px`;
+    scale.appendChild(minimum);
+    scale.appendChild(maximum);
+    const status = document.createElement('div');
+    status.className = 'codex-pet-size-status';
+    status.textContent = t('拖动滑块实时预览，松开后保存');
+    panel.appendChild(head);
+    panel.appendChild(slider);
+    panel.appendChild(scale);
+    panel.appendChild(status);
+    root.appendChild(panel);
+    root.style.visibility = 'hidden';
+    document.body.appendChild(root);
+
+    const clamp = panelClamp(sprite, anchor);
+    const width = Number(root.offsetWidth) || 250;
+    const height = Number(root.offsetHeight) || 115;
+    const pointerX = Number(anchor?.x);
+    const pointerY = Number(anchor?.y);
+    const left = Math.max(clamp.x + 4, Math.min(Number.isFinite(pointerX) ? pointerX : clamp.x + clamp.w - width - 4, clamp.x + clamp.w - width - 4));
+    const top = Math.max(clamp.y + 4, Math.min(Number.isFinite(pointerY) ? pointerY : clamp.y + clamp.h - height - 4, clamp.y + clamp.h - height - 4));
+    root.style.left = `${left}px`;
+    root.style.top = `${top}px`;
+
+    const listeners = [];
+    const listen = (target, name, handler, options) => {
+      target?.addEventListener?.(name, handler, options);
+      listeners.push([target, name, handler, options]);
+    };
+    let saving = false;
+    let savedSize = current;
+    const state = {
+      sprite, root, closed: false, saving: false, closePending: false, savedSize,
+      close: () => closeSizePanel(state),
+      cleanup() {
+        for (const [target, name, handler, options] of listeners) target?.removeEventListener?.(name, handler, options);
+      },
+    };
+    const onDocumentPointerDown = event => { if (!root.contains || !root.contains(event.target)) state.close(); };
+    const onDocumentKeyDown = event => { if (event.key === 'Escape') state.close(); };
+    listen(document, 'mousedown', onDocumentPointerDown, true);
+    listen(document, 'keydown', onDocumentKeyDown, true);
+    listen(slider, 'input', () => {
+      const value = normalizeSize(slider.value);
+      output.textContent = `${value} px`;
+      slider.setAttribute?.('aria-valuetext', `${value} px`);
+      status.dataset.error = 'false';
+      status.textContent = t('拖动滑块实时预览，松开后保存');
+      previewSpriteSize(sprite, value);
+    });
+    listen(slider, 'change', () => { void commitSize(); });
+
+    async function commitSize() {
+      if (state.closed || saving) return;
+      const value = Number(slider.value);
+      if (!Number.isInteger(value) || value < SIZE_MIN || value > SIZE_MAX) {
+        status.dataset.error = 'true';
+        status.textContent = t('大小保存失败，请稍后重试。');
+        return;
+      }
+      if (value === savedSize) {
+        status.textContent = t('大小已保存');
+        return;
+      }
+      saving = true;
+      state.saving = true;
+      slider.disabled = true;
+      status.dataset.error = 'false';
+      status.textContent = t('正在应用…');
+      try {
+        if (typeof bridge.setSize !== 'function') throw new Error('size bridge unavailable');
+        const result = await bridge.setSize(value);
+        if (result?.size !== value) throw new Error('size save rejected');
+        savedSize = value;
+        state.savedSize = value;
+        model = { ...model, size: value };
+        status.textContent = t('大小已保存');
+      } catch {
+        slider.value = String(savedSize);
+        output.textContent = `${savedSize} px`;
+        slider.setAttribute?.('aria-valuetext', `${savedSize} px`);
+        previewSpriteSize(sprite, savedSize);
+        status.dataset.error = 'true';
+        status.textContent = t('大小保存失败，请稍后重试。');
+      } finally {
+        saving = false;
+        state.saving = false;
+        if (!state.closed) {
+          slider.disabled = false;
+        }
+        if (state.closePending) state.close();
+      }
+    }
+
+    const originBeforeExpand = spriteWindowOrigin(sprite);
+    applySpriteSize(sprite, SIZE_MAX);
+    previewSpriteSize(sprite, current);
+    const originAfterExpand = spriteWindowOrigin(sprite);
+    root.style.left = `${left + originBeforeExpand.x - originAfterExpand.x}px`;
+    root.style.top = `${top + originBeforeExpand.y - originAfterExpand.y}px`;
+    root.style.visibility = '';
+
+    activeSizePanel = state;
+    sprite.menuOpen = true;
+    sprite.menuClose = state.close;
+    window.__dshPetDebug.menuOpen = true;
+    sprite.syncInputBusy?.();
+    sprite.setInteractive?.(true);
+    sprite.syncInputRegions?.();
+  }
+
   function hasRegisteredMenu(nodes) {
     return Array.isArray(nodes) && nodes.some(node => node.action === 'third-party' || hasRegisteredMenu(node.children));
   }
@@ -572,7 +816,13 @@
     if (!options.tree.some(item => ['chat', 'open-site'].includes(item.action))) return mountContextMenu.apply(this, arguments);
     const tree = decorateTree(options.tree);
     if (window.codexTaskPanel?.open) tree.push({ label: t('操作任务'), action: 'codex-task-panel' });
-    if (model) tree.push({ label: t('形象'), children: model.characters.map(character => ({ label: `${model.selection.character === character.id ? '✓ ' : ''}${character.copy?.name || t(character.label)}`, action: 'codex-select-skin', character: character.id, hint: character.available.q ? '' : t('素材未就绪') })) });
+    if (model) tree.push({
+      label: t('形象'),
+      children: [
+        { label: t('大小'), action: 'codex-pet-size', hint: `${model.size ?? DEFAULT_SIZE} px`, anchor: { x: options.x, y: options.y, clamp: options.clamp } },
+        ...model.characters.map(character => ({ label: `${model.selection.character === character.id ? '✓ ' : ''}${character.copy?.name || t(character.label)}`, action: 'codex-select-skin', character: character.id, hint: character.available.q ? '' : t('素材未就绪') })),
+      ],
+    });
     return mountContextMenu.call(this, { ...options, tree });
   };
   const menuAction = proto.onMenuAction;
@@ -581,6 +831,11 @@
     try { void Promise.resolve(open()).catch(failed); } catch { failed(); }
   }
   proto.onMenuAction = function (leaf) {
+    if (leaf?.action === 'codex-pet-size') {
+      this.closeMenu();
+      openSizePanel(this, leaf.anchor);
+      return;
+    }
     if (leaf?.action === 'codex-select-skin') {
       this.closeMenu();
       void bridge.select({ character: leaf.character, mode: 'q' }).then(applyModel).catch(() => console.warn('[龙娘桌宠] 形象未能切换，请确认本地素材已就绪。'));

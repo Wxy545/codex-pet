@@ -1,10 +1,14 @@
 'use strict';
 const fs = require('node:fs');
 const path = require('node:path');
+const { randomUUID } = require('node:crypto');
 const A = require('./skin-actions.cjs');
 const L = require('./codex-locale.cjs');
 
 const IDS = ['white-dragon', 'bluefish', 'curly-sheep'];
+const PET_SIZE_MIN = 128;
+const PET_SIZE_MAX = 1024;
+const DEFAULT_PET_SIZE = 320;
 const DEFAULT_NAMES = new Set(['蓝色大肥鱼', '蓝毛小女仆', 'Q版蓝发小女仆', '大肥鱼', '白龙娘', 'Dragon Girl', 'Blue', '卷卷', 'Curly']);
 // 只识别已发布app和上游0.3.8的完整默认正文；相似或追加了条款的人设仍视作用户自定义。
 const DEFAULT_PERSONAS = new Set([
@@ -30,6 +34,40 @@ function readJson(file) {
     }
     return JSON.parse(out);
   } catch { return null; }
+}
+
+function mainPet(raw) {
+  const pets = Array.isArray(raw?.pets) ? raw.pets : [];
+  return pets.find(value => value?.id === 'main') ?? pets[0] ?? null;
+}
+
+function readPetSize(dataRoot = process.env.DSH_HOME) {
+  const safeRoot = typeof dataRoot === 'string' && path.isAbsolute(dataRoot) ? dataRoot : null;
+  const pet = safeRoot ? mainPet(readJson(path.join(safeRoot, 'dsh-pet', 'main-config.jsonc'))) : null;
+  const value = Number(pet?.size);
+  return Number.isFinite(value) && value > 0 ? Math.round(value) : DEFAULT_PET_SIZE;
+}
+
+function writePetSize(dataRoot, size) {
+  if (typeof dataRoot !== 'string' || !path.isAbsolute(dataRoot)) throw new Error('invalid-pet-data-root');
+  if (!Number.isInteger(size) || size < PET_SIZE_MIN || size > PET_SIZE_MAX) throw new Error('invalid-pet-size');
+  const file = path.join(dataRoot, 'dsh-pet', 'main-config.jsonc');
+  const raw = readJson(file);
+  if (!raw || !Array.isArray(raw.pets) || !raw.pets.length) throw new Error('invalid-pet-config');
+  const index = raw.pets.findIndex(pet => pet?.id === 'main');
+  const target = index >= 0 ? index : 0;
+  if (!raw.pets[target] || typeof raw.pets[target] !== 'object' || Array.isArray(raw.pets[target])) throw new Error('invalid-pet-config');
+  const next = { ...raw, pets: raw.pets.map((pet, current) => current === target ? { ...pet, size } : pet) };
+  const temporary = `${file}.${randomUUID()}.tmp`;
+  try {
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.writeFileSync(temporary, JSON.stringify(next, null, 2) + '\n', 'utf8');
+    fs.renameSync(temporary, file);
+  } catch (error) {
+    try { fs.rmSync(temporary, { force: true }); } catch { /* 临时文件写入失败时无需覆盖原配置。 */ }
+    throw error;
+  }
+  return size;
 }
 
 function skinAsset(file, type) {
@@ -199,4 +237,7 @@ function projectConfig(config, { dataRoot = process.env.DSH_HOME } = {}) {
   return { ...config, main: next };
 }
 
-module.exports = { readCharacter, characterCopy, projectConfig, composePersona, characterKey, safeIdentity, availableForms, hostPersona, changedResult };
+module.exports = {
+  readCharacter, characterCopy, projectConfig, composePersona, characterKey, safeIdentity, availableForms, hostPersona, changedResult,
+  readPetSize, writePetSize, PET_SIZE_MIN, PET_SIZE_MAX,
+};
