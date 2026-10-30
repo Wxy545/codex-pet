@@ -3,11 +3,12 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const actions = require('./skin-actions.cjs');
 const catalog = require('./skin-action-catalog.json');
-const { createSkinStore } = require('./codex-skins.cjs');
+const { createSkinStore, install } = require('./codex-skins.cjs');
 const Character = require('./codex-character.cjs');
 const { mkdtemp, mkdir, writeFile, readFile, rm } = require('node:fs/promises');
 const { tmpdir } = require('node:os');
 const { join } = require('node:path');
+const { pathToFileURL } = require('node:url');
 
 test('动作目录保留事件候选槽位、移动参数及唯一ID，不漏掉非随机动作', () => {
   const result = actions.catalogFromAnimations({ idle: ['呼吸'], turn: ['转向'], drag: ['抓起'], clicks: ['挥手'], moves: { default: { leadSec: 2 }, actions: [{ name: '走路' }] }, categories: [{ id: '玩耍', actions: ['魔方'] }], events: { workStatus: [['思考甲', '思考乙'], '工作'] } });
@@ -131,6 +132,31 @@ async function fixture(t) {
   const hostRequest = async () => ({ status: 200, body: JSON.stringify({ main: { animations: { idle: ['呼吸'], moves: { actions: [] } } } }) });
   return { dataRoot, png, hostRequest };
 }
+
+test('形象模型读取当前大小，保存只调用受限尺寸接口',async t=>{
+ const options=await fixture(t),calls=[];
+ await mkdir(join(options.dataRoot,'dsh-pet'),{recursive:true});
+ await writeFile(join(options.dataRoot,'dsh-pet','main-config.jsonc'),JSON.stringify({pets:[{id:'main',size:462}]}));
+ const settingRequest=async(method,route,body)=>{calls.push([method,route,body]);return{status:200,body:JSON.stringify({ok:true,size:430})};};
+ const store=createSkinStore({...options,settingRequest});
+ assert.equal((await store.readModel()).size,462);
+ assert.deepEqual(await store.setSize(430),{size:430});
+ assert.deepEqual(calls,[['POST','/dsh-pet-7340/pet-size',JSON.stringify({size:430})]]);
+ for(const value of [127,1025,430.5,'430'])await assert.rejects(store.setSize(value),/invalid-pet-size/);
+ assert.equal(calls.length,1);
+ const rejected=createSkinStore({...options,settingRequest:async()=>({status:200,body:'{"ok":false,"size":430}'})});
+ await assert.rejects(rejected.setSize(430),/pet-size-save-failed/);
+});
+
+test('尺寸IPC只接受可信桌宠窗口并返回保存结果',async t=>{
+ const options=await fixture(t),handlers=new Map(),calls=[];
+ const electronApi={ipcMain:{handle:(name,handler)=>handlers.set(name,handler),removeHandler(){}},BrowserWindow:{getAllWindows:()=>[]},app:{once(){}}};
+ install({...options,electronApi,settingRequest:async(method,route,body)=>{calls.push([method,route,body]);return{status:200,body:JSON.stringify({ok:true,size:460})};}});
+ const frame={},trusted={sender:{mainFrame:frame,getURL:()=>pathToFileURL(join(__dirname,'index.html')).href},senderFrame:frame};
+ assert.deepEqual(await handlers.get('codex-skin:set-size')(trusted,460),{size:460});
+ assert.deepEqual(calls,[['POST','/dsh-pet-7340/pet-size',JSON.stringify({size:460})]]);
+ await assert.rejects(handlers.get('codex-skin:set-size')({sender:{getURL:()=> 'file:///private/index.html'}},460),/skin-sender-denied/);
+});
 
 test('两个宿主的新装形象与真实身份一致，已保存三角色选择逐字保留',async t=>{
  const options=await fixture(t),previous=process.env.CODEX_PET_HOST,directory=join(options.dataRoot,'skins/curly-sheep'),selection=join(options.dataRoot,'skins/selection.json');

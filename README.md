@@ -68,7 +68,7 @@ Send chats and new tasks from WorkBuddy itself. The pet's Chat (including image 
 
 ## Characters and animations
 
-Choose a chibi character from **Character** in the right-click menu:
+Choose a chibi character from **Character** in the right-click menu. Use **Size** at the top to drag the slider and preview the size live; release it to save without restarting the pet.
 
 - **White Dragon Girl:** the default for new Codex installations, with 23 chibi clips. She can read a spellbook, hug a little gem, tend to her wings, snack, or take a cushion break, alongside her walking, click and work reactions.
 - **Blue whale maid:** the original dsh-pet character and its full animation set.

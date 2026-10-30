@@ -72,7 +72,7 @@ const codexPanelRequest = require('./codex-api.cjs').createHostRequest();
 const codexPetHost = require('./pet-host-menu.cjs').install({hostRequest:codexPanelRequest});
 const codexTaskPanel = require('./codex-task-window.cjs').install({hostRequest:codexPanelRequest});
 const codexChatPanel = require('./codex-chat-window.cjs').install({hostRequest:codexPanelRequest,openTaskPanel:()=>codexTaskPanel.open()});
-require('./codex-skins.cjs').install({hostRequest,dataRoot:process.env.DSH_HOME,onSelectionChanged:async model=>{const character=model.characters.find(item=>item.id===model.selection.character);codexChatPanel.onCharacterChanged?.({id:model.selection.character,name:character.copy.name,locale:model.locale});if(tray){tray.destroy();tray=null;}await startTray();}});
+require('./codex-skins.cjs').install({hostRequest,settingRequest:codexPanelRequest,dataRoot:process.env.DSH_HOME,onSelectionChanged:async model=>{const character=model.characters.find(item=>item.id===model.selection.character);codexChatPanel.onCharacterChanged?.({id:model.selection.character,name:character.copy.name,locale:model.locale});if(tray){tray.destroy();tray=null;}await startTray();}});
 // codex-pet-extensions-end`;
 if(mainCode.includes('// codex-pet-extensions-v2')){
   mainCode=mainCode.replace(/\/\/ codex-pet-extensions-v2[\s\S]*?\/\/ codex-pet-extensions-end/,extensionHook);

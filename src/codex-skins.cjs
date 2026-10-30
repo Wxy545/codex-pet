@@ -4,7 +4,7 @@ const path = require('node:path');
 const { pathToFileURL, fileURLToPath } = require('node:url');
 const { randomUUID } = require('node:crypto');
 const A = require('./skin-actions.cjs');
-const { readCharacter, characterCopy } = require('./codex-character.cjs');
+const { readCharacter, characterCopy, readPetSize, PET_SIZE_MIN, PET_SIZE_MAX } = require('./codex-character.cjs');
 const L = require('./codex-locale.cjs');
 const CHARACTERS = [{ id: 'white-dragon', label: '白龙娘', originalVideo: false }, { id: 'bluefish', label: '大肥鱼', originalVideo: true }, { id: 'curly-sheep', label: '卷卷', originalVideo: false }];
 const knownCharacter = value => value && CHARACTERS.some(character => character.id === value.character);
@@ -47,7 +47,7 @@ async function videoAsset(directory, name) {
   finally { await handle?.close().catch(() => {}); }
 }
 
-function createSkinStore({ dataRoot, hostRequest, logger = console } = {}) {
+function createSkinStore({ dataRoot, hostRequest, settingRequest = hostRequest, logger = console } = {}) {
   if (!dataRoot || !path.isAbsolute(dataRoot)) throw new Error('skin-data-root-required');
   const skinsRoot = path.join(dataRoot, 'skins');
   const selectionFile = path.join(skinsRoot, 'selection.json');
@@ -111,7 +111,7 @@ function createSkinStore({ dataRoot, hostRequest, logger = console } = {}) {
     const selected = characters.find(character => character.id === selection.character);
     // 已选素材被移走时明确回原视频，不写掉用户保存的选择，恢复文件后仍能切回。
     const effectiveSelection = selected?.available.q ? selection : { character: 'bluefish', mode: 'q' };
-    const model = { schemaVersion: 1, locale: identity.locale, selection: effectiveSelection, requestedSelection: selection, characters, catalog: entries, catalogStatus: entries ? 'known' : 'unknown' };
+    const model = { schemaVersion: 1, locale: identity.locale, size: readPetSize(dataRoot), selection: effectiveSelection, requestedSelection: selection, characters, catalog: entries, catalogStatus: entries ? 'known' : 'unknown' };
     await saveJson(path.join(skinsRoot, 'coverage.json'), { schemaVersion: 1, catalogStatus: model.catalogStatus, total: entries?.length ?? null, characters: Object.fromEntries(characters.map(character => [character.id, character.coverage ?? null])) });
     return model;
   }
@@ -126,7 +126,17 @@ function createSkinStore({ dataRoot, hostRequest, logger = console } = {}) {
     return readModel();
   }
 
-  return { readModel, select };
+  async function setSize(value) {
+    if (!Number.isInteger(value) || value < PET_SIZE_MIN || value > PET_SIZE_MAX) throw new Error('invalid-pet-size');
+    if (typeof settingRequest !== 'function') throw new Error('pet-size-unavailable');
+    const response = await settingRequest('POST', '/dsh-pet-7340/pet-size', JSON.stringify({ size: value }));
+    let result;
+    try { result = JSON.parse(response.body); } catch { throw new Error('pet-size-save-failed'); }
+    if (response.status !== 200 || result?.ok !== true || result.size !== value) throw new Error('pet-size-save-failed');
+    return { size: result.size };
+  }
+
+  return { readModel, select, setSize };
 }
 
 function trustedSender(event, rendererFile = path.join(__dirname, 'index.html')) {
@@ -136,9 +146,9 @@ function trustedSender(event, rendererFile = path.join(__dirname, 'index.html'))
   } catch { return false; }
 }
 
-function install({ hostRequest, dataRoot = process.env.DSH_HOME, electronApi, onSelectionChanged } = {}) {
+function install({ hostRequest, settingRequest = hostRequest, dataRoot = process.env.DSH_HOME, electronApi, onSelectionChanged } = {}) {
   const { app, ipcMain, BrowserWindow } = electronApi ?? require('electron');
-  const store = createSkinStore({ hostRequest, dataRoot });
+  const store = createSkinStore({ hostRequest, settingRequest, dataRoot });
   const get = async event => { if (!trustedSender(event)) throw new Error('skin-sender-denied'); return store.readModel(); };
   const select = async (event, value) => {
     if (!trustedSender(event)) throw new Error('skin-sender-denied');
@@ -154,9 +164,16 @@ function install({ hostRequest, dataRoot = process.env.DSH_HOME, electronApi, on
     await onSelectionChanged?.(model);
     return model;
   };
+  const setSize = async (event, value) => {
+    if (!trustedSender(event)) throw new Error('skin-sender-denied');
+    return store.setSize(value);
+  };
   ipcMain.handle('codex-skin:get', get);
   ipcMain.handle('codex-skin:select', select);
-  app.once('before-quit', () => { ipcMain.removeHandler('codex-skin:get'); ipcMain.removeHandler('codex-skin:select'); });
+  ipcMain.handle('codex-skin:set-size', setSize);
+  app.once('before-quit', () => {
+    ipcMain.removeHandler('codex-skin:get'); ipcMain.removeHandler('codex-skin:select'); ipcMain.removeHandler('codex-skin:set-size');
+  });
   return store;
 }
 
@@ -165,6 +182,7 @@ function installPreload() {
   contextBridge.exposeInMainWorld('codexSkins', {
     getState: () => ipcRenderer.invoke('codex-skin:get'),
     select: value => ipcRenderer.invoke('codex-skin:select', value),
+    setSize: value => ipcRenderer.invoke('codex-skin:set-size', value),
     onChanged(callback) {
       const handler = (_event, model) => callback(model);
       ipcRenderer.on('codex-skin:changed', handler);

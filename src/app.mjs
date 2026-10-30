@@ -189,6 +189,21 @@ async function start() {
     if (req.headers['x-dsh-pet-token'] !== security.token || req.headers.origin) return json(res, 403, { error: 'unauthorized' });
     json(res, 200, Character.safeIdentity(Character.readCharacter(home)));
   } });
+  routes.push({ kind: 'exact', path: `${prefix}/pet-size`, handler: async (req, res) => {
+    if (req.method !== 'POST') return json(res, 405, { error: 'method not allowed' });
+    if (req.headers['x-dsh-pet-token'] !== security.token || req.headers.origin) return json(res, 403, { error: 'unauthorized' });
+    let body;
+    try { body = await requestJson(req, 1024); }
+    catch { return json(res, 400, { error: 'invalid pet size' }); }
+    if (!body || typeof body !== 'object' || Array.isArray(body) || Object.keys(body).some(key => key !== 'size')) {
+      return json(res, 400, { error: 'invalid pet size' });
+    }
+    try { json(res, 200, { ok: true, size: Character.writePetSize(home, body.size) }); }
+    catch (error) {
+      const status = error?.message === 'invalid-pet-size' ? 400 : 500;
+      json(res, status, { error: status === 400 ? 'invalid pet size' : 'pet size save failed' });
+    }
+  } });
   routes.push({ kind: 'exact', path: `${prefix}/codex-notices`, handler: (req, res) => {
     if (req.method !== 'GET') return json(res, 405, { error: 'method not allowed' });
     json(res, 200, { notices: notices.splice(0) });
