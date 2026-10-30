@@ -218,3 +218,5 @@ QQ account support uses an independently written OneBot adapter. [NapCat](https:
 ## Contribute
 
 Found a bug? Open an [Issue](https://github.com/Wxy545/codex-pet/issues) with your Windows version, the selected app and its version, and the steps to reproduce it. For code contributions, security reports, and release notes, see [CONTRIBUTING.md](CONTRIBUTING.md), [SECURITY.md](SECURITY.md), and [CHANGELOG.md](CHANGELOG.md).
+
+The [feature plan (Chinese)](docs/feature-plan.md) separates existing features, new requirements, and ideas for evaluation. Planned items are not a list of currently available features.

@@ -218,3 +218,5 @@ Harness 使用自己的账号、会话、余额和聊天。脚下额度条显示
 ## 参与维护
 
 遇到问题，欢迎到 [Issues](https://github.com/Wxy545/codex-pet/issues) 留下 Windows 版本、当前联动应用及其版本和复现步骤。代码贡献见 [CONTRIBUTING.md](CONTRIBUTING.md)，安全问题见 [SECURITY.md](SECURITY.md)，版本变化见 [CHANGELOG.md](CHANGELOG.md)。
+
+后续方向见[功能规划](docs/feature-plan.md)，其中区分已有能力、新增需求和待评估候选；规划项不代表当前可用功能。
