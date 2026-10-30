@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {mkdtemp, mkdir, readFile, writeFile, readdir, rm, symlink, lstat} from 'node:fs/promises';
+import {mkdtemp, mkdir, readFile, writeFile, readdir, rm, symlink, lstat, realpath} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {createHash} from 'node:crypto';
@@ -28,7 +28,7 @@ const files = () => [
   ['config.json', '{}'], ['package.json', '{}'], ['napcat/napcat.mjs', '// synthetic runtime'], ['napcat/static/index.html', '<html>local login</html>'],
 ];
 async function fixture(t, options = {}) {
-  const root = await mkdtemp(join(tmpdir(), 'pet-napcat-test-')); t.after(() => rm(root, {recursive: true, force: true}));
+  const root = await realpath(await mkdtemp(join(tmpdir(), 'pet-napcat-test-'))); t.after(() => rm(root, {recursive: true, force: true}));
   let bytes = options.bytes || zip(files()), fetches = 0, nativeStarts = 0, runtimeStarts = 0;
   const children = [], calls = [], snapshots = [];
   const artifact = {...NAPCAT_RUNTIME_ARTIFACT, bytes: bytes.length, sha256: hash(bytes)};
