@@ -191,7 +191,11 @@ test('native upstream repair stays in selected profile and leaves caller files a
   mkdirSync(join(pkg,'lib'),{recursive:true});mkdirSync(join(pkg,'runtime','electron-helper'),{recursive:true});
   writeFileSync(join(profile,'package.json'),'{"private":true}');
   writeFileSync(join(pkg,'package.json'),'{"name":"dsh-pet","version":"0.3.8","exports":{"./package.json":"./package.json"}}');
-  for(const file of ['lib/client.js','runtime/electron-helper/sprite.js'])writeFileSync(join(pkg,file),oldMotion);
+  for(const file of ['lib/client.js','runtime/electron-helper/sprite.js','runtime/electron-helper/main.js']) {
+    let source=readFileSync(new URL('../node_modules/dsh-pet/'+file,import.meta.url),'utf8');
+    if(file.endsWith('/main.js'))source=source.replace(/\/\/ codex-pet-helper-profile-v1:(?:true|false)\n[\s\S]*?(?=\/\/ ② 宿主探测)/,'');
+    writeFileSync(join(pkg,file),source);
+  }
   assert.equal(Motion.prepareHarnessDependency({profileDir:profile}).status,'updated');
   assert.equal(Motion.prepareHarnessDependency({profileDir:profile}).status,'current');
   const outside=join(root,'outside');mkdirSync(outside,{recursive:true});writeFileSync(join(outside,'package.json'),'{"name":"dsh-pet","version":"0.3.8","exports":{"./package.json":"./package.json"}}');

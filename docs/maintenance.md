@@ -279,7 +279,15 @@ Codex 的 CLI 参数与会话事件可能随版本变化，dsh-pet 补丁也绑�
 
 Harness 已验证版本为 `0.2.1-rc.2` 和 `0.2.1-rc.5`，插件声明与 Windows 安装器只接受这两版。官方 npm 包的 CLI、app-boot、plugin-manager 和 profileContext 实现保持一致，clientModules 的注册接口未变。rc.5 已用真实官方 CLI 在隔离 home 中安装 `dsh-pet@0.3.8` 与本项目 bundle，并通过配置合成；未启动用户 profile 或调用账号。Harness 桌面应用载体仍未验收，不能用这次 CLI 验证替代。
 
+2026-11-01 复核上游 `34cf7ec` 至 [8ad3d957](https://github.com/PC2005-cloud/dsh-pet/commit/8ad3d957f83052d332f0d0f09e90993e9756d2ec) 的 18 次提交，继续固定 npm `0.3.8`。从 `8ad3d957` 移植启动缓存可写性检查与 DPI 异常保护；从 [c58f018](https://github.com/PC2005-cloud/dsh-pet/commit/c58f0187957cd969047239e5433fb30ed999299a) 移植 Harness 网页松手兜底。其余新增睡眠、体感、语音和快捷键能力未引入，代码与素材许可未变。
+
+缓存检查在 Chromium 初始化前实际创建并删除独占临时文件。原目录可写时保持原路径；失败才使用当前宿主 `DSH_HOME/dsh-pet/` 下的专用 profile，独立宿主与原生 Harness 分开。此操作不搬迁旧文件或修改目录权限。Harness 仅修补所选 profile 的固定版本依赖，先核对全部锚点，再以原子替换断开 pnpm 硬链接；Windows 桌宠原有拖拽结算不变。
+
 ## 验证记录
+
+2026-11-01 核对 Codex CLI `0.166.0-alpha.5.1` 与桌面版 `26.1027.3384.0`：参数、隔离权限配置、近期事件及额度字段检查通过。58 个直接相关协议定义和 12 个实际使用的 RPC 分支与既有快照一致，QQ 续聊、动态工具、单次审批、取消及 MCP 初始化无需修改。只读窗口探测确认主窗可定位、协议已注册、跟随启动仍指向本项目；没有重播启动演出、抢占焦点、发送通知或 QQ 消息。WorkBuddy `5.9.3`／CLI `2.165.0`、Harness 官方 latest `0.2.1-rc.5` 均未变化。
+
+0.12.1 完成运行时准备、Harness bundle 构建和 Windows 完整回归：844 项中 842 项通过、2 项因文件符号链接权限跳过，没有失败。新增回归覆盖缓存目录与探针清理、DPI 异常、补丁幂等与损坏锚点、Harness 硬链接隔离，以及丢失捕获、长按取消和组合按键的拖拽收尾。真实 Electron 的三个隔离检查均到达 ready：原目录可用，以及原路径被普通文件占用时的两种备用目录；未创建窗口或重启当前桌宠。这些结果不代替 Windows 受限令牌账号或正式 Harness 浏览器载体验收。
 
 0.12.0 完成运行时准备、Harness bundle 构建和 Windows 完整回归：830 项中 828 项通过、2 项因本机缺少文件符号链接权限跳过，没有失败。目录 junction、硬链接、NTFS 备用数据流、工具关闭、一次审批、取消、超时、MCP 来源与修订隔离均有回归覆盖。
 

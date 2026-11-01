@@ -9,6 +9,7 @@ import { seedBundledSheep } from './bundled-sheep.mjs';
 import { seedBundledStartup } from './bundled-startup.mjs';
 import { patchStartupMain } from './startup-runtime-patch.mjs';
 import { patchHostOpenTarget } from './runtime-host-patch.mjs';
+import { patchHelperStartup } from '../harness/helper-startup-fix.mjs';
 
 const root=resolve(dirname(fileURLToPath(import.meta.url)),'..');
 const pkg=resolve(root,'node_modules/dsh-pet');
@@ -75,6 +76,7 @@ const main=resolve(pkg,'runtime/electron-helper/main.js');
 let mainCode=await readFile(main,'utf8');
 mainCode=patchBridgeAssets(mainCode);
 mainCode=patchHostOpenTarget(mainCode);
+mainCode=patchHelperStartup(mainCode,{appMode:true});
 await writeFile(main,mainCode);
 const oldNoticeHook="require('./codex-notifications.cjs').install({hostRequest});";
 const previousNoticeHook="require(process.env.CODEX_PET_HOST === 'workbuddy' ? './workbuddy-notifications.cjs' : './codex-notifications.cjs').install({hostRequest});";
