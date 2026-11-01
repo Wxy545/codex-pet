@@ -196,14 +196,29 @@ test('HTTP notice endpoint is fixed to loopback and never follows a redirect', a
     'http://user:secret@127.0.0.1:3180/dsh-pet-7340/codex-notices',
     safe + '?secret=anything', safe + '#fragment', safe.replace('codex-notices', 'config'),
   ]) assert.equal(noticeUrl(value), null);
-  const request = createNoticeRequest(safe, async (url, options) => {
+  const token='n'.repeat(43),request = createNoticeRequest(safe, async (url, options) => {
     assert.equal(url, safe);
     assert.equal(options.redirect, 'error');
     assert.ok(options.signal instanceof AbortSignal);
+    assert.equal(options.headers['x-dsh-pet-token'],token);
     return { status: 200, text: async () => '{"notices":[]}' };
-  });
+  },token);
   assert.deepEqual(await request(), { status: 200, body: '{"notices":[]}' });
   await assert.rejects(createNoticeRequest('bad'), /notice-endpoint-invalid/);
+});
+
+test('通知能力令牌缺失或无效时在发出HTTP前拒绝；生产默认读取主进程现有令牌',async()=>{
+ let calls=0;const fetcher=async(_url,options)=>{calls++;assert.equal(options.headers['x-dsh-pet-token'],'v'.repeat(43));return{status:200,text:async()=>'{"notices":[]}'};};
+ for(const token of [null,'','bad','x'.repeat(42),'x'.repeat(44),'+'.repeat(43)])await assert.rejects(createNoticeRequest('http://127.0.0.1:3180/dsh-pet-7340/codex-notices',fetcher,token),/notice-capability-invalid/);
+ const make=env=>{const box={module:{exports:{}},require,process:{platform:process.platform,env},__dirname,URL,AbortSignal,setInterval,clearInterval,console};vm.runInNewContext(readFileSync(path.join(__dirname,'codex-notifications.cjs'),'utf8'),box);return box.module.exports.createNoticeRequest;};
+ await assert.rejects(make({})('http://127.0.0.1:3180/dsh-pet-7340/codex-notices',fetcher),/notice-capability-invalid/);assert.equal(calls,0);
+ await make({CODEX_PET_API_TOKEN:'v'.repeat(43)})('http://127.0.0.1:3180/dsh-pet-7340/codex-notices',fetcher)();assert.equal(calls,1);
+});
+
+test('真实本机通知请求通过生产security.authorize，无令牌仍403且不发系统通知',async t=>{
+ const{pathToFileURL}=require('node:url'),{createServer}=require('node:http');const{createRequestSecurity}=await import(pathToFileURL(path.resolve(__dirname,'../node_modules/dsh-pet/lib/codex-host.js')).href),security=createRequestSecurity();let reads=0;
+ const server=createServer((req,res)=>{if(!security.authorize(req,res))return;assert.equal(req.url,'/dsh-pet-7340/codex-notices');reads++;res.setHeader('content-type','application/json');res.end('{"notices":[]}');});await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));t.after(()=>new Promise(resolve=>server.close(resolve)));const url='http://127.0.0.1:'+server.address().port+'/dsh-pet-7340/codex-notices';
+ assert.equal((await fetch(url)).status,403);assert.equal(reads,0);const response=await createNoticeRequest(url,fetch,security.token)();assert.equal(response.status,200);assert.deepEqual(JSON.parse(response.body),{notices:[]});assert.equal(reads,1);
 });
 
 test('native diagnostics retain only HRESULT and never notification content', async () => {

@@ -255,7 +255,9 @@ export function createCodexRemote({cwd,codexPath,codexHome,permission='read-only
           const name=value?.model;
           if(!object(value)||typeof value.id!=='string'||!reviewable(value.id,100)||typeof name!=='string'||!modelName(name)||typeof value.displayName!=='string'||!reviewable(value.displayName,100)||!Array.isArray(value.supportedReasoningEfforts)||value.supportedReasoningEfforts.length>16||!efforts.has(value.defaultReasoningEffort))throw failure('invalid_protocol');
           const supported=value.supportedReasoningEfforts.map(e=>e?.reasoningEffort);if(supported.some(e=>!efforts.has(e)))throw failure('invalid_protocol');
-          if(value.hidden===true||seen.has(name))continue;seen.add(name);items.push({id:value.id,model:name,displayName:value.displayName,isDefault:value.isDefault===true,supportedReasoningEfforts:[...new Set(supported)],defaultReasoningEffort:value.defaultReasoningEffort});
+          if(value.inputModalities!==undefined&&(!Array.isArray(value.inputModalities)||value.inputModalities.length>2||value.inputModalities.some(mode=>!['text','image'].includes(mode))))throw failure('invalid_protocol');
+          if(value.hidden===true||seen.has(name))continue;seen.add(name);items.push({id:value.id,model:name,displayName:value.displayName,isDefault:value.isDefault===true,supportedReasoningEfforts:[...new Set(supported)],defaultReasoningEffort:value.defaultReasoningEffort,
+            ...(value.inputModalities===undefined?{}:{inputModalities:[...new Set(value.inputModalities)]})});
         }
         if(response.nextCursor==null)return items;if(!opaque(response.nextCursor)||response.nextCursor===cursor)throw failure('invalid_protocol');cursor=response.nextCursor;
       }

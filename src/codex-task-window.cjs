@@ -155,6 +155,7 @@ function createController({ hostRequest, electron, fileRoot = __dirname, fsImpl 
       if (submitPending) return failure('busy');
       if (!selectedDirectory) return failure('directory_required');
       const submittedDirectory = selectedDirectory;
+      if(body&&!require('./execution-picker.cjs').validExecution(body.execution))return failure('invalid_input');
       if (!body || body.confirmed !== true) return failure('confirmation_required');
       if (!samePath(body.cwd, submittedDirectory)) return failure('invalid_cwd');
       if (typeof body.task !== 'string' || !body.task.trim() || body.task.length > 12000 || !['read-only', 'workspace-write'].includes(body.permission)) return failure('invalid_input');
@@ -162,7 +163,7 @@ function createController({ hostRequest, electron, fileRoot = __dirname, fsImpl 
       try {
         const currentDirectory = await io.realpath(submittedDirectory);
         if (!samePath(currentDirectory, submittedDirectory) || !(await io.stat(currentDirectory)).isDirectory()) return failure('invalid_cwd');
-        return await request('POST', TASK_PATH, { cwd: submittedDirectory, task: body.task.trim(), permission: body.permission, confirmed: true });
+        return await request('POST', TASK_PATH, { cwd: submittedDirectory, task: body.task.trim(), permission: body.permission, confirmed: true,...(body.execution?{execution:body.execution}:{}) });
       } catch { return failure('invalid_cwd'); }
       finally { submitPending = false; }
     },

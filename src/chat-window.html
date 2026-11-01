@@ -11,6 +11,7 @@
   <script defer src="codex-locale.cjs"></script>
   <script defer src="panel-locale.js"></script>
   <script defer src="panel-navigation.js"></script>
+  <script defer src="execution-picker.js"></script>
   <script defer src="chat-window.js"></script>
 </head>
 <body data-panel="chat">
@@ -24,6 +25,7 @@
     </div>
     <section id="messages" class="messages" role="log" aria-label="Chat messages" data-i18n-aria="对话消息" aria-live="polite"></section>
     <form id="chat-form" class="composer">
+      <div data-execution-picker></div>
       <div id="attachments" class="attachments" aria-label="Images to send" data-i18n-aria="待发送图片" hidden></div>
       <label class="sr-only" for="message-input" data-i18n="消息">Message</label>
       <textarea id="message-input" rows="3" maxlength="8192" placeholder="Say something…" data-i18n-placeholder="说点什么…" aria-describedby="image-limit"></textarea>

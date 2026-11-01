@@ -34,10 +34,21 @@
 
   function normalizeLayer(value) {
     const invalid = () => { throw new Error('invalid-skin-manifest'); };
+    const options = {};
+    if (value.loop !== undefined) { if (typeof value.loop !== 'boolean') invalid(); options.loop = value.loop; }
+    if (value.layout !== undefined) {
+      const layout = value.layout;
+      if (!layout || typeof layout !== 'object' || Array.isArray(layout) || Object.keys(layout).some(key => !['scale','anchorX','anchorY','offsetX','offsetY'].includes(key))) invalid();
+      for (const [key, number] of Object.entries(layout)) if (!Number.isFinite(number) || (key === 'scale' ? number < .1 || number > 4 : key.startsWith('anchor') ? number < 0 || number > 1 : Math.abs(number) > 2)) invalid();
+      options.layout = { ...layout };
+    }
     if (value.type === 'video') {
       if (!validVideo(value.file) || ['columns', 'rows', 'frames', 'fps', 'rects'].some(key => value[key] !== undefined)) invalid();
-      return { type: 'video', file: value.file };
+      for (const key of ['startSec','endSec']) if (value[key] !== undefined) { if (!Number.isFinite(value[key]) || value[key] < 0 || value[key] > 60) invalid(); options[key] = value[key]; }
+      if (options.endSec !== undefined && options.endSec <= (options.startSec ?? 0)) invalid();
+      return { type: 'video', file: value.file, ...options };
     }
+    if (value.startSec !== undefined || value.endSec !== undefined) invalid();
     if (value.type !== undefined) invalid();
     const profile = { file: value.file, columns: value.columns ?? 4, rows: value.rows ?? 4, frames: value.frames, fps: value.fps ?? 4 };
     if (!validFile(profile.file)) invalid();
@@ -49,13 +60,14 @@
       if (!value.rects.every(rect => Array.isArray(rect) && rect.length === 4 && rect.every(Number.isInteger) && rect[0] >= 0 && rect[1] >= 0 && rect[2] > 0 && rect[3] > 0 && rect.every(number => number <= 32768))) invalid();
       profile.rects = value.rects.map(rect => [...rect]);
     }
-    return profile;
+    return { ...profile, ...options };
   }
 
   function normalizeManifest(input) {
     const invalid = () => { throw new Error('invalid-skin-manifest'); };
     if (input !== undefined && (!input || input.schemaVersion !== 1 || typeof input !== 'object' || Array.isArray(input))) invalid();
     const result = defaultManifest();
+    if (Object.keys(input?.profiles ?? {}).length > 256 || Object.keys(input?.actions ?? {}).length > 512) invalid();
     for (const [key, value] of Object.entries(input?.profiles ?? {})) {
       if (!validKey(key) || !value || typeof value !== 'object') invalid();
       const profile = normalizeLayer(value);
@@ -63,7 +75,7 @@
       result.profiles[key] = profile;
     }
     for (const [id, value] of Object.entries(input?.actions ?? {})) {
-      if (!id || id.length > 160 || !value || !validKey(value.profile) || !result.profiles[value.profile] || !['dedicated', 'shared'].includes(value.coverage)) invalid();
+      if (!id || id.length > 160 || ['__proto__','constructor','prototype'].includes(id) || !value || !validKey(value.profile) || !Object.hasOwn(result.profiles, value.profile) || !['dedicated', 'shared'].includes(value.coverage)) invalid();
       result.actions[id] = { profile: value.profile, coverage: value.coverage };
     }
     return result;
@@ -121,5 +133,33 @@
     return { summary, actions };
   }
 
-  return { catalogFromAnimations, defaultManifest, normalizeManifest, fallbackProfile, resolveAction, buildCoverage, profileReady };
+  /** 固定事件录音只播放已登记的本机文件；不排队，不在恢复显示时补播。 */
+  function createFixedVoice({ createAudio, now = () => Date.now() } = {}) {
+    if (typeof createAudio !== 'function') throw new TypeError('audio factory required');
+    let role = null, signature = '', current = null, hidden = false, disposed = false, generation = 0;
+    const cooldown = new Map();
+    function stop() {
+      generation++; const audio = current; current = null;
+      if (audio) { audio.pause(); audio.muted = true; audio.volume = 0; audio.removeAttribute('src'); audio.load(); }
+    }
+    function setRole(value) {
+      const next = JSON.stringify([value?.id, value?.voices, Object.entries(value?.assets || {}).filter(([, a]) => a.type === 'audio')]);
+      if (next !== signature) { stop(); cooldown.clear(); signature = next; }
+      role = value;
+    }
+    async function trigger(event) {
+      const binding = role?.voices?.[event], asset = role?.assets?.[binding?.file];
+      if (disposed || hidden || !binding || asset?.available !== true || asset.type !== 'audio' || typeof asset.url !== 'string' || !asset.url.startsWith('file:') || !Number.isFinite(binding.volume) || binding.volume <= 0 || binding.volume > 1 || !Number.isFinite(binding.cooldownSec) || binding.cooldownSec < 0 || typeof binding.interrupt !== 'boolean') return false;
+      const time = now(), previous = cooldown.get(event);
+      if (previous !== undefined && time - previous < binding.cooldownSec * 1000 || current && !current.paused && !binding.interrupt) return false;
+      stop(); const token = generation, audio = createAudio(); current = audio;
+      audio.src = asset.url; audio.preload = 'auto'; audio.volume = binding.volume; audio.muted = false; cooldown.set(event, time);
+      const end = () => { if (current === audio) stop(); };
+      audio.addEventListener('ended', end, { once: true }); audio.addEventListener('error', end, { once: true });
+      try { await audio.play(); if (disposed || hidden || token !== generation || current !== audio) { audio.pause(); return false; } return true; }
+      catch { if (current === audio) stop(); return false; }
+    }
+    return { setRole, trigger, stop, setHidden(value) { hidden = value === true; if (hidden) stop(); }, dispose() { disposed = true; stop(); role = null; cooldown.clear(); } };
+  }
+  return { catalogFromAnimations, defaultManifest, normalizeManifest, fallbackProfile, resolveAction, buildCoverage, profileReady, createFixedVoice };
 });

@@ -46,6 +46,13 @@ function fileApproval(r,id,params={}){
   r.request(id,'item/fileChange/requestApproval',params);
 }
 
+test('模型目录只投影宿主明确返回的输入模态，缺失时不猜视觉能力',async t=>{
+  const r=rig(t,{dispatch(m,{reply}){if(m.method==='model/list'){
+    reply(m,{data:[{id:'visual',model:'synthetic-visual',displayName:'Visual',isDefault:true,defaultReasoningEffort:'low',supportedReasoningEfforts:[{reasoningEffort:'low'}],inputModalities:['text','image']},{id:'unknown',model:'synthetic-unknown',displayName:'Unknown',isDefault:false,defaultReasoningEffort:'low',supportedReasoningEfforts:[]}],nextCursor:null});return false;
+  }}});
+  const rows=await r.remote.listModels();assert.deepEqual(rows[0].inputModalities,['text','image']);assert.equal(Object.hasOwn(rows[1],'inputModalities'),false);
+});
+
 test('异步显示回调拒绝不成为未捕获拒绝，也不改变任务执行结果',async t=>{
   const r=rig(t,{async onEvent(){throw Error('synthetic async view failure');}});
   const {promise}=await r.start();r.complete();

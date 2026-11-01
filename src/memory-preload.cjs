@@ -1,0 +1,4 @@
+'use strict';
+const{contextBridge,ipcRenderer}=require('electron');
+contextBridge.exposeInMainWorld('petPanels',Object.freeze({host:process.env.CODEX_PET_HOST==='workbuddy'?'workbuddy':'codex',getState:()=>ipcRenderer.invoke('codex-panels:state'),onChanged:callback=>{const listener=(_event,value)=>callback(value);ipcRenderer.on('codex-panels:changed',listener);return()=>ipcRenderer.removeListener('codex-panels:changed',listener);},navigate:name=>ipcRenderer.invoke('codex-panels:navigate',name)}));
+contextBridge.exposeInMainWorld('memoryPanel',Object.freeze({getScopes:()=>ipcRenderer.invoke('codex-memory:scopes'),request:body=>ipcRenderer.invoke('codex-memory:request',body),exportMemory:body=>ipcRenderer.invoke('codex-memory:export',body),roleSettings:body=>ipcRenderer.invoke('codex-memory:settings',body)}));

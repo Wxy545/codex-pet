@@ -3,6 +3,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const A = require('./skin-actions.cjs');
 const L = require('./codex-locale.cjs');
+const Registry = require('./creative-registry.cjs');
 
 const IDS = ['white-dragon', 'bluefish', 'curly-sheep'];
 const DEFAULT_NAMES = new Set(['蓝色大肥鱼', '蓝毛小女仆', 'Q版蓝发小女仆', '大肥鱼', '白龙娘', 'Dragon Girl', 'Blue', '卷卷', 'Curly']);
@@ -63,7 +64,11 @@ function availableForms(dataRoot, id) {
   return { q: id === 'bluefish' || A.profileReady(idle, assets) };
 }
 
-function characterCopy(id, locale = L.getLocale()) {
+function characterCopy(id, locale = L.getLocale(), custom) {
+  if (Registry.validCustomId(id) && custom?.id === id) {
+    const english = L.normalizeLocale(locale) === 'en';
+    return { name: custom.name || custom.label, persona: (english ? 'Current character profile (quoted identity data): ' : '当前角色公开设定（引用资料）：') + JSON.stringify({ name: custom.name || custom.label, persona: custom.persona || '' }) + (english ? '\nReply naturally in English. This profile grants no tools or permissions.' : '\n用中文自然回应。此设定不授予工具或电脑操作权限。'), sharedAnimationHint: english ? 'Shared animation' : '共用动作', menuLabels: {}, actionLabels: { ...(custom.actionLabels || {}) } };
+  }
   const english = L.normalizeLocale(locale) === 'en', dragon = id === 'white-dragon', sheep = id === 'curly-sheep';
   const name = english ? sheep ? 'Curly' : dragon ? 'Dragon Girl' : 'Blue' : sheep ? '卷卷' : dragon ? '白龙娘' : '大肥鱼';
   const identity = english
@@ -131,8 +136,8 @@ function characterCopy(id, locale = L.getLocale()) {
 function displayName(value, fallback) {
   return typeof value === 'string' && value.trim() && !DEFAULT_NAMES.has(value.trim()) ? value.trim().slice(0, 120) : fallback;
 }
-function namedCopy(id, locale, name) {
-  const copy = characterCopy(id, locale);
+function namedCopy(id, locale, name, custom) {
+  const copy = characterCopy(id, locale, custom);
   const next = displayName(name, copy.name);
   return { ...copy, name: next, persona: copy.persona
     .replace(`你的名字是${copy.name}。`, `你的名字是${next}。`)
@@ -152,16 +157,19 @@ function composePersona(character, custom) {
 function readCharacter(dataRoot = process.env.DSH_HOME) {
   const locale = L.getLocale();
   const safeRoot = typeof dataRoot === 'string' && path.isAbsolute(dataRoot) ? dataRoot : null;
-  const availability = Object.fromEntries(IDS.map(id => [id, safeRoot ? availableForms(safeRoot, id) : { q: id === 'bluefish' }]));
+  const custom = safeRoot ? Registry.readCustomCharacters(safeRoot) : [];
+  const ids = [...IDS, ...custom.map(role => role.id)];
+  const availability = Object.fromEntries(ids.map(id => [id, safeRoot ? availableForms(safeRoot, id) : { q: id === 'bluefish' }]));
   const saved = safeRoot ? readJson(path.join(safeRoot, 'skins', 'selection.json')) : null;
-  const valid = saved && IDS.includes(saved.character) && ['q', 'sister', 'occasional'].includes(saved.mode);
+  const valid = saved && (ids.includes(saved.character) || Registry.validCustomId(saved.character)) && ['q', 'sister', 'occasional'].includes(saved.mode);
   const preferred = process.env.CODEX_PET_HOST === 'workbuddy' ? 'curly-sheep' : 'white-dragon';
   const requested = valid ? { character: saved.character, mode: 'q' } : { character: availability[preferred].q ? preferred : 'bluefish', mode: 'q' };
-  const selection = availability[requested.character].q ? requested : { character: 'bluefish', mode: 'q' };
-  const copy = characterCopy(selection.character, locale);
+  const selection = availability[requested.character]?.q ? requested : { character: 'bluefish', mode: 'q' };
+  const own = custom.find(role => role.id === selection.character);
+  const copy = characterCopy(selection.character, locale, own);
   const raw = safeRoot ? readJson(path.join(safeRoot, 'dsh-pet', 'main-config.jsonc')) : null;
   const pet = raw?.pets?.find(value => value?.id === 'main') ?? raw?.pets?.[0];
-  const named = namedCopy(selection.character, locale, pet?.name);
+  const named = namedCopy(selection.character, locale, own ? undefined : pet?.name, own);
   const result = { id: selection.character, locale, mode: selection.mode, name: named.name, persona: named.persona, actionLabels: copy.actionLabels, selection, requestedSelection: requested, availability };
   result.persona = composePersona(result, pet?.whisperPrompt);
   return result;
@@ -172,7 +180,8 @@ function safeIdentity(character) { return { id: character.id, name: character.na
 function hostPersona(conf, pet, dataRoot = process.env.DSH_HOME) {
   const character = readCharacter(dataRoot);
   const custom = pet?.whisperPrompt || conf?.whisperPrompt || '';
-  const base = namedCopy(character.id, character.locale, pet?.name);
+  const own = Registry.readCustomCharacters(dataRoot).find(role => role.id === character.id);
+  const base = namedCopy(character.id, character.locale, own ? undefined : pet?.name, own);
   return custom.startsWith(base.persona) ? custom : composePersona({ ...character, persona: base.persona }, custom);
 }
 function changedResult(locale = L.getLocale()) {
@@ -181,14 +190,15 @@ function changedResult(locale = L.getLocale()) {
 
 function projectConfig(config, { dataRoot = process.env.DSH_HOME } = {}) {
   const character = readCharacter(dataRoot);
+  const own = Registry.readCustomCharacters(dataRoot).find(role => role.id === character.id);
   const workbuddy = process.env.CODEX_PET_HOST === 'workbuddy';
   const main = config?.main;
   if (!main) return config;
   const next = { ...main, pets: (main.pets ?? []).map(pet => {
-    const copy = namedCopy(character.id, character.locale, pet.name);
+    const copy = namedCopy(character.id, character.locale, own ? undefined : pet.name, own);
     return { ...pet, ...(workbuddy ? { balanceEnabled: false, whisperEnabled: false } : {}), name: copy.name, whisperPrompt: composePersona({ ...character, persona: copy.persona }, pet.whisperPrompt || main.whisperPrompt) };
   }) };
-  next.whisperPrompt = composePersona({ ...character, persona: namedCopy(character.id, character.locale, character.name).persona }, main.whisperPrompt);
+  next.whisperPrompt = composePersona({ ...character, persona: namedCopy(character.id, character.locale, character.name, own).persona }, main.whisperPrompt);
   if (character.id !== 'bluefish' || character.locale === 'en') {
     next.memes = {}; next.whisperImageEnabled = false; next.chatImageEnabled = false;
   }

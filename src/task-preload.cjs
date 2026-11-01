@@ -10,3 +10,5 @@ contextBridge.exposeInMainWorld('taskPanel', Object.freeze({
   cancelTask: id => ipcRenderer.invoke('dragon-task:cancel', id),
   copyResult: () => ipcRenderer.invoke('dragon-task:copy'),
 }));
+
+contextBridge.exposeInMainWorld('executionCatalog',Object.freeze({get:()=>ipcRenderer.invoke('pet-execution:catalog')}));

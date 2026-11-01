@@ -58,11 +58,13 @@ function noticeUrl(value) {
   }
 }
 
-function createNoticeRequest(value, fetcher = globalThis.fetch) {
+function createNoticeRequest(value, fetcher = globalThis.fetch, token = process.env.CODEX_PET_API_TOKEN) {
   const url = noticeUrl(value);
   return async () => {
     if (!url || typeof fetcher !== 'function') throw new Error('notice-endpoint-invalid');
-    const response = await fetcher(url, { method: 'GET', signal: AbortSignal.timeout(4000), redirect: 'error' });
+    // 通知也是私有读接口；只在主进程携带已有能力令牌，不将服务端改为公开。
+    if (typeof token !== 'string' || !/^[A-Za-z0-9_-]{43}$/.test(token)) throw new Error('notice-capability-invalid');
+    const response = await fetcher(url, { method: 'GET', headers:{'x-dsh-pet-token':token}, signal: AbortSignal.timeout(4000), redirect: 'error' });
     return { status: response.status, body: await response.text() };
   };
 }

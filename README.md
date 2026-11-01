@@ -4,7 +4,7 @@
 
 A Windows desktop pet for Codex, WorkBuddy, and DeepSeek Harness. Pick a chibi dragon girl, Curly the sheep, or the original whale maid. They react to your tasks, wander around the desktop, and bounce when you pick them up.
 
-Built on [dsh-pet](https://github.com/PC2005-cloud/dsh-pet), with task status, desktop interactions, and Windows notifications. Codex mode also includes usage snapshots, chat with images, and project tasks.
+Built on [dsh-pet](https://github.com/PC2005-cloud/dsh-pet), with a task list, usage display, Windows notifications, and remote conversations. Make your own character and animations, keep chat memories, or let her browse selected content. Each assistant uses its own account and capabilities.
 
 <p>
   <img src="docs/assets/white-dragon-idle.webp" width="260" alt="White Dragon Girl idle animation">
@@ -49,16 +49,23 @@ Right-click the pet and open **Control center** to preview characters and adjust
 | --- | --- | --- | --- |
 | Poke, drag, wander, pick an action | Supported | Supported | Native pet |
 | Task status, launch with app, completion alerts | Codex sessions | WorkBuddy tasks | Harness services |
+| Task list | Desktop, pet, and remote tasks | WorkBuddy and remote tasks | Native profile's observed turns |
 | Usage | Available windows, including 5-hour and weekly limits | Credits from the local client | API balance configured in Harness |
 | In-pet chat, images, file tasks | Supported; tasks start read-only | Submit in WorkBuddy | Submit in Harness |
 | AI chatter | Supported | Unavailable | Harness services |
-| QQ remote tasks | Desktop and QQ conversations | New QQ conversations | New QQ conversations |
+| QQ and overseas remote tasks | Desktop and bridge-created conversations | Bridge-created conversations | Bridge-created conversations |
 
 Switching apps changes the source of events, usage, and notifications. A startup theme changes the visuals only; it never changes the account or task destination. Harness uses its native plugin and manages its own settings and services.
 
 Turn off **Show pet** in **Interactions**, or use **Hide pet** in the tray menu to hide her. Fullscreen apps, including games, hide the pet automatically by default; turn this off with **Hide during fullscreen apps**. The tray's **Show pet** brings her back. Chat, tasks, and notifications keep running while she is hidden.
 
 The usage bar sits directly below the character. Codex shows each available window, such as **5h 81% · Week 33%**; click for reset times. WorkBuddy shows credits, and Harness shows its own API balance. The standalone pet can also show CPU, memory, and GPU usage. Unavailable readings show **—**; turn off **System monitor** in **Interactions** to hide this row.
+
+## Task list and model defaults
+
+Open **Task list** in the sidebar to see running tasks and items that need attention. Filter by app, source, or state; check elapsed time, the last event, and the model and reasoning effort when reported. Mark items read or snooze them. **Open source**, **Cancel**, **Result**, and **Materials** appear only when that task has the corresponding operation. Records restored after a restart are marked **Last known** rather than shown as still running.
+
+Switch the view to **Model defaults** to choose Codex models by purpose: chat, whispers, QQ role chat, translation, summaries, image understanding, project tasks, and memory summaries. Lightweight purposes prefer an available Luna at low effort; project tasks use the account's default model with a supported high effort. The choices come from your actual model catalog. Chat and Tasks can override the model and effort for one request without changing the saved default; Chat also offers **Translate** and **Summarize**. WorkBuddy and Harness keep their own native model settings.
 
 ## Give her a poke
 
@@ -85,7 +92,15 @@ The pet follows WorkBuddy 5.9.3 task events: thinking, using tools, waiting for 
 
 The bar below the pet shows the current WorkBuddy personal account's remaining credits through the client's own local read-only channel. If WorkBuddy is closed, signed out, or unable to fetch credits, the balance is unavailable; it is never converted to Codex usage windows.
 
-The pet's Chat (including image input), Tasks, and AI chatter remain unavailable in this mode. Submit tasks in WorkBuddy itself, or use the QQ connection below.
+The pet's separate Chat (including image input), Tasks, and AI chatter remain unavailable in this mode. Submit tasks in WorkBuddy itself, or use a QQ or overseas connection below.
+
+## Companion chat and memory
+
+Remote messages can be either **tasks** or **companion chat**. Use `/role hello` for a character reply, or `/task your request` for a task. Set QQ's default in **Memory → QQ default mode**; each overseas connection has its own **Default message mode**. Companion chat uses a separate generator with no computer tools and the selected assistant's own account. It does not continue or create a project task.
+
+Open **Memory** to search saved exchanges, view their original text and source, correct or delete a record, set a retention period, clear a scope, or export JSON. **View used memories** shows the excerpts selected for a reply. Originals are kept separately from the retrieval index; **Summarize for retrieval** can update that index without replacing the originals. Retrieval has a fixed context budget, and correcting or deleting a source invalidates replies still being generated from it.
+
+Memory stays on your computer and is separated by assistant, account, connection, and character. Turn on **Share my QQ and desktop memories** to use the same memory scope for that assistant's later QQ and desktop chats; existing separate records are kept. Overseas connections remain separate. External posts and comments retain their source and are not treated as things you said.
 
 ## Tasks from QQ
 
@@ -120,6 +135,9 @@ Select **Official QQ bot**, then **Create QQ bot**. Create a bot on QQ Open Plat
 | `/permissions`, `/permissions read-only`, `/permissions edit` | View or change access within the limit set on your computer |
 | `/current`, `/status` | Show the task app, project, conversation, permissions, and progress; Codex also shows the last model and effort used |
 | `/cancel`, `/result`, `/help` | Cancel, retrieve a saved result, or show commands |
+| `/role hello`, `/task your request` | Choose companion chat or a task for this message |
+| `/pet-actions`, `/pet-character` | List current animations or characters, then select by number |
+| `/pet-hide`, `/pet-show` | Hide or show the currently linked app's pet |
 
 **Codex** supports text continuation in existing desktop conversations. Use `/new` for a new QQ conversation with file tools; Shell and MCP also use dedicated QQ conversations. Existing conversations are kept without copying or rerunning them. Auto mode is the default: everyday chat prefers an available Luna model at `low` effort, while file and code tasks prefer the account's default model at `high`; an available Astra or Sol takes priority when that default is Luna. Effort follows the model's supported levels. Local rules make this choice without another model call. Ambiguous messages with no prior context wait for `/as-chat` or `/as-task`.
 
@@ -147,6 +165,12 @@ Approval messages show the operation and a one-time code. Questions include repl
 
 Only the paired QQ account can send private text commands. Group chats, self-sent messages, and non-text messages are ignored. Authorize folders on your computer and select them by number in QQ; conversation lists show names and states only. AppSecret is encrypted for your Windows account. NapCat's native configuration contains local connection tokens, so keep the installation's `data/` folder private.
 
+## Other chat apps
+
+Open **Chat connections** in the sidebar to add a **Telegram bot**, **Telegram account**, **Discord bot**, **LINE Official Account**, or **WhatsApp Cloud API number**. Each connection chooses Codex, WorkBuddy, or Harness and keeps its own pairing, projects, permissions, conversations, and results. After owner pairing, task messages use the same approval, cancellation, continuation, and result handling as QQ. Companion chat and task mode are selected separately for each connection.
+
+Telegram bots use long polling; Telegram accounts sign in through the local window with an API ID and API Hash. Discord supports official bots only. LINE and WhatsApp need your own public HTTPS webhook forwarded to the pet's separate local callback listener. These five adapters have protocol tests and local UI checks, but **real overseas accounts and message delivery have not been verified**. Setup and platform-specific requirements are in [Chat connections](docs/international-chat.md).
+
 ## Characters and animations
 
 Choose a chibi character under **Characters** in the control center:
@@ -164,6 +188,22 @@ The original blue whale maid retains her **106 transparent animations**. These p
   <img src="https://cdn.jsdelivr.net/gh/PC2005-cloud/dsh-pet@main/dsh-pet/assets/preview/yuandi-zhuanxin-wan-mofang.gif" width="180" alt="Upstream whale maid playing with a Rubik’s cube">
   <img src="https://cdn.jsdelivr.net/gh/PC2005-cloud/dsh-pet@main/dsh-pet/assets/preview/chi-baifan.gif" width="180" alt="Upstream whale maid eating rice">
 </p>
+
+## Make your own pet
+
+Open **Create** to start a character, copy a built-in one, or import a work package. Edit the name, profile, author, source, and material license. Import PNG images or sprite sheets, combine a PNG sequence, or use transparent WebM clips. Preview loops against light, dark, or checkerboard backgrounds, adjust framing and playback, then bind clips to the pet's actual action slots. **Use character** applies the checked package locally.
+
+You can also bind recordings to greetings, clicks, work, approvals, completion, and errors, with volume and cooldown controls. Add a startup clip to a character package, or trim and arrange clips in **Startup clips**. Exported packages include the chosen media, bindings, and material license, not your chat history or memory.
+
+To contribute, open **GitHub contributions**, connect your GitHub account, and check the file list, public profile, production notes, and license. After you confirm playback and distribution rights, **Publish contribution PR** uploads the work to your public fork and opens a PR here; larger archives use a release in that fork. You can refresh the review status from the same panel. Nothing is published merely by importing or exporting a local package.
+
+## Content activities and AI host sessions
+
+**Activities** connects selected content services or account APIs to bounded browsing and analysis. Domestic adapters cover Bilibili, Douyin, Xiaohongshu, Weibo, and RSS subscriptions; overseas adapters cover specific X, Reddit, YouTube, TikTok, Instagram, Pinterest, and Twitch API operations. The available feed, comments, captions, and media depend on the selected service and account permissions. This is not a universal recommendation-feed reader.
+
+Choose a source, assistant, operations, and budget, then **Run now** or enable a read-only schedule. Likes, comments, private messages, publishing, and streaming controls require their own switches and a local confirmation for each operation. Results retain their sources and distinguish text, captions, image pixels, and unavailable material. Optional QQ sharing goes only to your paired account.
+
+An **AI host session** can read bounded live comments, generate short replies with a separate public persona, update a selected OBS text source, and play an enabled Windows voice. Set a duration and model-call budget, then start, pause, or end the session. You prepare the stream, OBS scene, content service, and audio capture; starting the host does not itself start streaming. See [Content activities](docs/content-activities.md) for supported operations and the current verification limits, including unverified overseas accounts and live broadcasts.
 
 ## Startup and updates
 
@@ -202,6 +242,8 @@ Choose **Companion app → DeepSeek Harness (native plugin)** in the control cen
 
 Harness uses its own account, sessions, balance, and chat. The bar below the pet shows its provider's API balance, credits, or available usage windows; click a window summary for reset details. Switch back to Codex or WorkBuddy from the tray or control center to restore the standalone pet and your saved character. Startup themes and imported videos currently apply to the standalone pet, not Harness's native startup page. See the [Harness guide](harness/README.md) for supported versions and manual installation.
 
+The native task button lists turns observed in that Harness profile, with counts, elapsed time, and reported model details. It supports read/snooze and opening a conversation when the native client is connected. It does not take over or cancel existing desktop sessions. The supported CLI profiles have been checked in isolation; Harness Desktop itself remains unverified.
+
 ## Buy me a coffee
 
 Want to see more dragon-girl animations? You can help fund the video work through [Ko-fi](https://ko-fi.com/wxy545) or the WeChat code below. If you have already made an animation, share it in an [Issue](https://github.com/Wxy545/codex-pet/issues) and I’ll adapt it for the pet. See the [animation guide](docs/animation-contributions.md) for specs.
@@ -232,5 +274,3 @@ QQ account support uses an independently written OneBot adapter. [NapCat](https:
 ## Contribute
 
 Found a bug? Open an [Issue](https://github.com/Wxy545/codex-pet/issues) with your Windows version, the selected app and its version, and the steps to reproduce it. For code contributions, security reports, and release notes, see [CONTRIBUTING.md](CONTRIBUTING.md), [SECURITY.md](SECURITY.md), and [CHANGELOG.md](CHANGELOG.md).
-
-The [feature plan (Chinese)](docs/feature-plan.md) separates existing features, new requirements, and ideas for evaluation. Planned items are not a list of currently available features.

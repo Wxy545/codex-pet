@@ -8,6 +8,15 @@ import { createCodexChatHandler } from '../src/codex-chat.mjs';
 
 const cwd = resolve('mock-task-workspace');
 const body = overrides => ({ cwd, task: '检查本目录的文件并给出摘要。', permission: 'read-only', confirmed: true, ...overrides });
+test('用途与单次模型选择固化到真实CLI参数，目录失效不启动或占锁',async()=>{
+ const seen=[],gate=createCodexActivityGate();
+ const r=rig({activityGate:gate,resolveExecution:async value=>{seen.push(value);if(value.override?.model==='missing')throw Object.assign(Error('missing'),{code:'model_unavailable'});return{model:'test-model',effort:'high',provenance:'requested'};}});
+ await assert.rejects(r.handler.start(body({execution:{model:'missing'}})),e=>e.code==='model_unavailable');assert.equal(r.calls.length,0);
+ const view=await r.handler.start(body({execution:{model:'test-model',effort:'high'}}));
+ assert.equal(seen.at(-1).purpose,'task');assert.deepEqual(seen.at(-1).override,{model:'test-model',effort:'high'});
+ assert.equal(view.execution.model,'test-model');assert.equal(r.calls[0].args[r.calls[0].args.indexOf('--model')+1],'test-model');assert.ok(r.calls[0].args.includes('model_reasoning_effort="high"'));
+ r.complete(r.children[0]);assert.equal(r.handler.snapshot().execution.effort,'high');
+});
 class Response extends EventEmitter {
   statusCode = 200; headers = {}; data = ''; writableEnded = false;
   setHeader(key, value) { this.headers[key] = value; }

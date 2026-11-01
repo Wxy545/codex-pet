@@ -1,0 +1,39 @@
+import {mkdir,lstat,realpath,readFile,writeFile,rename,unlink} from 'node:fs/promises';
+import {isAbsolute,join,resolve} from 'node:path';
+import {randomUUID} from 'node:crypto';
+
+const HOSTS=['codex','workbuddy','harness'];
+const fail=code=>{throw Object.assign(Error(code),{code});};
+const object=value=>value&&typeof value==='object'&&!Array.isArray(value);
+const only=(value,keys)=>object(value)&&Object.keys(value).every(key=>keys.includes(key));
+const revision=value=>Number.isSafeInteger(value)&&value>=0;
+const defaults=()=>({revision:0,shareOwnerMemory:false,qqMode:'task'});
+const validHost=value=>only(value,['revision','shareOwnerMemory','qqMode'])&&revision(value.revision)&&typeof value.shareOwnerMemory==='boolean'&&['task','role'].includes(value.qqMode);
+/** 本机设置分宿主保存。关闭共享立即撤销后续使用；修订号防止开关往返后误用旧上下文。 */
+export async function createRoleChatSettings({dataRoot,onChange=()=>{}}={}){
+ if(!isAbsolute(dataRoot??'')||typeof onChange!=='function')fail('role_settings_invalid');
+ await mkdir(dataRoot,{recursive:true,mode:0o700});const info=await lstat(dataRoot);if(!info.isDirectory()||info.isSymbolicLink()||await realpath(dataRoot)!==resolve(dataRoot))fail('role_settings_storage_unsafe');
+ const file=join(dataRoot,'role-chat-settings.json');let state={schemaVersion:1,revision:0,hosts:Object.fromEntries(HOSTS.map(host=>[host,defaults()]))},queue=Promise.resolve();
+ async function existing(){try{const item=await lstat(file);if(!item.isFile()||item.isSymbolicLink()||item.nlink!==1||item.size>8192)fail('role_settings_storage_unsafe');return true;}catch(error){if(error.code==='ENOENT')return false;throw error;}}
+ if(await existing()){
+  try{const saved=JSON.parse(await readFile(file,'utf8'));if(!only(saved,['schemaVersion','revision','hosts'])||saved.schemaVersion!==1||!revision(saved.revision)||!only(saved.hosts,HOSTS)||!HOSTS.every(host=>validHost(saved.hosts[host])&&saved.hosts[host].revision<=saved.revision))fail('role_settings_storage_invalid');state=saved;}
+  catch(error){if(error.code?.startsWith('role_settings_'))throw error;fail('role_settings_storage_invalid');}
+ }
+ const snapshot=()=>structuredClone(state);
+ function forHost(host){if(!HOSTS.includes(host))fail('role_settings_invalid');return structuredClone(state.hosts[host]);}
+ async function save(value){
+  if(!only(value,['host','revision','shareOwnerMemory','qqMode'])||!HOSTS.includes(value.host)||!revision(value.revision)||value.shareOwnerMemory!==undefined&&typeof value.shareOwnerMemory!=='boolean'||value.qqMode!==undefined&&!['task','role'].includes(value.qqMode)||value.shareOwnerMemory===undefined&&value.qqMode===undefined)fail('role_settings_invalid');
+  const action=async()=>{
+   const before=state.hosts[value.host];if(value.revision!==before.revision)fail('role_settings_stale');
+   const selected={...before,...(value.shareOwnerMemory===undefined?{}:{shareOwnerMemory:value.shareOwnerMemory}),...(value.qqMode===undefined?{}:{qqMode:value.qqMode})};
+   if(selected.shareOwnerMemory===before.shareOwnerMemory&&selected.qqMode===before.qqMode)return snapshot();
+   if(state.revision>=Number.MAX_SAFE_INTEGER||before.revision>=Number.MAX_SAFE_INTEGER)fail('role_settings_storage_invalid');selected.revision++;
+   const next={schemaVersion:1,revision:state.revision+1,hosts:{...state.hosts,[value.host]:selected}};await existing();const temporary=file+'.tmp-'+randomUUID();
+   try{await writeFile(temporary,JSON.stringify(next)+'\n',{flag:'wx',mode:0o600});await rename(temporary,file);state=next;}finally{await unlink(temporary).catch(()=>{});}
+   try{await onChange({host:value.host,previous:structuredClone(before),current:structuredClone(selected)});}catch{/* 通知失败不能伪称本机设置尚未保存。 */}
+   return snapshot();
+  };
+  const pending=queue.then(action);queue=pending.catch(()=>{});return pending;
+ }
+ return{snapshot,forHost,save,flush:()=>queue};
+}

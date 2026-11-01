@@ -6,9 +6,9 @@ const { randomUUID } = require('node:crypto');
 const A = require('./skin-actions.cjs');
 const { readCharacter, characterCopy } = require('./codex-character.cjs');
 const L = require('./codex-locale.cjs');
+const Registry = require('./creative-registry.cjs');
 const CHARACTERS = [{ id: 'white-dragon', label: '白龙娘', originalVideo: false }, { id: 'bluefish', label: '大肥鱼', originalVideo: true }, { id: 'curly-sheep', label: '卷卷', originalVideo: false }];
-const knownCharacter = value => value && CHARACTERS.some(character => character.id === value.character);
-const validSelection = value => knownCharacter(value) && value.mode === 'q';
+const knownCharacter = (value, characters = CHARACTERS) => value && characters.some(character => character.id === value.character);
 
 async function saveJson(file, value) {
   await mkdir(path.dirname(file), { recursive: true });
@@ -47,6 +47,17 @@ async function videoAsset(directory, name) {
   finally { await handle?.close().catch(() => {}); }
 }
 
+async function audioAsset(directory, name) {
+  let handle;
+  try {
+    const file = Registry.safeOwnedPath(directory, path.join(directory, name));
+    handle = await open(file, 'r'); const header = Buffer.alloc(16); const {bytesRead} = await handle.read(header, 0, 16, 0); const data = header.subarray(0, bytesRead);
+    const ext = path.extname(name);
+    const valid = ext === '.wav' ? data.subarray(0, 4).toString() === 'RIFF' && data.subarray(8, 12).toString() === 'WAVE' : ext === '.ogg' ? data.subarray(0, 4).toString() === 'OggS' : ext === '.mp3' && (data.subarray(0, 3).toString() === 'ID3' || data[0] === 255 && (data[1] & 224) === 224);
+    return valid ? {available:true,type:'audio',url:pathToFileURL(file).href} : {available:false};
+  } catch { return {available:false}; } finally { await handle?.close().catch(() => {}); }
+}
+
 function createSkinStore({ dataRoot, hostRequest, logger = console } = {}) {
   if (!dataRoot || !path.isAbsolute(dataRoot)) throw new Error('skin-data-root-required');
   const skinsRoot = path.join(dataRoot, 'skins');
@@ -81,6 +92,7 @@ function createSkinStore({ dataRoot, hostRequest, logger = console } = {}) {
     const names = [...new Set(Object.values(manifest.profiles).map(profile => profile.file))];
     const images = await Promise.all(names.map(async name => [name, await (name.endsWith('.webm') ? videoAsset : pngAsset)(directory, name)]));
     const assets = Object.fromEntries(images);
+    for (const name of new Set(Object.values(character.voices || {}).map(item => item.file))) assets[name] = await audioAsset(directory, name);
     const q = character.originalVideo || A.profileReady(manifest.profiles.idle, assets);
     return { ...character, available: { q }, assets, manifest, coverage: entries ? {
       q: character.originalVideo ? { summary: { total: entries.length, dedicated: entries.length, shared: 0, missing: 0 }, originalVideos: true } : A.buildCoverage(entries, manifest, assets),
@@ -89,10 +101,11 @@ function createSkinStore({ dataRoot, hostRequest, logger = console } = {}) {
 
   async function readModel() {
     const entries = await actionCatalog();
-    const characters = await Promise.all(CHARACTERS.map(character => characterModel(character, entries)));
+    const registered = [...CHARACTERS, ...Registry.readCustomCharacters(dataRoot)];
+    const characters = await Promise.all(registered.map(character => characterModel(character, entries)));
     const identity = readCharacter(dataRoot);
     for (const character of characters) {
-      character.copy = characterCopy(character.id, identity.locale);
+      character.copy = characterCopy(character.id, identity.locale, character.custom ? character : undefined);
       character.label = character.copy.name;
       if (character.id === identity.id) character.copy = { ...character.copy, name: identity.name, persona: identity.persona };
     }
@@ -100,7 +113,7 @@ function createSkinStore({ dataRoot, hostRequest, logger = console } = {}) {
       try {
         const saved = JSON.parse(await readFile(selectionFile, 'utf8'));
         // 旧选择仅迁移到同角色Q；旧素材留在磁盘，不再作为可选形态。
-        if (knownCharacter(saved) && ['q', 'sister', 'occasional'].includes(saved.mode)) {
+        if ((knownCharacter(saved, registered) || Registry.validCustomId(saved?.character)) && ['q', 'sister', 'occasional'].includes(saved.mode)) {
           selection = { character: saved.character, mode: 'q' };
           if (saved.mode !== 'q') await saveJson(selectionFile, { ...saved, mode: 'q' });
         }
@@ -117,8 +130,8 @@ function createSkinStore({ dataRoot, hostRequest, logger = console } = {}) {
   }
 
   async function select(value) {
-    if (!validSelection(value)) throw new Error('invalid-skin-selection');
     const model = await readModel();
+    if (!knownCharacter(value, model.characters) || value.mode !== 'q') throw new Error('invalid-skin-selection');
     if (!model.characters.find(character => character.id === value.character)?.available.q) throw new Error('skin-unavailable');
     const next = { character: value.character, mode: 'q' };
     await saveJson(selectionFile, { schemaVersion: 1, ...next });
@@ -161,7 +174,13 @@ function install({ hostRequest, dataRoot = process.env.DSH_HOME, electronApi, on
   ipcMain.handle('codex-skin:get', get);
   ipcMain.handle('codex-skin:select', select);
   app.once('before-quit', () => { ipcMain.removeHandler('codex-skin:get'); ipcMain.removeHandler('codex-skin:select'); });
-  return { ...store, select: selectAndPublish };
+  const refresh = async () => {
+    const model = await store.readModel();
+    for (const win of BrowserWindow.getAllWindows()) if (!win.isDestroyed() && trustedSender({ sender: win.webContents })) win.webContents.send('codex-skin:changed', model);
+    await onSelectionChanged?.(model);
+    return model;
+  };
+  return { ...store, select: selectAndPublish, refresh };
 }
 
 function installPreload() {

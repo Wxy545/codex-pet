@@ -238,7 +238,9 @@ function createController({ hostRequest, electron, fileRoot = __dirname, fsImpl 
     [CHANNELS.send]: async (event, value) => {
       if (!owned(event)) return failure('unauthorized');
       if (busy || selecting) return withState(failure('busy'));
-      if (!value || Object.keys(value).some(key => !['text', 'imageIds'].includes(key)) || typeof value.text !== 'string' || value.text.length > 8192 || !Array.isArray(value.imageIds) || value.imageIds.length > 4) return withState(failure('invalid_input'));
+      if (!value || Object.keys(value).some(key => !['text', 'imageIds','execution','purpose'].includes(key)) || typeof value.text !== 'string' || value.text.length > 8192 || !Array.isArray(value.imageIds) || value.imageIds.length > 4) return withState(failure('invalid_input'));
+      if(!require('./execution-picker.cjs').validExecution(value.execution))return withState(failure('invalid_input'));
+      if(value.purpose!==undefined&&!['chat','translation','summary'].includes(value.purpose))return withState(failure('invalid_input'));
       const ids = value.imageIds;
       if (new Set(ids).size !== ids.length || ids.some(id => typeof id !== 'string' || !attachments.has(id)) || (!value.text.trim() && !ids.length)) return withState(failure('invalid_input'));
       const validationEpoch = generation;
@@ -260,7 +262,7 @@ function createController({ hostRequest, electron, fileRoot = __dirname, fsImpl 
       compactHistory(); attachments = new Map(); busy = true; publish();
       let result;
       try {
-        const response = await hostRequest('POST', CHAT_PATH, JSON.stringify({ messages: requestMessages(), stream: false }));
+        const response = await hostRequest('POST', CHAT_PATH, JSON.stringify({ messages: requestMessages(), stream: false,...(value.purpose?{purpose:value.purpose}:{}),...(value.execution?{execution:value.execution}:{}) }));
         if (generation !== epoch || disposed) result = failure(disposed || windowRef !== requestWindow ? 'closed' : 'character_changed');
         else {
           let payload;

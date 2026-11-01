@@ -150,7 +150,7 @@
     pending = true; render();
     ui.input.value = '';
     try {
-      const response = await api.sendMessage({ text, imageIds });
+      const response = await api.sendMessage({ text, imageIds, execution:window.executionPicker?.value(),purpose:window.executionPicker?.purpose() });
       if (!receive(response) && response?.code !== 'character_changed' && context === `${state.character?.id}/${state.locale}`) ui.input.value = text;
     } catch { if (context === `${state.character?.id}/${state.locale}`) ui.input.value = text; notify('暂时无法连接桌宠服务，请稍后重试。'); }
     finally { pending = false; if (!stopped) { render(); ui.input.focus(); } }

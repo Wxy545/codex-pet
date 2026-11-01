@@ -23,6 +23,23 @@ import { projectQQState } from './qq-remote.mjs';
 import { createQQService } from './qq-service.mjs';
 import { installControlResume } from './control-resume.mjs';
 import HarnessHandoff from './harness-handoff.cjs';
+import {createPetWorkspace} from './pet-workspace.mjs';
+import {createWorkspaceRoutes} from './workspace-routes.mjs';
+import {createWorkspaceEventSink} from './workspace-events.mjs';
+import {createCodexRemote} from './codex-remote.mjs';
+import {createRoleChatSettings} from './role-settings.mjs';
+import {createRoleChatGenerator} from './role-generator.mjs';
+import {createRoleChatService} from './role-chat.mjs';
+import {roleHttpInput,handleRoleHttp} from './role-http.mjs';
+import {createContentActivityService} from './content-activity.mjs';
+import {createContentSources} from './content-sources.mjs';
+import {createContentApprovals} from './content-approvals.mjs';
+import {createPetLocalControl} from './pet-local-control.mjs';
+import {createContentAnalyzer} from './content-analyzer.mjs';
+import {createInternationalChat} from './international-chat.mjs';
+import {createInternationalWebhookServer} from './international-webhook.mjs';
+import {createRemoteActivity} from './remote-activity.mjs';
+import {createContentBroadcastService} from './broadcast-service.mjs';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const home = join(root, 'data');
@@ -87,19 +104,44 @@ async function start() {
   const host = await import(pathToFileURL(hostPath).href);
   const logger = host.createStandaloneLogger();
   const activityGate = createCodexActivityGate();
+  const workspace=await createPetWorkspace({dataRoot:home,host:()=>companionHost,getCharacter:()=>Character.safeIdentity(Character.readCharacter(home)),locale:Locale.getLocale(),summarizeMemory:async batch=>{
+    const records=batch.records.slice(0,1),answer=await roleGenerator.generate({host:batch.scope.host,profile:'memory-index',purpose:'memory',character:{id:'memory-index',name:'Memory index',persona:'',locale:Locale.getLocale()},tools:[],text:Locale.getLocale()==='zh-CN'?'为所附原文写一条不超过500字的检索摘要；保留来源自述、推断和未确认的区别，不添加新事实。':'Write a retrieval summary under 500 characters. Preserve the distinction between source statements, inferences and unverified information. Do not add facts.',context:JSON.stringify(records.map(r=>({id:r.id,text:r.text.slice(0,6000),partial:r.text.length>6000,source:{kind:r.source.kind,confirmation:r.source.confirmation,label:r.source.label?.slice(0,100),url:r.source.url?.slice(0,500)}})))});
+    return records.map(r=>({id:r.id,text:answer.text.slice(0,500),keywords:[]}));
+  }});
+  const roleSettings=await createRoleChatSettings({dataRoot:home});
+  const localControl=createPetLocalControl({host:companionHost});
+  const workspaceEvents=createWorkspaceEventSink({workspace,host:companionHost,locale:Locale.getLocale()});
+  let modelCatalog,modelCatalogAt=0,catalogPending;
+  async function getModelCatalog(selectedHost){
+    if(selectedHost!=='codex'||switchingHost)return{state:'unavailable',items:[]};
+    if(modelCatalog&&Date.now()-modelCatalogAt<60000)return structuredClone(modelCatalog);
+    if(catalogPending)return catalogPending;
+    catalogPending=Promise.resolve().then(async()=>{let client;try{client=createCodexRemote({cwd:home,codexPath:codexPath||locateCodex(),codexHome:codexHome||process.env.CODEX_HOME||join(homedir(),'.codex')});}catch{return{state:'not-installed',items:[]};}
+      try{const items=await client.listModels();modelCatalog={state:'ready',items};modelCatalogAt=Date.now();return structuredClone(modelCatalog);}
+      catch{return{state:'unknown',items:[]};}finally{await client.close();}
+    }).finally(()=>{catalogPending=null;});return catalogPending;
+  }
+  const resolveExecution=async({purpose,override})=>workspace.models.resolve({host:companionHost,purpose,override,catalog:await getModelCatalog(companionHost)});
+  const roleExecution=async({host:target,purpose,override})=>workspace.models.resolve({host:target,purpose,override,catalog:await getModelCatalog(target)});
   let switchingHost = false;
   // 原生 Harness 沿用自己的服务；旧 Codex 任务可收尾，新任务在受理前再次核对移交状态。
   const canStartCodex = () => isCodex && !switchingHost && !HarnessHandoff.isActive({dataRoot:home,projectRoot:root});
   const refuseNewCodex = res => json(res,409,{error:{code:'host_unavailable',message:Locale.getLocale()==='zh-CN'?'请先将桌宠联动应用切回 Codex，再发送新任务。':'Select Codex as the companion app before sending a new task.'}});
+  const roleGenerator=createRoleChatGenerator({dataRoot:home,projectRoot:root,codexPath,resolveExecution:roleExecution,activityGate});
+  const roleChat=createRoleChatService({workspace,generate:roleGenerator.generate,characterProvider:()=>Character.readCharacter(home),settings:identity=>['desktop','qq'].includes(identity.channel)?roleSettings.forHost(identity.host):{revision:0,shareOwnerMemory:false},canUseHost:()=>!switchingHost&&!stopping,notifyPet:async answer=>{
+    if(answer.execution?.purpose==='whisper')return false;
+    if(answer.host!==companionHost||HarnessHandoff.isActive({dataRoot:home,projectRoot:root})||!await answer.isCurrent())return false;
+    const response=await petRequest('POST','/broadcast',{text:Array.from(answer.text).slice(0,240).join(''),duration:8000});return response.ok;
+  }});
   let receiveTaskChange = () => {};
-  const chatHandler = isCodex ? createCodexChatHandler({ codexPath, cwd: home, timeoutMs: 120000, activityGate }) : null;
-  const taskHandler = isCodex ? createCodexTaskHandler({ codexPath, activityGate, onChange: view => receiveTaskChange(view) }) : null;
+  const chatHandler = isCodex ? createCodexChatHandler({ codexPath, cwd: home, timeoutMs: 120000, activityGate,resolveExecution }) : null;
+  const taskHandler = isCodex ? createCodexTaskHandler({ codexPath, activityGate,resolveExecution, onChange: view => receiveTaskChange(view) }) : null;
   const chatToken = randomBytes(32).toString('base64url');
   const chatServer = isCodex ? createServer(async (req, res) => {
     if (req.method !== 'POST' || req.url !== '/v1/chat/completions') return json(res, 404, { error: 'not found' });
     if (req.headers.authorization !== `Bearer ${chatToken}` || req.headers.origin) return json(res, 403, { error: t('本机调用未授权') });
     if (!canStartCodex()) return refuseNewCodex(res);
-    try { const body=await requestJson(req,MAX_CHAT_BODY_BYTES);if(!canStartCodex())return refuseNewCodex(res);await chatHandler(req,res,body); }
+    try { const body=await requestJson(req,MAX_CHAT_BODY_BYTES);if(!canStartCodex())return refuseNewCodex(res);if(body.model==='codex-pet-whisper')await handleRoleHttp({req,res,body:{...body,purpose:'whisper'},service:roleChat,host:companionHost,locale:Locale.getLocale(),allowStream:true});else await chatHandler(req,res,body); }
     catch { if (!res.writableEnded) json(res, 400, { error: t('请求格式不正确') }); }
   }) : null;
   if (chatServer) await new Promise((ok, fail) => { chatServer.once('error', fail); chatServer.listen(0, '127.0.0.1', ok); });
@@ -120,6 +162,30 @@ async function start() {
   if (!isCodex) ai.currentSelection = () => ({provider:'workbuddy',model:''});
   const security = host.createRequestSecurity();
   const routes = [];
+  const contentSources=await createContentSources({dataRoot:home,projectRoot:root,codexPath,codexHome:codexHome||process.env.CODEX_HOME||join(homedir(),'.codex')});
+  const contentApprovals=createContentApprovals();
+  const contentGenerator=createRoleChatGenerator({dataRoot:home,projectRoot:root,codexPath,resolveExecution:roleExecution});
+  const contentAnalyzer=createContentAnalyzer({generate:contentGenerator.generate,workspace,getCharacter:()=>Character.readCharacter(home),locale:Locale.getLocale()});
+  const content=await createContentActivityService({dataRoot:home,activityGate,callPlatformTool:contentSources.callPlatformTool,confirmWrite:contentApprovals.request,onShare:({job,channelId,text})=>channelId==='qq-owner'&&qq?qq.sendOwner({application:job.host,text,receiptId:job.id}):{confirmed:false},onState:job=>{
+    const state=['completed'].includes(job.state)?'success':['failed','uncertain','interrupted'].includes(job.state)?'error':job.state==='cancelled'?'cancelled':job.state==='waiting'?'waiting':'working';
+    void workspace.tasks.observe({key:'content:'+job.id,host:job.host,source:'content',title:job.label,project:'',state,active:!['success','error','cancelled'].includes(state),at:job.updatedAt,startedAt:job.startedAt,model:job.analysis?.actualModel?.id??job.analysis?.requestedModel??null,provenance:job.analysis?.actualModel?'host-record':job.analysis?.requestedModel?'requested':'unknown',phase:job.stage},{cancel:()=>content.cancel(job.id),artifact:()=>content.result(job.id,{includeContent:true})}).catch(()=>{});
+  },analyze:contentAnalyzer});
+  const broadcast=await createContentBroadcastService({dataRoot:home,content,analyze:contentAnalyzer,activityGate,locale:Locale.getLocale(),onState:job=>{
+    const state=job.state==='completed'?'success':['failed','interrupted','uncertain'].includes(job.state)?'error':job.state==='cancelled'?'cancelled':job.state==='paused'?'waiting':'working';
+    void workspace.tasks.observe({key:'broadcast:'+job.id,host:job.host,source:'content',title:Locale.getLocale()==='zh-CN'?'直播互动':'Live interaction',state,active:!['success','error','cancelled'].includes(state),at:job.updatedAt,startedAt:job.startedAt,phase:job.stage,provenance:'unknown'}, {cancel:()=>{if(broadcast.state().activeJobId!==job.id)throw Object.assign(Error('stale_task'),{code:'task_unavailable'});return{ok:broadcast.cancel()};},result:()=>broadcast.result(job.id)}).catch(()=>{});
+  }});
+  routes.push(...createWorkspaceRoutes({workspace,security,requestJson,getCatalog:getModelCatalog,content,contentSources,contentApprovals,broadcast}));
+  routes.push({kind:'exact',path:`${prefix}/pet-role/settings`,handler:async(req,res)=>{
+    if(req.headers['x-dsh-pet-token']!==security.token||req.headers.origin)return json(res,403,{error:{code:'unauthorized'}});
+    if(req.method==='GET')return json(res,200,roleSettings.snapshot());
+    if(req.method!=='POST')return json(res,405,{error:{code:'method_not_allowed'}});
+    try{return json(res,200,await roleSettings.save(await requestJson(req,4096)));}catch(error){return json(res,409,{error:{code:['role_settings_stale','role_settings_invalid'].includes(error.code)?error.code:'role_settings_unavailable'}});}
+  }});
+  routes.push({kind:'exact',path:`${prefix}/pet-local-control`,handler:async(req,res)=>{
+    if(req.headers['x-dsh-pet-token']!==security.token||req.headers.origin)return json(res,403,{error:{code:'unauthorized'}});
+    if(req.method!=='POST')return json(res,405,{error:{code:'method_not_allowed'}});
+    try{const body=await requestJson(req,256*1024);if(body?.action==='take'&&Object.keys(body).length===1)return json(res,200,{items:localControl.take()});if(body?.action==='settle'&&Object.keys(body).every(k=>['action','id','ok','value'].includes(k)))return json(res,200,{accepted:localControl.settle(body)});return json(res,400,{error:{code:'invalid_input'}});}catch{return json(res,400,{error:{code:'invalid_input'}});}
+  }});
   const startup = Startup.createLaunchQueue();
   startup.push(process.argv.includes('--workbuddy-startup') ? 'workbuddy' : process.argv.includes('--codex-startup') ? 'codex' : 'manual');
   const notices = [];
@@ -143,15 +209,25 @@ async function start() {
   let manualTimer;
   let processTimer = null;
   let processChecking = false;
-  let qq, qqView=null, qqTerminalTimer;
-  try{qq=await createQQService({dataRoot:home,projectRoot:root,codexPath,codexHome,activityGate,initialApplication:companionHost,canStart:()=>!switchingHost&&!stopping,locale:Locale.getLocale(),onState:view=>{
-    const previousState=qqView?.state;qqView=view;clearTimeout(qqTerminalTimer);
+  let qq, qqView=null,lastQQState='idle';
+  const remoteActivity=await createRemoteActivity({dataRoot:home,onChange:view=>{qqView=view;if(eventReady)updateDisplay();}});
+  try{qq=await createQQService({dataRoot:home,projectRoot:root,codexPath,codexHome,activityGate,initialApplication:companionHost,activityPublisher:view=>remoteActivity.observe('qq',view),bridgeOptions:{roleChat,getRoleSettings:target=>roleSettings.forHost(target),localAction:(target,action,value)=>localControl.request(target,action,value)},canStart:()=>!switchingHost&&!stopping,locale:Locale.getLocale(),onState:view=>{
+    const previousState=lastQQState;lastQQState=view.state;
+    void workspaceEvents.qq(view).catch(()=>logger.warn(t('任务目录暂时无法保存。')));
     if(['success','error'].includes(view.state)){
-      qqTerminalTimer=setTimeout(()=>{qqView=null;if(eventReady)updateDisplay();},10000);qqTerminalTimer.unref();
       if(previousState!==view.state)enqueueNotice({id:randomBytes(12).toString('hex'),source:'qq',application:view.application,kind:view.state==='success'?'complete':'error',title:Locale.getLocale()==='zh-CN'?'QQ 任务已结束':'QQ task finished',body:Locale.getLocale()==='zh-CN'?'在 QQ 中查看任务结果。':'Check QQ for the task result.',threadId:null});
     }
     if(eventReady)updateDisplay();
   }});}catch{logger.warn(Locale.getLocale()==='zh-CN'?'QQ 连接设置未能读取；桌宠继续运行，请检查本机 QQ 设置。':'QQ settings could not be loaded. The pet is still running; check its local QQ settings.');}
+  let international,internationalWebhook;
+  try{international=await createInternationalChat({dataRoot:home,projectRoot:root,codexPath,codexHome,activityGate,roleChat,getRoleSettings:target=>roleSettings.forHost(target),localAction:(target,action,value)=>localControl.request(target,action,value),locale:Locale.getLocale(),canStart:()=>!switchingHost&&!stopping,onState:view=>{remoteActivity.observe('international:'+view.connectionId,view);void workspaceEvents.messaging(view)?.catch(()=>{});}});internationalWebhook=createInternationalWebhookServer({service:international});}catch{logger.warn(Locale.getLocale()==='zh-CN'?'聊天连接设置未能读取，请检查本机设置。':'Chat connection settings could not be loaded. Check the local settings.');}
+  routes.push({kind:'exact',path:`${prefix}/international-chat`,handler:async(req,res)=>{
+    if(req.headers['x-dsh-pet-token']!==security.token||req.headers.origin)return json(res,403,{error:{code:'unauthorized'}});
+    if(!international)return json(res,503,{error:{code:'international_unavailable'}});
+    if(req.method==='GET')return json(res,200,{...international.state(),webhook:internationalWebhook?.state()});
+    if(req.method!=='POST')return json(res,405,{error:{code:'method_not_allowed'}});
+    try{const state=await international.configure(await requestJson(req,64*1024));await internationalWebhook?.sync();return json(res,200,{...state,webhook:internationalWebhook?.state()});}catch(error){const code=/^international_[a-z_]+$/.test(error.code)?error.code:error.code==='busy'?'busy':'international_unavailable';return json(res,code==='busy'?409:400,{error:{code}});}
+  }});
   routes.push({kind:'exact',path:`${prefix}/qq-remote`,handler:async(req,res)=>{
     if(req.headers['x-dsh-pet-token']!==security.token||req.headers.origin)return json(res,403,{error:{code:'unauthorized'}});
     if(switchingHost||stopping)return json(res,409,{error:{code:'busy'}});
@@ -196,7 +272,7 @@ async function start() {
       if (!res.writableEnded) json(res, 500, {error: 'host_switch_failed'});
     }
   } });
-  const workbuddy = createWorkBuddyBridge({locale: Locale.getLocale(), onChange: (next, event) => {
+  const workbuddy = createWorkBuddyBridge({locale: Locale.getLocale(),onTask:row=>{if(companionHost==='workbuddy')void workspaceEvents.sync([row]).catch(()=>{});}, onChange: (next, event) => {
     if (companionHost !== 'workbuddy') return;
     mainSnapshot = next;
     if (event) enqueueNotice({id: randomBytes(12).toString('hex'), ...event, threadId: null});
@@ -255,7 +331,7 @@ async function start() {
   routes.push({ kind: 'exact', path: `${prefix}/codex-chat`, handler: async (req, res) => {
     if (!chatHandler || !canStartCodex()) return refuseNewCodex(res);
     if (req.method !== 'POST') return json(res, 405, { error: 'method not allowed' });
-    try { const body=await requestJson(req,MAX_CHAT_BODY_BYTES);if(!canStartCodex())return refuseNewCodex(res);await chatHandler(req,res,body); }
+    try { const body=await requestJson(req,MAX_CHAT_BODY_BYTES);if(!canStartCodex())return refuseNewCodex(res);let plain=false;try{roleHttpInput(body);plain=true;}catch{}if(plain)await handleRoleHttp({req,res,body,service:roleChat,host:companionHost,locale:Locale.getLocale()});else await chatHandler(req,res,body); }
     catch { if (!res.writableEnded) json(res, 400, { error: { code: 'invalid_input', message: t('图文消息格式不正确。') } }); }
   } });
   routes.push({ kind: 'exact', path: `${prefix}/codex-tasks`, handler: async (req, res) => {
@@ -336,6 +412,7 @@ async function start() {
     return strict ? pending : updateChain;
   }
   receiveTaskChange = view => {
+    void workspace.observeManual(view,{cancel:id=>taskHandler.cancel(id)}).catch(()=>logger.warn(t('任务目录暂时无法保存。')));
     const previousState = manualTaskView?.state;
     manualTaskView = view;
     if (terminalTaskStates.has(view.state) && view.state !== previousState) {
@@ -350,7 +427,7 @@ async function start() {
     updateDisplay();
   };
   // 桌宠跟随用户聊天，内部子代理的中间完成不作为整项任务完成提醒。
-  const watcher = isCodex ? createCodexWatcher({ codexHome, excludeThreadSources: ['pet-chat', 'pet-task', 'subagent'],excludeThread:(id,turnId)=>qq?.ownsTurn(id,turnId)===true, onChange: (next, event) => {
+  const watcher = isCodex ? createCodexWatcher({ codexHome,onTask:row=>void workspaceEvents.sync([row]).catch(()=>{}), excludeThreadSources: ['pet-chat', 'pet-task', 'subagent'],excludeThread:(id,turnId)=>qq?.ownsTurn(id,turnId)===true||international?.ownsTurn(id,turnId)===true, onChange: (next, event) => {
     mainSnapshot = next;
     if (event) {
       // 多会话并行时，通知跳转跟随事件来源，而不是当前显示工作动画的会话。
@@ -358,12 +435,18 @@ async function start() {
     }
     updateDisplay();
   } }) : {async start() {}, async stop() {workbuddy.dispose();}};
+  let registrySyncing=false;
+  const registryTimer=setInterval(async()=>{if(stopping||registrySyncing)return;registrySyncing=true;try{await workspaceEvents.sync(isCodex?watcher.tasks():workbuddy.tasks());}catch{/* 保留上次成功记录，后续新元数据重试。 */}finally{registrySyncing=false;}},1500);registryTimer.unref();
   shutdown = async () => {
     if (stopping) return;
     stopping = true;
+    localControl.dispose();
+    clearInterval(registryTimer);
     clearTimeout(manualTimer);
-    clearTimeout(qqTerminalTimer);
     try{await qq?.dispose();}catch{/* QQ关闭失败不能阻止主桌宠、监听器和本机服务收尾。 */}
+    try{await international?.dispose();}catch{/* 已保存账号保持原样，收尾不触发重新登录。 */}
+    await internationalWebhook?.dispose();await remoteActivity.dispose();
+    roleChat.dispose();roleGenerator.dispose();contentGenerator.dispose();contentApprovals.dispose();await broadcast.dispose();await content.dispose();await contentSources.dispose();await roleSettings.flush();
     clearInterval(processTimer);
     await watcher.stop();
     chatHandler?.dispose();
@@ -371,6 +454,7 @@ async function start() {
     workbuddy.dispose();
     controlResume.dispose();
     workbuddyBalance?.dispose();
+    await workspace.flush();
     releaseQuota();
     await context.dispose();
     await server.close();
@@ -385,6 +469,8 @@ async function start() {
   if (!isCodex) updateDisplay();
   await watcher.start();
   void qq?.start();
+  void international?.start();
+  void internationalWebhook?.sync();
   if (!isCodex) {
     // 仅在已核实全部WorkBuddy进程退出时清场；最小化和长任务不按超时误判。
     const checkWorkBuddyProcess = async () => {

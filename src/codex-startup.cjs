@@ -215,7 +215,7 @@ function createController({ electron, dataRoot, fileRoot = __dirname, timers = g
       });
       windowRef = win;
       const copy = COPY[locale()] || COPY.en;
-      scene = { video: custom?.url || film || assets.idle, assets, film: Boolean(film), sheep, deepseek, custom: Boolean(custom), theme, character: sheep ? 'curly-sheep' : 'white-dragon', reason, host: selectedHost, brand: theme === 'workbuddy' ? 'WorkBuddy' : theme === 'deepseek' ? 'DeepSeek' : 'ChatGPT', target: targetView(located), durationMs: custom ? custom.durationMs : deepseek ? 7200 : sheep ? 14000 : film ? FILM_DURATION_MS : DURATION_MS, locale: locale(), copy: sheep ? { skip: copy.skip, subject: locale() === 'zh-CN' ? '卷卷' : 'Curly' } : copy };
+      scene = { video: custom?.url || film || assets.idle, ...(custom?.clips?{clips:custom.clips}:{}), assets, film: Boolean(film), sheep, deepseek, custom: Boolean(custom), theme, character: sheep ? 'curly-sheep' : 'white-dragon', reason, host: selectedHost, brand: theme === 'workbuddy' ? 'WorkBuddy' : theme === 'deepseek' ? 'DeepSeek' : 'ChatGPT', target: targetView(located), durationMs: custom ? custom.durationMs : deepseek ? 7200 : sheep ? 14000 : film ? FILM_DURATION_MS : DURATION_MS, locale: locale(), copy: sheep ? { skip: copy.skip, subject: locale() === 'zh-CN' ? '卷卷' : 'Curly' } : copy };
       // 主进程超时独立于渲染器；视频加载失败或页面卡住也不会留下遮挡窗口。
       timeout = timers.setTimeout(finish, custom ? custom.durationMs + 14000 : WATCHDOG_MS);
       timeout?.unref?.();

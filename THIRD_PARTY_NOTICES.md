@@ -161,6 +161,31 @@ OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 ```
 
+## 内容活动与主播接口参考
+
+本项目核对了下列公开工具名、参数及协议，并独立实现内容活动、来源票据、预算、审批、账号接口与主播编排。下列执行器和 SDK 没有随本项目安装或打包，其代码、账号条件和素材许可仍分别适用。
+
+| 参考来源 | 核对范围与许可 |
+| --- | --- |
+| [c1overzz/dsh-bili-scroll](https://github.com/c1overzz/dsh-bili-scroll/tree/398e4724a481b09b6383a950bcd08723c632da59) | `bili_*` MCP 工具参数，MIT |
+| [kdcadmin/dsh_douyin_tools](https://github.com/kdcadmin/dsh_douyin_tools/tree/aaf9f9a862afafd45a15acf32789da97688de695) | `douyin_*` MCP 工具参数，MIT |
+| [xpzouying/xiaohongshu-mcp](https://github.com/xpzouying/xiaohongshu-mcp/tree/7797fd375aba02dcd33afe143f6bee13e5870859) | 动态、详情与互动工具参数，Apache-2.0 |
+| [qinyuanpei/mcp-server-weibo](https://github.com/qinyuanpei/mcp-server-weibo/tree/a98f61159004442d342e02099db5c57e4cd24755) | 用户动态、热搜、搜索和评论工具参数，MIT |
+| [Tweepy](https://github.com/tweepy/tweepy/tree/c1978d643ecce491929084e4290b35f57e4921ad)、[PRAW](https://github.com/praw-dev/praw/tree/b04c9fbc872f03846b117e4a3b055cdf4e12c457) | X／Reddit 固定 API 路由；SDK 分别采用 MIT、BSD-2-Clause，本项目没有纳入 Python SDK |
+| [Google YouTube Discovery](https://github.com/googleapis/google-api-python-client/blob/c1bdb24533614d6fcffeb7b9a93b2fc836c4e4e0/googleapiclient/discovery_cache/documents/youtube.v3.json)、[Pinterest OpenAPI](https://github.com/pinterest/api-description/blob/51aca009f10a90283ccdf3956d509fc995ebac23/v5/openapi.json) | 视频、字幕、直播聊天、本人／共享画板等 API 参数；没有打包生成式 SDK |
+| [TikTok Display API](https://developers.tiktok.com/doc/tiktok-api-v2-video-list/)、[Instagram API](https://developers.facebook.com/docs/instagram-platform/instagram-api-with-instagram-login/get-started/)、[Twitch Chat](https://dev.twitch.tv/docs/chat/send-receive-messages/) | 官方账号 API 与 EventSub 协议；接口存在不代表已取得用户授权或完成真实平台验收 |
+| [OBS WebSocket](https://github.com/obsproject/obs-websocket/blob/e28f84975984340e84fc4879cfc05741cc0afde1/docs/generated/protocol.md) | 独立实现 OBS5 挑战认证、流状态与既有文字源请求，没有纳入 OBS/GPL 源码 |
+
+RSS／Atom 读取只请求本人配置的订阅服务。本项目未复制 RSSHub 的 AGPL-3.0 路由。可选媒体采样按 [Streamlink 固定协议文档](https://github.com/streamlink/streamlink/blob/a685512a746a99a429b2678e2718c1ee85ba9f6c/docs/cli/protocols.rst)和 [FFmpeg 8.0 文档](https://github.com/FFmpeg/FFmpeg/blob/n8.0/doc/protocols.texi)编写，只调用本人另行选择的程序；本项目不下载或再分发这些二进制。Streamlink 采用 BSD-2-Clause，FFmpeg 构建的实际许可随编译选项和随包组件而异。
+
+本机语音调用 Windows 的 `System.Speech.Synthesis.SpeechSynthesizer`。系统语音由本人机器提供，本仓库没有打包第三方语音、克隆声音或新增声音素材。
+
 ## 其他依赖
+
+创作投稿在本人点击连接 GitHub 后，按固定大小和 SHA-256 下载 [GitHub CLI 2.103.3 官方 Windows 包](https://github.com/cli/cli/releases/tag/v2.103.3)，仅提取原版 `gh.exe` 和随包 `LICENSE`，保存在本机独立目录。GitHub CLI 采用 [MIT 许可](https://github.com/cli/cli/blob/v2.103.3/LICENSE)，不把该运行时或登录数据提交进本仓库；投稿使用本人账户创建 fork、分支与 PR，不授予本项目维护权限。
+
+Telegram 普通账号接入使用 [teleproto](https://github.com/sanyok12345/teleproto) `1.232.1`，直接依赖版本与传递依赖摘要固定在 `package-lock.json`。其 MIT 版权包含 GramJS 与 sanyok12345，完整声明见 [licenses/teleproto-MIT.txt](licenses/teleproto-MIT.txt)，随包原文保留于依赖的 `LICENSE`。选型时核对了旧 `telegram` 包的停止维护声明与 teleproto 的[迁移说明](https://docs.teleproto.dev/migrating-from-gramjs)；项目只安装固定的 teleproto 版本。
+
+Telegram Bot API、Discord Gateway、LINE Messaging API 与 WhatsApp Cloud API 的协议适配由本项目编写，资料入口见[海外聊天连接说明](docs/international-chat.md)。这些平台的账号和服务条件由各平台规定；实现、基础检查与真实账号验证分别记录。
 
 传递依赖、Electron、字体及其他随依赖安装的内容，按其各自随包提供的许可使用。`package-lock.json` 记录实际依赖版本；本项目不替代这些权利人的许可，也不将它们统一重新授权为 MIT。更改依赖或制作二进制分发包时，应重新核对实际纳入的第三方内容。

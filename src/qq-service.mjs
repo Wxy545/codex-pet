@@ -13,7 +13,7 @@ const fail=code=>{throw Object.assign(Error(code),{code});};
 const keyOf=(application,provider)=>application+':'+provider;
 
 /** 连接方式与目标应用分别保存；旧 Codex 官方机器人保留原文件及配对。 */
-export async function createQQService({dataRoot,projectRoot,codexPath,codexHome,activityGate,locale='zh-CN',initialApplication='codex',canStart=()=>true,onState=()=>{},
+export async function createQQService({dataRoot,projectRoot,codexPath,codexHome,activityGate,locale='zh-CN',initialApplication='codex',canStart=()=>true,onState=()=>{},activityPublisher,
  createBridgeImpl=createQQBridge,createRuntimeImpl=createNapCatRuntime,resolveTargetImpl,createRemoteImpl,readMcpCatalogImpl,now=Date.now,runtimeOptions={},bridgeOptions={}}={}){
  if(!isAbsolute(dataRoot||'')||!isAbsolute(projectRoot||''))fail('invalid_directory');
  const file=join(dataRoot,'qq-service.json');
@@ -24,6 +24,7 @@ export async function createQQService({dataRoot,projectRoot,codexPath,codexHome,
  let disposed=false,switching=false,queue=Promise.resolve(),currentActivity=null,pendingActivity=null,activityWrite=null,terminalTimer;
  const preparation=new AbortController(),activityFile=join(dataRoot,'qq-activity.json');
  function publishActivity(view){
+  if(typeof activityPublisher==='function'){activityPublisher({...view,channel:'qq'});return;}
   const record={schemaVersion:1,application:view.application,state:view.state,activeCount:view.activeCount??0,at:Date.now()};
   currentActivity=record;pendingActivity=record;
   if(activityWrite)return;
@@ -149,5 +150,5 @@ export async function createQQService({dataRoot,projectRoot,codexPath,codexHome,
  }
  async function start(){if(disposed)return;publishActivity({state:'idle',activeCount:0,application:selection.application});if(selection.provider==='onebot'&&active().state().enabled)runtime.start();await active().start();}
  async function dispose(){if(disposed)return;disposed=true;preparation.abort();clearInterval(heartbeat);clearTimeout(terminalTimer);await queue.catch(()=>{});publishActivity({state:'idle',activeCount:0,application:selection.application});await Promise.allSettled([...bridges.values()].map(b=>b.dispose()));await runtime.dispose();await activityWrite;}
- return{state,configure:body=>serial(()=>configure(body)),receive:message=>active().receive(message),start,dispose,ownsTurn:(threadId,turnId)=>[...bridges].some(([key,b])=>key.startsWith('codex:')&&b.ownsTurn(threadId,turnId)),idle:async()=>{await queue;await active().idle();}};
+ return{state,configure:body=>serial(()=>configure(body)),receive:message=>active().receive(message),sendOwner:body=>{if(disposed||body?.application!==selection.application)fail('host_unavailable');return active().sendOwner({text:body.text,receiptId:body.receiptId});},start,dispose,ownsTurn:(threadId,turnId)=>[...bridges].some(([key,b])=>key.startsWith('codex:')&&b.ownsTurn(threadId,turnId)),idle:async()=>{await queue;await active().idle();}};
 }

@@ -3,7 +3,7 @@ const path=require('node:path');
 const {pathToFileURL}=require('node:url');
 const CHANNEL='codex-panels:navigate';
 const STATE='codex-panels:state';
-const PAGES={settings:'control-window.html',chat:'chat-window.html',tasks:'task-window.html',qq:'qq-window.html'};
+const PAGES={settings:'control-window.html',chat:'chat-window.html',tasks:'task-window.html',qq:'qq-window.html',workbench:'workbench-window.html',memory:'memory-window.html',creative:'creative-window.html',content:'content-window.html',connections:'chat-connections-window.html'};
 
 /** 面板仅能打开固定的本机功能，不把URL、路由或命令传给渲染器。 */
 function createController({electron,openPanel,fileRoot=__dirname,host=process.env.CODEX_PET_HOST||'codex'}){
@@ -20,7 +20,7 @@ function createController({electron,openPanel,fileRoot=__dirname,host=process.en
   async function navigate(event,name){
     const from=source(event);
     if(!from)return{ok:false,code:'unauthorized'};
-    if(!Object.hasOwn(PAGES,name)||currentHost()!=='codex'&&!['settings','qq'].includes(name))return{ok:false,code:'unavailable'};
+    if(!Object.hasOwn(PAGES,name)||currentHost()!=='codex'&&['chat','tasks'].includes(name))return{ok:false,code:'unavailable'};
     try{
       await openPanel(name);
       if(from.file!=='index.html'&&from.file!==PAGES[name]&&!from.win.isDestroyed())from.win.hide();

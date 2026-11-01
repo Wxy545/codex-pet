@@ -7,6 +7,8 @@
 .pet-sprite.has-status-quota>.pet-bubble[data-slot='balance']{display:none!important}
 .pet-status-quota{border:1px solid var(--status-line);border-radius:12px;background:var(--status-bg);box-shadow:0 2px 8px #251b401a;pointer-events:none;overflow:hidden}
 .pet-status-quota.is-interactive{pointer-events:auto}
+.pet-status-tasks{font:inherit;color:inherit;padding:4px 8px;cursor:pointer;min-height:24px}
+.pet-status-tasks:focus-visible{outline:2px solid var(--status-accent);outline-offset:2px}
 .pet-status-quota-toggle{position:relative;display:block;width:100%;min-height:26px;height:auto;padding:3px 8px;border:0;background:transparent;color:inherit;font:inherit;cursor:pointer;overflow:hidden}
 .pet-status-quota-toggle:disabled{cursor:default}
 .pet-status-quota-toggle:focus-visible{outline:2px solid var(--status-accent);outline-offset:-3px}

@@ -9,7 +9,7 @@ const COPY={
 };
 
 /** Hook事件只在内存归约；不同会话、不同requestId的结束事件不能互相清除。 */
-export function createWorkBuddyBridge({onChange=()=>{},locale='zh-CN',now=Date.now,timers=globalThis,terminalHoldMs=10000}={}) {
+export function createWorkBuddyBridge({onChange=()=>{},onTask=()=>{},locale='zh-CN',now=Date.now,timers=globalThis,terminalHoldMs=10000}={}) {
   if (typeof onChange!=='function' || typeof now!=='function' || !Number.isFinite(terminalHoldMs) || terminalHoldMs<0) throw new TypeError('invalid-workbuddy-bridge');
   const sessions=new Map(),seen=new Set(),copy=COPY[locale]??COPY.en;
   let disposed=false,timer=null,published='',closedAt=0;
@@ -39,7 +39,7 @@ export function createWorkBuddyBridge({onChange=()=>{},locale='zh-CN',now=Date.n
     if(start&&e.internal && (!old || e.requestId!==old.requestId))return false;
     if(start&&old&&e.requestId!==old.requestId&&old.requests.includes(e.requestId))return false;
     if(!old&&sessions.size>=128){const candidate=[...sessions.entries()].find(([,s])=>!s.active);if(candidate)sessions.delete(candidate[0]);else return false;}
-    const s=start&&e.requestId!==old?.requestId?{requestId:e.requestId,requests:[...(old?.requests??[]),e.requestId].slice(-32),tools:new Map(),pending:new Set(),notified:new Set(),state:'thinking',active:true}:old;
+    const s=start&&e.requestId!==old?.requestId?{requestId:e.requestId,requests:[...(old?.requests??[]),e.requestId].slice(-32),tools:new Map(),pending:new Set(),notified:new Set(),state:'thinking',active:true,startedAt:e.at}:old;
     if(!s)return false;
     // 收尾后的工具回调可能迟到；同一回合不能因此重新变成工作中。
     if(!start&&!s.active)return false;
@@ -76,10 +76,19 @@ export function createWorkBuddyBridge({onChange=()=>{},locale='zh-CN',now=Date.n
       else{s.active=false;s.state=e.reason==='completed'?'success':e.reason==='failed'?'error':'idle';if(s.state==='success')notify('complete');if(s.state==='error')notify('error');}
     }else if(e.event==='SessionEnd'){s.state='idle';s.active=false;s.tools.clear();s.pending.clear();}
     else return false;
-    s.at=e.at;s.observedAt=now();sessions.set(e.sessionId,s);publish(notice);return true;
+    s.at=e.at;s.observedAt=now();sessions.set(e.sessionId,s);try{onTask(taskView(e.sessionId,s));}catch{}publish(notice);return true;
   }
   // 仅供已确认宿主全部退出的进程监视调用；最小化、失焦或长时间无Hook均不能冒充退出。
-  function hostClosed(){if(disposed)return;closedAt=now();sessions.clear();seen.clear();publish();}
+  function hostClosed(){
+    if(disposed)return;closedAt=now();
+    // 客户端退出只证明停止观察，不能把仍在执行的任务标成完成或继续计时。
+    for(const[threadId,row]of sessions)if(row.active){try{onTask(taskView(threadId,{...row,state:'unknown',active:false,at:Math.max(closedAt,row.at)}));}catch{/* 单条登记失败不妨碍其余任务及宿主清场。 */}}
+    sessions.clear();seen.clear();publish();
+  }
   function dispose(){if(disposed)return;disposed=true;if(timer!==null)timers.clearTimeout(timer);timer=null;sessions.clear();seen.clear();}
-  return {accept,snapshot,hostClosed,dispose};
+  const taskView=(threadId,row)=>({threadId,turnId:row.requestId,project:'',state:row.state,active:row.active,
+    model:null,effort:null,provenance:'unknown',phase:row.state==='waiting'?'confirmation':row.state==='working'?'tool':row.state==='result'?'response':row.state,
+   startedAt:row.startedAt??row.at,at:row.at});
+  const tasks=()=>[...sessions].map(([threadId,row])=>taskView(threadId,row));
+  return {accept,snapshot,hostClosed,dispose,tasks};
 }

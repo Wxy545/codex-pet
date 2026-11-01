@@ -17,3 +17,5 @@ contextBridge.exposeInMainWorld('chatPanel', Object.freeze({
     return () => ipcRenderer.removeListener('dragon-chat:changed', listener);
   },
 }));
+
+contextBridge.exposeInMainWorld('executionCatalog',Object.freeze({get:()=>ipcRenderer.invoke('pet-execution:catalog')}));

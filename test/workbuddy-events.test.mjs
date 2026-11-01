@@ -7,12 +7,19 @@ try { Hook = await import('../workbuddy/plugin/hook-event.mjs'); } catch (e) { i
 const fixture = () => {
   assert.equal(typeof Bridge.createWorkBuddyBridge, 'function', 'WorkBuddy事件桥尚未实现');
   let clock = 100000, seq = 0;
-  const calls = [], timers = new Map();
-  const bridge = Bridge.createWorkBuddyBridge({ locale: 'en', now: () => clock, onChange: (s,e) => calls.push({s,e}),
+  const calls = [], tasks = [], timers = new Map();
+  const bridge = Bridge.createWorkBuddyBridge({ locale: 'en', now: () => clock, onChange: (s,e) => calls.push({s,e}),onTask:row=>tasks.push(row),
     timers: { setTimeout(fn) { const id=++seq; timers.set(id,fn); return id; }, clearTimeout(id) {timers.delete(id);} } });
   const event = (type, extra={}) => ({schemaVersion:1,source:'workbuddy',eventId:`event-${++seq}`,event:type,sessionId:'synthetic-session-a',requestId:'synthetic-request-1',at:++clock,subagent:false,...extra});
-  return {bridge,calls,timers,event,advance(ms){clock+=ms;for(const [id,fn] of [...timers]){timers.delete(id);fn();}}};
+  return {bridge,calls,tasks,timers,event,advance(ms){clock+=ms;for(const [id,fn] of [...timers]){timers.delete(id);fn();}}};
 };
+
+test('任务目录区分各会话，未提供模型和强度保持未知',()=>{
+ const f=fixture();f.bridge.accept(f.event('UserPromptSubmit'));f.bridge.accept(f.event('UserPromptSubmit',{sessionId:'synthetic-session-b',requestId:'synthetic-request-b'}));
+ assert.equal(typeof f.bridge.tasks,'function');const rows=f.bridge.tasks();assert.equal(rows.length,2);
+ assert.equal(rows[0].model,null);assert.equal(rows[0].effort,null);assert.equal(rows[0].provenance,'unknown');
+ assert.notEqual(rows[0].threadId,rows[1].threadId);f.bridge.dispose();
+});
 
 test('Hook只投递生命周期元数据，完全丢弃prompt/工具输入输出/路径/错误正文',()=>{
   assert.equal(typeof Hook.normalizeHookInput,'function','Hook输入白名单尚未实现');
@@ -88,6 +95,18 @@ test('确认宿主全部退出时清场不发假结果，下一次启动仍可�
 });
 test('宿主确认退出前排队的开始事件迟到时不能重开工作状态',()=>{
  const f=fixture(),old=f.event('UserPromptSubmit');f.advance(1000);f.bridge.hostClosed();assert.equal(f.bridge.accept(old),false);assert.equal(f.bridge.snapshot().activeCount,0);
+});
+test('宿主退出先把各条活跃任务标未知且停止计时，既有完成记录不改写',()=>{
+ const f=fixture();f.bridge.accept(f.event('UserPromptSubmit'));f.bridge.accept(f.event('FinalStop',{reason:'completed'}));
+ for(const sessionId of ['synthetic-session-b','synthetic-session-c'])f.bridge.accept(f.event('UserPromptSubmit',{sessionId}));
+ // Hook时间戳允许小幅时钟偏移；退出元数据也必须能覆盖此前较新的任务事实。
+ f.bridge.accept(f.event('UserPromptSubmit',{sessionId:'synthetic-session-b',requestId:'future-request',at:101000}));
+ f.bridge.accept(f.event('PermissionRequest',{sessionId:'synthetic-session-c'}));
+ const before=f.tasks.length,notices=f.calls.filter(x=>x.e).length;f.advance(100);f.bridge.hostClosed();const closed=f.tasks.slice(before);
+ assert.equal(closed.length,2);assert.deepEqual(closed.map(row=>row.threadId).sort(),['synthetic-session-b','synthetic-session-c']);
+ for(const row of closed){assert.equal(row.state,'unknown');assert.equal(row.active,false);assert.equal(row.model,null);assert.ok(row.at>=row.startedAt);}
+ assert.equal(f.calls.filter(x=>x.e).length,notices);assert.equal(f.bridge.snapshot().activeCount,0);assert.deepEqual(f.bridge.tasks(),[]);
+ f.bridge.hostClosed();assert.equal(f.tasks.length,before+2);f.bridge.dispose();
 });
 test('SessionEnd缺少requestID时按明确会话关闭，旧时间戳仍不能清新回合或其它会话',()=>{
  const f=fixture();f.bridge.accept(f.event('UserPromptSubmit'));const oldClose=f.event('SessionEnd',{requestId:undefined});

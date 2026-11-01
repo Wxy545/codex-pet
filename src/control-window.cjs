@@ -18,7 +18,7 @@ const PHYSICS_FIELDS=['gravity','restitution','groundFriction','ceilingBounce','
 
 /** 只投影当前分区要显示的状态；连接参数、人设正文和任意本机路径不进入管理页。 */
 function characterCards(model,fileRoot) {
- return (Array.isArray(model?.characters)?model.characters:[]).filter(value=>CHARACTER_IDS.includes(value.id)).map(value=>{
+ return (Array.isArray(model?.characters)?model.characters:[]).filter(value=>CHARACTER_IDS.includes(value.id)||/^custom-[a-f0-9-]{36}$/.test(value.id)).map(value=>{
   const profile=value.manifest?.profiles?.idle,asset=profile?.file?value.assets?.[profile.file]:null;
   const preview=asset?.available&&asset.type==='video'&&typeof asset.url==='string'&&asset.url.startsWith('file:')?{type:'video',url:asset.url}:value.id==='bluefish'&&value.originalVideo?{type:'video',url:pathToFileURL(path.resolve(fileRoot,'../../assets/webm/待机呼吸休闲.webm')).href}:null;
   return{id:value.id,name:String(value.copy?.name||value.label||value.id).slice(0,80),available:value.available?.q===true,originalVideo:value.originalVideo===true,preview};
@@ -112,7 +112,7 @@ function createController({electron,hostRequest,apiRequest,skins,startup,petHost
  }
  const handlers={
   [CHANNELS.state]:async(event,section)=>{if(!owned(event))return failure('unauthorized');try{return{ok:true,state:await state(section)};}catch(error){return failure(own(TEXT,error?.code)?error.code:'unavailable');}},
-  [CHANNELS.character]:(event,character)=>mutate(event,async()=>{if(nativeHarness())throw fault('host_unavailable');if(!CHARACTER_IDS.includes(character))throw fault('invalid_input');await skins.select({character,mode:'q'});return{ok:true,state:await state('character')};}),
+  [CHANNELS.character]:(event,character)=>mutate(event,async()=>{if(nativeHarness())throw fault('host_unavailable');const current=await skins.readModel();if(!current.characters?.some(item=>item.id===character&&item.available?.q===true))throw fault('invalid_input');await skins.select({character,mode:'q'});return{ok:true,state:await state('character')};}),
   [CHANNELS.play]:(event,value)=>mutate(event,async()=>{if(nativeHarness())throw fault('host_unavailable');if(!actions?.play)throw fault('play_failed');try{await actions.play(value);return{ok:true,playing:true};}catch(error){throw fault(error?.code==='invalid_input'?'invalid_input':'play_failed');}}),
   [CHANNELS.interaction]:(event,value)=>mutate(event,()=>saveInteraction(value)),
   [CHANNELS.chatter]:(event,value)=>mutate(event,async()=>{if(!codex())throw fault('host_unavailable');if(!validChatter(value))throw fault('invalid_input');return{ok:true,chatter:chatterView(await request(apiRequest,'POST','/standalone-ai/settings',value))};}),

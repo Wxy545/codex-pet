@@ -1,0 +1,10 @@
+import test from 'node:test';import assert from 'node:assert/strict';import {createWorkspaceRoutes} from '../src/workspace-routes.mjs';
+test('内容服务选源、写审批和活动路由先鉴权，再验后端票据，不接收额外参数',async()=>{
+ const calls=[],content={state:()=>({profiles:[]}),configure:body=>{calls.push(body);return{profiles:[]};},start:body=>{calls.push(body);return{id:'job'};},result:()=>({})},sources={catalog:body=>{calls.push(body);return{state:'ready',sourceId:'ticket'};},bind:async body=>{assert.equal(body.sourceId,'ticket');return{serverId:'bound-server',revision:'current'};}},approvals={pending:()=>[{id:'approval'}],decide:body=>{calls.push(body);return true;}};
+ const routes=createWorkspaceRoutes({workspace:{},content,contentSources:sources,contentApprovals:approvals,security:{token:'synthetic'},requestJson:async req=>req.body});const handler=routes.find(route=>route.path.endsWith('/pet-content')).handler;
+ async function invoke(body,headers={'x-dsh-pet-token':'synthetic'},method='POST'){const res={setHeader(){},end(raw){this.body=JSON.parse(raw);this.writableEnded=true;}};await handler({method,headers,body},res);return res;}
+ assert.equal((await invoke({action:'source-catalog',host:'codex'},{})).statusCode,403);assert.equal((await invoke({action:'approval-pending'},{'x-dsh-pet-token':'synthetic',origin:'http://evil.invalid'})).statusCode,403);assert.equal(calls.length,0);
+ const saved=await invoke({action:'save-profile',profile:{host:'codex'},source:{host:'codex',sourceId:'ticket',revision:'current',serverId:'selected'}});assert.equal(saved.statusCode,200);assert.deepEqual(calls[0].profile,{host:'codex',serverId:'bound-server',revision:'current',connection:null});
+ assert.equal((await invoke({action:'approval-pending'})).body.items[0].id,'approval');assert.equal((await invoke({action:'approval-decide',id:'approval',approved:true,force:true})).statusCode,400);
+ await invoke({action:'start',profileId:'p',readAction:'feed',input:{},analyze:false});assert.deepEqual(calls.at(-1),{profileId:'p',action:'feed',input:{},analyze:false});
+});

@@ -22,6 +22,11 @@ const DISABLED_FEATURES = [
   'skill_search', 'sleep_tool', 'goals',
 ];
 const FAILURES = {
+  catalog_unavailable:[409,'模型目录暂不可用，请刷新后重试。'],
+  model_unavailable:[409,'所选模型已不可用，请重新选择。'],
+  modality_unavailable:[409,'所选模型未确认支持图片，请换一个模型。'],
+  unsupported_effort:[409,'所选模型不支持这个思考强度。'],
+  invalid_policy:[400,'模型设置无效，请重新选择。'],
   character_changed: [409, '形象已经切换，请重新说一句。'],
   busy: [429, '桌宠正在处理上一条请求，请稍后再说。'],
   invalid_input: [400, '请发送简短文字或 PNG、JPEG、WebP 图片。'],
@@ -113,9 +118,9 @@ function sendError(res, code, locale = Locale.getLocale()) {
   res.end(JSON.stringify({ error: { message: Locale.t(message, {}, locale), type: 'codex_pet_error', code } }));
 }
 
-function sendCompletion(res, body, text, usage) {
+function sendCompletion(res, body, text, usage, execution) {
   if (res.destroyed || res.writableEnded) return;
-  const metadata = { id: 'chatcmpl-' + randomUUID(), created: Math.floor(Date.now() / 1000), model: typeof body.model === 'string' ? body.model.slice(0, 100) : 'codex' };
+  const metadata = { id: 'chatcmpl-' + randomUUID(), created: Math.floor(Date.now() / 1000), model: execution?.model || (typeof body.model === 'string' ? body.model.slice(0, 100) : 'codex'),...(execution?{execution}: {}) };
   res.statusCode = 200;
   res.setHeader('cache-control', 'no-store');
   if (body.stream === true) {
@@ -146,7 +151,7 @@ function hideImagePaths(text, imageFiles, directory) {
 }
 
 /** 本地OpenAI兼容入口；仅通过CLI复用登录，不读取、复制或返回凭据。 */
-export function createCodexChatHandler({ codexPath, cwd, timeoutMs = 120000, spawnImpl = spawn, activityGate, characterProvider = () => Character.readCharacter(cwd) } = {}) {
+export function createCodexChatHandler({ codexPath, cwd, timeoutMs = 120000, spawnImpl = spawn, activityGate, characterProvider = () => Character.readCharacter(cwd),resolveExecution,onExecution=()=>{} } = {}) {
   if (typeof codexPath !== 'string' || !codexPath || typeof cwd !== 'string' || !cwd) throw new TypeError('codexPath and cwd are required');
   if (!Number.isFinite(timeoutMs) || timeoutMs <= 0) throw new TypeError('timeoutMs must be positive');
   if (activityGate !== undefined && typeof activityGate?.acquire !== 'function') throw new TypeError('activityGate.acquire is required');
@@ -176,6 +181,13 @@ export function createCodexChatHandler({ codexPath, cwd, timeoutMs = 120000, spa
         }
       }
     };
+    let execution;
+    if(resolveExecution){
+      try{const chosen=await resolveExecution({purpose:prepared.images.length?'image':'chat',override:body.execution});
+        execution={model:chosen.model??null,effort:chosen.effort??null,provenance:'requested'};
+      }catch(error){release();sendError(res,Object.hasOwn(FAILURES,error.code)?error.code:'process_failed');return;}
+      if(req.aborted||res.destroyed){release();return;}
+    }
     const imageFiles = [];
     if (prepared.images.length) {
       let cancelled = false;
@@ -206,6 +218,7 @@ export function createCodexChatHandler({ codexPath, cwd, timeoutMs = 120000, spa
       '--json', '--thread-source', 'pet-chat', '--ignore-user-config', '--color', 'never',
       '-c', 'approval_policy="never"', '-c', 'web_search="disabled"',
       '-c', 'project_doc_max_bytes=0', '-c', 'developer_instructions=' + JSON.stringify((character.locale === 'en' ? CHAT_RULES_EN : CHAT_RULES) + '\n' + character.persona),
+      ...(execution?.model?['--model',execution.model]:[]),...(execution?.effort?['-c','model_reasoning_effort='+JSON.stringify(execution.effort)]:[]),
       ...DISABLED_FEATURES.flatMap(feature => ['--disable', feature]), ...imageFiles.flatMap(path => ['--image', path]), '-',
     ];
 
@@ -261,6 +274,7 @@ export function createCodexChatHandler({ codexPath, cwd, timeoutMs = 120000, spa
       try {
         child = spawnImpl(codexPath, args, { cwd, env: createCodexChildEnv(), shell: false, windowsHide: true, stdio: ['pipe', 'pipe', 'pipe'] });
         token.child = child;
+        if(execution)try{onExecution({...execution});}catch{/* 展示回调不能改变执行参数。 */}
       } catch { release(); finish({ error: 'process_failed' }); return; }
       child.once('error', () => {
         // spawn 失败时没有进程；已有 pid 的异常仍需等 close 后才能释放资源与共享锁。
@@ -301,7 +315,7 @@ export function createCodexChatHandler({ codexPath, cwd, timeoutMs = 120000, spa
     // 旧角色已返回的正文也不能写进新角色窗口或碎碎念槽。
     if (Character.characterKey(characterProvider()) !== Character.characterKey(character)) { sendError(res, 'character_changed', characterProvider().locale); return; }
     if (result.error) sendError(res, result.error);
-    else sendCompletion(res, body, hideImagePaths(result.text, imageFiles, token.imageDirectory), result.usage);
+    else sendCompletion(res, body, hideImagePaths(result.text, imageFiles, token.imageDirectory), result.usage,execution);
   };
   handler.dispose = () => active?.cancel?.();
   return handler;

@@ -8,7 +8,7 @@ Curly the sheep has seven transparent clips: breathing, walking, a cheerful resp
 
 We welcome new gestures and improvements to existing clips. A small action that suits the character is a good place to start.
 
-Open an [Issue](https://github.com/Wxy545/codex-pet/issues) with a preview before making a full set. The maintainer reviews the source and permissions, adapts the clip, and checks its playback in the pet on Windows.
+Use **Create** to import media, bind motions, preview playback, and check a package. **Publish and create PR** shows the exact public files and permissions before uploading through your own GitHub fork. Existing submissions can be updated from **My submissions**. You can also open an [Issue](https://github.com/Wxy545/codex-pet/issues) with a preview before making a full set. The maintainer reviews the source, permissions and Windows playback before accepting a contribution.
 
 ## What to send
 
@@ -49,7 +49,7 @@ Code and documentation use MIT. Third-party assets keep their own licenses; do n
 
 ## 中文投稿要点
 
-先开 Issue 附小预览、动作名称、时长和来源许可，再决定是否做整套。最终素材需要实际透明通道，并检查循环、动作衔接和 Windows 播放。保留绿底源视频，背景整段使用同一纯色，后期再抠像。
+可在「创作」中导入、绑定、预览并检查作品包，确认公开文件与许可后，通过「公开投稿并创建 PR」上传个人 fork；也可以先开 Issue 附小预览、动作名称、时长和来源许可，再决定是否做整套。最终素材需要实际透明通道，并检查循环、动作衔接和 Windows 播放。保留绿底源视频，背景整段使用同一纯色，后期再抠像。
 
 白龙娘已有 23 段 Q 版视频，点击回应共五种、走位两种；卷卷小羊有 7 段透明视频，覆盖待机、行走、开心回应、思考、打字、等待和招呼。小羊的完成状态共用开心回应，出错和低额度共用思考。角色来源与许可分别见[白龙娘](../assets/white-dragon/NOTICE.md)和[卷卷小羊](../assets/curly-sheep/NOTICE.md)的素材说明。
 

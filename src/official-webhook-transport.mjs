@@ -1,0 +1,48 @@
+import {createHmac,timingSafeEqual} from 'node:crypto';
+import {chatError,chatHttp,chatChunks,chatId} from './international-http.mjs';
+const secret=value=>typeof value==='string'&&value.length>0&&value.length<=4096&&!/[\x00-\x1f\x7f]/.test(value);
+const equal=(one,two)=>Buffer.byteLength(one)===Buffer.byteLength(two)&&timingSafeEqual(Buffer.from(one),Buffer.from(two));
+const lineId=value=>typeof value==='string'&&/^U[a-fA-F0-9]{32}$/.test(value);
+function signed(raw,signature,key,encoding){
+ if(!Buffer.isBuffer(raw)&&typeof raw!=='string'||Buffer.byteLength(raw)>262144||typeof signature!=='string')throw chatError('chat_signature_invalid');
+ const expected=createHmac('sha256',key).update(raw).digest(encoding);if(!equal(signature,expected))throw chatError('chat_signature_invalid');let value;try{value=JSON.parse(raw.toString());}catch{throw chatError('chat_response_invalid');}return value;
+}
+const fresh=(stamp,now)=>Number.isFinite(stamp)&&stamp>=now-600000&&stamp<=now+60000;
+const remember=(map,key,value,max=1024)=>{while(map.size>=max&&!map.has(key))map.delete(map.keys().next().value);map.set(key,value);};
+
+/** LINE只接官方用户私聊。公开HTTPS转发由用户配置，本模块不打开端口、不改防火墙。 */
+export function createLineBotTransport({channelAccessToken,channelSecret,expectedSelfId,onMessage=async()=>{},onStatus=()=>{},fetchImpl=globalThis.fetch,now=Date.now}={}){
+ if(!secret(channelAccessToken)||!secret(channelSecret)||expectedSelfId!==undefined&&!lineId(expectedSelfId))throw chatError('chat_invalid_options');let active=false,ready=false,selfId=null,controller,generation=0;const replies=new Map(),users=new Set();
+ const status=state=>{try{onStatus({state,...(selfId?{selfId}:{})});}catch{}};
+ const check=run=>{if(!active||run!==generation)throw chatError('chat_not_connected');};
+ const call=(path,body,run,sending=false)=>{check(run);return chatHttp(fetchImpl,'https://api.line.me/v2/bot'+path,{method:body===undefined?'GET':'POST',body,headers:{Authorization:'Bearer '+channelAccessToken},signal:controller.signal,sending});};
+ async function start(){if(active)return;active=true;const run=++generation;controller=new AbortController();status('connecting');try{const value=await call('/info',undefined,run);check(run);if(!lineId(value?.userId))throw chatError('chat_account_invalid');selfId=value.userId;if(expectedSelfId&&selfId!==expectedSelfId)throw chatError('chat_account_changed');status('waiting-webhook');}catch(error){stop();throw error;}}
+ function stop(){active=false;ready=false;generation++;controller?.abort();replies.clear();users.clear();status('stopped');}
+ async function handleWebhook({method,headers={},rawBody}={}){
+  if(!active||!selfId)throw chatError('chat_not_connected');if(method!=='POST')return{status:405,body:''};const run=generation,value=signed(rawBody,headers['x-line-signature'],channelSecret,'base64');if(value?.destination!==selfId||!Array.isArray(value.events)||value.events.length>100)throw chatError('chat_account_changed');check(run);ready=true;status('connected');
+  for(const event of value.events){check(run);const userId=event?.source?.userId,message=event.message;if(event.type!=='message'||event.source?.type!=='user'||!lineId(userId)||userId===selfId||message?.type!=='text'||typeof message.text!=='string'||!message.text.trim()||message.text.length>12000||typeof message.id!=='string'||!/^\d{1,32}$/.test(message.id)||!fresh(event.timestamp,now()))continue;
+   while(users.size>=128&&!users.has(userId))users.delete(users.values().next().value);users.add(userId);const id='line-'+message.id;remember(replies,id,{userId,replyToken:secret(event.replyToken)?event.replyToken:null,at:now(),used:false});await onMessage({userId,id,text:message.text,private:true,self:false});
+  }return{status:200,body:'OK'};
+ }
+ async function send({userId,text,msgId}={}){if(!active||!ready)throw chatError('chat_not_connected');const reply=msgId?replies.get(msgId):null;if(!lineId(userId)||!users.has(userId)||msgId&&reply?.userId!==userId)throw chatError('chat_invalid_send');const chunks=chatChunks(text,5000),run=generation,messages=chunks.map(text=>({type:'text',text})),useReply=reply?.replyToken&&!reply.used&&now()-reply.at<45000;if(useReply)reply.used=true;
+  try{const value=await call(useReply?'/message/reply':'/message/push',useReply?{replyToken:reply.replyToken,messages}:{to:userId,messages},run,true);check(run);return{sentCount:chunks.length,messageIds:Array.isArray(value?.sentMessages)?value.sentMessages.filter(item=>typeof item.id==='string').map(item=>item.id):[]};}catch(error){throw chatError(error.code||'chat_send_failed',{deliveryUnknown:error.deliveryUnknown===true,unsentText:text,sentCount:0});}
+ }
+ return{start,stop,send,handleWebhook,state:()=>({state:ready?'connected':active?'waiting-webhook':'stopped',selfId})};
+}
+
+/** WhatsApp仅Cloud API官方号码；API版本由本人按控制台填写，不猜测最新版本或降级。 */
+export function createWhatsAppBotTransport({phoneNumberId,apiVersion,accessToken,appSecret,verifyToken,expectedSelfId,onMessage=async()=>{},onStatus=()=>{},fetchImpl=globalThis.fetch,now=Date.now}={}){
+ if(!chatId(phoneNumberId)||!/^v[1-9][0-9]?\.0$/.test(apiVersion??'')||![accessToken,appSecret,verifyToken].every(secret)||expectedSelfId!==undefined&&!chatId(expectedSelfId))throw chatError('chat_invalid_options');let active=false,ready=false,controller,selfId=null,selfNumber='',generation=0;const users=new Set(),references=new Map();
+ const status=state=>{try{onStatus({state,...(selfId?{selfId}:{})});}catch{}};
+ const check=run=>{if(!active||run!==generation)throw chatError('chat_not_connected');};
+ const call=(path,body,run,sending=false)=>{check(run);return chatHttp(fetchImpl,'https://graph.facebook.com/'+apiVersion+'/'+phoneNumberId+path,{method:body===undefined?'GET':'POST',body,headers:{Authorization:'Bearer '+accessToken},signal:controller.signal,sending});};
+ async function start(){if(active)return;active=true;const run=++generation;controller=new AbortController();status('connecting');try{const value=await call('?fields=id,display_phone_number',undefined,run);check(run);if(value?.id!==phoneNumberId||typeof value.display_phone_number!=='string')throw chatError('chat_account_invalid');selfId=value.id;selfNumber=value.display_phone_number.replace(/\D/g,'');if(expectedSelfId&&selfId!==expectedSelfId)throw chatError('chat_account_changed');status('waiting-webhook');}catch(error){stop();throw error;}}
+ function stop(){active=false;ready=false;generation++;controller?.abort();users.clear();references.clear();status('stopped');}
+ async function handleWebhook({method,query={},headers={},rawBody}={}){
+  if(!active||!selfId)throw chatError('chat_not_connected');if(method==='GET'){if(query['hub.mode']!=='subscribe'||typeof query['hub.verify_token']!=='string'||!equal(query['hub.verify_token'],verifyToken)||typeof query['hub.challenge']!=='string'||query['hub.challenge'].length>512)return{status:403,body:''};ready=true;status('connected');return{status:200,body:query['hub.challenge'],headers:{'content-type':'text/plain; charset=utf-8'}};}
+  if(method!=='POST')return{status:405,body:''};const signature=headers['x-hub-signature-256'];if(typeof signature!=='string'||!/^sha256=[a-f0-9]{64}$/.test(signature))throw chatError('chat_signature_invalid');const run=generation,value=signed(rawBody,signature.slice(7),appSecret,'hex');if(value?.object!=='whatsapp_business_account'||!Array.isArray(value.entry)||value.entry.length>100)throw chatError('chat_response_invalid');
+  for(const entry of value.entry){if(!Array.isArray(entry.changes)||entry.changes.length>100)continue;for(const change of entry.changes){const data=change.value;if(change.field!=='messages'||data?.messaging_product!=='whatsapp'||data.metadata?.phone_number_id!==selfId)continue;ready=true;status('connected');if(!Array.isArray(data.messages)||data.messages.length>100)continue;for(const message of data.messages){check(run);const userId=message.from;if(message.type!=='text'||message.group_id||message.from_me||!chatId(userId)||userId===selfNumber||!data.contacts?.some(contact=>contact.wa_id===userId)||typeof message.text?.body!=='string'||!message.text.body.trim()||message.text.body.length>12000||typeof message.id!=='string'||!/^[A-Za-z0-9._=+/-]{1,512}$/.test(message.id)||!fresh(Number(message.timestamp)*1000,now()))continue;while(users.size>=128&&!users.has(userId))users.delete(users.values().next().value);users.add(userId);remember(references,message.id,userId);await onMessage({userId,id:message.id,text:message.text.body,private:true,self:false});}}}return{status:200,body:'OK'};
+ }
+ async function send({userId,text,msgId}={}){if(!active||!ready)throw chatError('chat_not_connected');if(!chatId(userId)||!users.has(userId)||msgId&&references.get(msgId)!==userId)throw chatError('chat_invalid_send');const chunks=chatChunks(text,4096),ids=[],run=generation;for(let index=0;index<chunks.length;index++){try{const value=await call('/messages',{messaging_product:'whatsapp',recipient_type:'individual',to:userId,type:'text',text:{body:chunks[index],preview_url:false},...(msgId?{context:{message_id:msgId}}:{})},run,true);check(run);if(!Array.isArray(value?.messages)||!value.messages.length||typeof value.messages[0]?.id!=='string')throw chatError('chat_response_invalid',{deliveryUnknown:true});ids.push(value.messages[0].id);}catch(error){throw chatError(error.code||'chat_send_failed',{deliveryUnknown:error.deliveryUnknown===true,unsentText:chunks.slice(index).join(''),sentCount:ids.length});}}return{sentCount:ids.length,messageIds:ids};}
+ return{start,stop,send,handleWebhook,state:()=>({state:ready?'connected':active?'waiting-webhook':'stopped',selfId})};
+}

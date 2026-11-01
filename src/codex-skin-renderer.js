@@ -24,6 +24,12 @@
   let assetRevision = 0;
   let timer = null;
   let closed = false;
+  let voiceHidden = document.hidden === true, policyVoiceHidden = false;
+  function syncVoiceVisibility() { voiceHidden = policyVoiceHidden || document.hidden === true; for (const c of controllers) c.voice?.setHidden(voiceHidden); }
+  function setVoiceHidden(hidden) { policyVoiceHidden = hidden === true; syncVoiceVisibility(); }
+  const visibilityStop = window.petVisibility?.onChanged?.(value => setVoiceHidden(value.hidden));
+  void window.petVisibility?.getState?.().then(value => setVoiceHidden((value.state || value).hidden)).catch(() => {});
+  document.addEventListener?.('visibilitychange', syncVoiceVisibility);
   const t = key => L?.t(key, {}, model?.locale) ?? key;
   const defer = fn => (window.queueMicrotask || (callback => Promise.resolve().then(callback)))(fn);
 
@@ -108,18 +114,36 @@
     const asset = profile && character.assets[profile.file];
     return { character, entry, resolved, profile, asset };
   }
+
+  function eventVoice(controller, character, request, entry) {
+    controller.voice?.setRole(character); controller.voice?.setHidden(voiceHidden);
+    const key = character.id + ':' + request.gen;
+    if (controller.voiceRequest === key) return;
+    controller.voiceRequest = key;
+    const previousRole = controller.voiceCharacter; controller.voiceCharacter = character.id;
+    const work = entry.group === 'event:workStatus';
+    const event = entry.group === 'clicks' ? 'click' : work ? ['working', 'working', 'working', 'waiting', 'success', 'error'][entry.slot] : previousRole !== character.id && entry.group === 'idle' ? 'greeting' : null;
+    if (!event) { controller.voiceWorkEvent = null; return; }
+    if (work && controller.voiceWorkEvent === event) return;
+    controller.voiceWorkEvent = work ? event : null;
+    if (!controller.sprite.frozen) void controller.voice?.trigger(event);
+  }
   function readyNativeAction(character, id) {
     const explicit = character?.manifest.actions[id];
-    if (!explicit) return false;
+    if (!explicit && !character?.custom) return false;
+    if (!explicit) {
+      const resolved = A.resolveAction(actionEntry(id), character.manifest, character.assets);
+      return A.profileReady(character.manifest.profiles[resolved.profile], character.assets);
+    }
     const profile = character.manifest.profiles[explicit.profile];
     const asset = profile && character.assets[profile.file];
-    return profile?.type === 'video' && A.profileReady(profile, character.assets) && !failedAssets.has(asset?.url);
+    return (profile?.type === 'video' || character.custom) && A.profileReady(profile, character.assets) && !failedAssets.has(asset?.url);
   }
   function coreCharacter() {
     const character = model?.characters.find(value => value.id === model.selection.character);
     if (!character || character.originalVideo) return null;
     const idle = character.manifest.profiles.idle;
-    return idle?.type === 'video' && A.profileReady(idle, character.assets) && !failedAssets.has(character.assets[idle.file]?.url) ? character : null;
+    return (idle?.type === 'video' || character.custom) && A.profileReady(idle, character.assets) && !failedAssets.has(character.assets[idle.file]?.url) ? character : null;
   }
   function currentCharacter() {
     return model?.characters.find(value => value.id === model.selection.character);
@@ -144,7 +168,7 @@
     if (!['event:balance', 'event:whisper', 'event:workStatus'].includes(entry.group)) return false;
     const resolved = A.resolveAction(entry, character.manifest, character.assets);
     const profile = character.manifest.profiles[resolved.profile];
-    return profile?.type === 'video' && A.profileReady(profile, character.assets) && !failedAssets.has(character.assets[profile.file]?.url);
+    return (profile?.type === 'video' || character.custom) && A.profileReady(profile, character.assets) && !failedAssets.has(character.assets[profile.file]?.url);
   }
   const isNoMirrorAnimation = shared.isNoMirrorAnimation;
   shared.isNoMirrorAnimation = function (categories, id) {
@@ -171,7 +195,7 @@
     }
     const index = Math.floor(seconds * profile.fps);
     // 一次播放按素材原fps走完并保持末姿势，不把四姿势拉长为十秒，也不伪造中间帧。
-    return video.loop ? index % count : Math.min(count - 1, index);
+    return (profile.loop ?? video.loop) ? index % count : Math.min(count - 1, index);
   }
 
   function paintLayer(controller, layer, value) {
@@ -212,6 +236,9 @@
         p.context.clearRect(0, 0, layer.canvas.width, layer.canvas.height);
         p.context.drawImage(p.image, x, y, width, height, p.originX + frame.x * p.scale, p.originY + frame.y * p.scale, width * p.scale, height * p.scale);
         p.last = index;
+      }
+      if (value.character.custom && layer.request.once && p.profile.loop !== true && !['idle','moves'].includes(p.entry.group) && layer.video.currentTime >= p.frames.length / p.profile.fps && !p.completed && !controller.sprite.frozen && controller.sprite.gen === layer.request.gen && !controller.sprite.pending && typeof layer.video.onended === 'function') {
+        p.completed = true; const ended = layer.video.onended; layer.video.onended = null; layer.video.pause(); ended.call(layer.video); return;
       }
       if (layer.video.paused === false && !layer.video.ended && layer.raf == null) layer.raf = window.requestAnimationFrame(() => { layer.raf = null; draw(); });
     };
@@ -284,9 +311,12 @@
       };
       listen('loadeddata', () => {
         if (controller.disposed || layer.media !== media || element.readyState < 2 || media.seekRequested) return;
-        if (resumeAt > 0) {
+        const clipStart = value.profile.startSec ?? 0;
+        const clipEnd = value.profile.endSec ?? element.duration;
+        const seekAt = resumeAt > 0 ? clipStart + Math.max(0, resumeAt - clipStart) % Math.max(.01, clipEnd - clipStart) : clipStart;
+        if (seekAt > 0) {
           media.seekRequested = true;
-          media.seekTarget = Number.isFinite(element.duration) && element.duration > 0 ? resumeAt % element.duration : resumeAt;
+          media.seekTarget = seekAt;
           // 等目标帧完成解码再淡入，不能先显示新源的第零帧。
           element.currentTime = media.seekTarget;
           return;
@@ -297,15 +327,20 @@
         if (media.seekRequested && Math.abs(element.currentTime - media.seekTarget) < .1) ready();
       });
       listen('error', failed);
-      listen('ended', () => {
+      const complete = () => {
         if (controller.disposed || layer.media !== media) return;
+        if (media.loop && (value.profile.startSec !== undefined || value.profile.endSec !== undefined) && element.ended) {
+          element.currentTime = value.profile.startSec ?? 0; media.ended = false;
+          void Promise.resolve(element.play()).catch(failed);
+          return;
+        }
         const sprite = controller.sprite;
         // 拿起期间由pointerUp结束拖拽，素材结束不能提前报结束或接回待机。
         if (value.entry.group === 'drag' && (sprite.dragState?.active || sprite.dragState?.dragging)) return;
         media.ended = true;
         // 单候选工作回空闲时上游只解除loop，不重发once请求；沿它已安装的onended收尾。
         const workReturnedIdle = value.entry.group === 'event:workStatus' && sprite.workState == null && !layer.video.loop && typeof layer.video.onended === 'function';
-        if (!element.ended || media.completed || value.entry.group === 'idle' || value.entry.group === 'moves' || (!layer.request.once && !workReturnedIdle) || controller.active !== layer || controller.activeRequest !== layer.request || controller.pendingRequest || sprite.pending || sprite.gen !== layer.request.gen || sprite.frozen) return;
+        if ((!element.ended && !media.clipEnded) || media.completed || value.entry.group === 'idle' || value.entry.group === 'moves' || (!layer.request.once && !workReturnedIdle) || controller.active !== layer || controller.activeRequest !== layer.request || controller.pendingRequest || sprite.pending || sprite.gen !== layer.request.gen || sprite.frozen) return;
         const current = visual(controller, layer.request);
         if (current?.original || current?.profile.type !== 'video' || current?.asset.url !== value.asset.url || current.character.id !== value.character.id) return;
         const ended = layer.video.onended;
@@ -313,6 +348,14 @@
         // 以新单次素材的真实结束推进原动画链与回执，先拆隐藏视频回调以防十秒后二次结束。
         media.completed = true; layer.video.onended = null; layer.video.pause();
         ended.call(layer.video);
+      };
+      listen('ended', complete);
+      listen('timeupdate', () => {
+        if (layer.media !== media || controller.active !== layer || controller.pendingRequest) return;
+        const end = value.profile.endSec;
+        if (end === undefined || element.currentTime < end) return;
+        if (media.loop) { element.currentTime = value.profile.startSec ?? 0; return; }
+        element.pause(); media.clipEnded = true; complete();
       });
       media.timeout = window.setTimeout(failed, 10000);
       element.src = value.asset.url; element.load();
@@ -331,7 +374,10 @@
       const heldDrag = value.entry.group === 'drag' && (controller.sprite.dragState?.active || controller.sprite.dragState?.dragging) && !controller.sprite.frozen;
       // 同上游位移窗口采样；规划失败、未发车、已停步时不能只因动作ID是move就踏步。
       const travel = !moving || (controller.sprite.moveRef != null && seconds > lead && seconds < duration - tail);
-      media.element.loop = moving || heldDrag || value.entry.group === 'idle' || source.loop;
+      const workFinished = value.entry.group === 'event:workStatus' && controller.sprite.workState == null && !source.loop;
+      media.loop = workFinished ? false : value.profile.loop ?? (moving || heldDrag || value.entry.group === 'idle' || source.loop);
+      // 原生loop会跳回文件零点；裁剪循环只在允许的片段内回绕。
+      media.element.loop = media.loop && value.profile.startSec === undefined && value.profile.endSec === undefined;
       // 隐藏原片十秒结束后，仍拿在手上的新素材继续循环；物理和松手回调保持原实现。
       const sourceStopped = (source.paused || source.ended) && !(heldDrag && source.ended);
       if (sourceStopped || !travel) {
@@ -377,10 +423,22 @@
     }
     const value = visual(controller, request);
     const debug = { character: character.id, mode: 'q', form: 'q', action: request.action };
+    eventVoice(controller, character, request, value?.entry || {});
     if (value?.original) {
       originalVisual(controller);
       window.__codexSkinDebug = { ...debug, profile: 'original-video', playback: 'original-video', coverage: 'dedicated' };
       return;
+    }
+    const layout = value?.profile?.layout;
+    if (layout) {
+      const scale = layout.scale ?? 1, anchorX = layout.anchorX ?? .5, anchorY = layout.anchorY ?? 1;
+      layer.frame.style.left = `${50 + (layout.offsetX ?? 0) * 100}%`;
+      layer.frame.style.top = `${93.055556 + (layout.offsetY ?? 0) * 100}%`;
+      layer.frame.style.transform = `translate(${-anchorX * 100}%, ${-anchorY * 100}%) scale(${scale})`;
+      layer.frame.style.transformOrigin = `${anchorX * 100}% ${anchorY * 100}%`;
+    } else {
+      layer.frame.style.left = '50%'; layer.frame.style.top = '13.888889%';
+      layer.frame.style.transform = 'translateX(-50%)'; layer.frame.style.transformOrigin = '';
     }
     if (!value?.asset?.available || value.resolved.coverage === 'missing' || failedAssets.has(value.asset.url)) { originalVisual(controller); return; }
     if (value.profile.type !== 'video' && !decodedImages.has(value.asset.url)) {
@@ -422,6 +480,7 @@
   function ensure(sprite) {
     if (sprite.__codexSkinController) return sprite.__codexSkinController;
     const controller = { sprite, layers: [], baseAnimations: sprite.animations, catalog: A.catalogFromAnimations(sprite.animations), disposed: false, listeners: [] };
+    controller.voice = A.createFixedVoice({ createAudio: () => document.createElement('audio') });
     const schedule = () => {
       if (controller.queued || controller.disposed) return;
       controller.queued = true;
@@ -496,8 +555,9 @@
     if (next && !(this.pending?.anim === next && this.pending.once === once)) {
       const layer = controller.layers[this.front === 0 ? 1 : 0];
       const request = { action: next, once, external: Boolean(url), gen: this.gen + 1 };
-      const value = !url && this.pendingMove ? visual(controller, request) : null;
-      if (value?.entry.group === 'moves' && !value.original && readyNativeAction(value.character, next)) {
+      const value = !url ? visual(controller, request) : null;
+      if (value?.character.custom && value.profile?.type === 'video' && value.asset?.available) sourceUrl = value.asset.url;
+      if (this.pendingMove && value?.entry.group === 'moves' && !value.original && readyNativeAction(value.character, next) && value.profile.type === 'video' && value.profile.startSec === undefined && value.profile.endSec === undefined) {
         // 新片没有原鱼首尾两秒的表演段；只留淡入淡出的短缓冲，且不改共享配置。
         this.pendingMove = { ...this.pendingMove, leadSec: .12, tailSec: .12 };
         request.nativeMove = true; request.movePlan = { ...this.pendingMove }; sourceUrl = value.asset.url;
@@ -527,6 +587,7 @@
   }
   function disposeController(controller) {
     controller.disposed = true; hold(controller); controller.observer.disconnect();
+    controller.voice?.dispose();
     for (const [video, name, handler] of controller.listeners) video.removeEventListener(name, handler);
     for (const layer of controller.layers) { if (layer.request?.nativeMove) layer.video.pause(); releaseMedia(layer); layer.paint = null; layer.layer.remove?.(); }
     controllers.delete(controller);
@@ -606,6 +667,7 @@
     const previousCharacter = model?.selection.character;
     model = value; L?.setLocale(value.locale || 'zh-CN');
     for (const controller of controllers) {
+      controller.voice?.setRole(value.characters.find(c => c.id === value.selection.character));
       if (previousCharacter !== value.selection.character && (controller.activeRequest?.nativeMove || controller.pendingRequest?.nativeMove)) {
         controller.sprite.stopMove();
         if (!controller.sprite.resumeWorkStatusAnim()) controller.sprite.playIdle();
@@ -618,6 +680,7 @@
   void bridge.getState().then(value => { if (modelRevision === initialRevision) applyModel(value); }).catch(() => console.warn('[龙娘桌宠] 形象读取失败，保留原版显示。'));
   window.addEventListener('beforeunload', () => {
     closed = true; unsubscribe?.();
+    visibilityStop?.();
     menuListeners.clear();
     if (timer !== null) window.clearInterval(timer);
     for (const controller of [...controllers]) disposeController(controller);

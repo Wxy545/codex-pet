@@ -8,13 +8,13 @@ let createQQBridge;
 let projectQQState;
 try { ({createQQBridge,projectQQState}=await import('../src/qq-remote.mjs')); } catch(e) { if(e.code!=='ERR_MODULE_NOT_FOUND')throw e; }
 
-async function fixture(t,{delayRemote=false,replyText,approvalCount=1,activityGate,onPrompt,canStart,now,threads=[],onRead,mode='task',availableModels}={}) {
+async function fixture(t,{delayRemote=false,replyText,approvalCount=1,activityGate,onPrompt,canStart,now,threads=[],onRead,mode='task',availableModels,roleChat,getRoleSettings,localAction}={}) {
   assert.equal(typeof createQQBridge,'function','QQ task bridge is missing');
   // Windows 的临时目录可能带 8.3 别名，合成元数据与本机登记同样使用规范路径。
   const root=await realpath(await mkdtemp(join(tmpdir(),'pet-qq-')));
   t.after(()=>rm(root,{recursive:true,force:true}));
   const sent=[],packets=[],prompts=[],states=[],approvals=[],catalogCalls=[],factories=[];let options,failSend=false,approval,resolveTurn,releaseRemote,newThreads=0;
-  const factoryOptions={dataRoot:root,codexPath:'synthetic-codex',codexHome:join(root,'synthetic-codex-home'),locale:'zh-CN',activityGate,canStart,now,
+  const factoryOptions={dataRoot:root,codexPath:'synthetic-codex',codexHome:join(root,'synthetic-codex-home'),locale:'zh-CN',activityGate,canStart,now,roleChat,getRoleSettings,localAction,
     seal:async s=>Buffer.from(s).toString('base64'),unseal:async s=>Buffer.from(s,'base64').toString(),
     onState:s=>states.push(s),
     createTransport:o=>{options=o;return{start(){o.onStatus({state:'connected'});},stop(){},async send(body){if(failSend)throw Object.assign(Error('offline'),{code:'offline'});packets.push({...body});sent.push(body.text);}};},
@@ -31,6 +31,29 @@ async function fixture(t,{delayRemote=false,replyText,approvalCount=1,activityGa
   const pair=async()=>{const p=await bridge.configure({action:'pair'});await receive('/配对 '+p.pairing.code,'pair-message');if(mode!=='auto')await receive('/mode '+mode,'fixture-mode');};
   return{bridge,root,sent,packets,prompts,states,approvals,catalogCalls,factories,threads,receive,pair,factoryOptions,get approval(){return approval;},set fail(v){failSend=v;},releaseRemote(){releaseRemote?.();},finish(){resolveTurn?.({threadId:'synthetic-thread',text:'done',status:'completed'});}};
 }
+
+test('本人角色闲聊不创建项目任务，会话与工具权限不传给生成器，非本人仍拒绝',async t=>{
+ const calls=[],f=await fixture(t,{getRoleSettings:()=>({qqMode:'role'}),roleChat:{reply:async value=>{calls.push(value);return{text:'同一次角色回复'};},isCurrent:async()=>true}});t.after(()=>f.bridge.dispose());await f.pair();
+ await f.receive('窃取文件','stranger','stranger');assert.equal(calls.length,0);
+ await f.receive('你好卷卷','role-one');await f.bridge.idle();assert.equal(f.prompts.length,0);assert.equal(calls.length,1);assert.equal(calls[0].trustedIdentity.isOwner,true);assert.equal(Object.hasOwn(calls[0],'cwd'),false);assert.equal(Object.hasOwn(calls[0],'toolPolicy'),false);assert.equal(f.sent.at(-1),'同一次角色回复');
+ await f.receive('/任务 检查本项目','task-one');await f.bridge.idle();assert.equal(f.prompts.length,1);assert.equal(calls.length,1);
+});
+test('手机动作从当次实时目录编号点播，不走模型；过期目录和非本人不能操作',async t=>{
+ let clock=1000;const calls=[],f=await fixture(t,{now:()=>clock,localAction:async(...args)=>{calls.push(args);return{characters:[{id:'white-dragon',name:'白龙娘'}],pets:[{petId:'main',revision:'current-revision',groups:[{label:'互动',items:[{anim:'click-one',label:'点一下'}]}]}]};}});t.after(()=>f.bridge.dispose());await f.pair();
+ await f.receive('/隐藏','other','stranger');assert.equal(calls.length,0);await f.receive('/动作','list');await f.receive('/动作 1','play');assert.deepEqual(calls[1],['codex','play',{petId:'main',revision:'current-revision',anim:'click-one'}]);assert.equal(f.prompts.length,0);
+ await f.receive('/形象','characters');clock+=60001;await f.receive('/形象 1','expired');assert.equal(calls.length,3);assert.match(f.sent.at(-1),/刷新/);
+});
+test('内容分享仅本人且每条只尝试一次，不挪用任务的被动回复引用',async t=>{
+ const f=await fixture(t);t.after(()=>f.bridge.dispose());await f.pair();f.fail=true;
+ assert.equal((await f.bridge.sendOwner({text:'有来源的分享',receiptId:'synthetic-content-job'})).confirmed,false);assert.equal(f.bridge.state().pendingReplies,1);
+ f.fail=false;assert.equal((await f.bridge.sendOwner({text:'有来源的分享',receiptId:'synthetic-content-job'})).alreadyAttempted,true);assert.equal(f.prompts.length,0);
+ await f.receive('/结果','get-shared');assert.match(f.sent.at(-1),/有来源的分享/);
+ await f.bridge.sendOwner({text:'另一条分享',receiptId:'synthetic-content-other'});assert.equal(f.packets.at(-1).msgId,undefined);
+});
+test('角色取消与记忆撤销不会发送过期回复，也不自动重试',async t=>{
+ let resolve,signal,calls=0;const f=await fixture(t,{roleChat:{reply:value=>{calls++;signal=value.signal;return new Promise(r=>{resolve=r;value.signal.addEventListener('abort',()=>r({text:'旧回复'}),{once:true});});},isCurrent:async()=>false}});t.after(()=>f.bridge.dispose());await f.pair();
+ await f.receive('/角色 你好','role-one');while(!signal)await new Promise(r=>setTimeout(r,1));await f.receive('/取消','cancel-role');await f.bridge.idle();assert.equal(signal.aborted,true);assert.equal(f.sent.some(s=>s==='旧回复'),false);assert.equal(f.prompts.length,0);assert.equal(calls,1);
+});
 
 test('关闭工具后官方会话列表不会重新混入已登记的旧工具会话，仍保留普通桌面会话',async t=>{
  const f=await fixture(t);t.after(()=>f.bridge.dispose());

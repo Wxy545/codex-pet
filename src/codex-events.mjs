@@ -11,6 +11,13 @@ const MAX_FILES = 256;
 const MAX_THREADS = 512;
 const MAX_NOTICE_KEYS = 512;
 const EMPTY_BUFFER = Buffer.alloc(0);
+const taskModel = value => typeof value === 'string' && /^[^\s\x00-\x1f\x7f]{1,100}$/.test(value) ? value : null;
+const taskEffort = value => ['none','minimal','low','medium','high','xhigh','max','ultra'].includes(value) ? value : null;
+const phaseFor = (record, state) => {
+  if (state !== 'working') return ({thinking:'thinking',waiting:'confirmation',result:'response',success:'complete',error:'error',idle:'idle'})[state] || 'unknown';
+  const type = String(record.payload?.item?.type || record.payload?.type || '').toLowerCase();
+  return ({commandexecution:'command',filechange:'files',mcptoolcall:'mcp',websearch:'search',imagegeneration:'image'})[type] || 'tool';
+};
 const TASK_TEXT = {
   idle: '等待 Codex 任务', thinking: '正在思考', working: '正在工作',
   result: '正在整理结果', waiting: '等待您的确认', success: '本次任务已完成', error: '任务出现错误',
@@ -123,7 +130,7 @@ export function transitionFor(record) {
  * 只读跟随 Codex 会话日志。snapshot 与通知只包含固定状态文案，不返回对话或命令正文。
  * start/stop 可 await；snapshot 同步读取，onChange 只在快照变化或出现新通知时调用。
  */
-export function createCodexWatcher({ codexHome = process.env.CODEX_HOME || join(homedir(), '.codex'), onChange = () => {}, pollMs = 1500, excludeThreadSources = ['pet-chat'], excludeThread=()=>false, terminalHoldMs = 10000, locale = Locale.getLocale() } = {}) {
+export function createCodexWatcher({ codexHome = process.env.CODEX_HOME || join(homedir(), '.codex'), onChange = () => {}, onTask=()=>{}, pollMs = 1500, excludeThreadSources = ['pet-chat'], excludeThread=()=>false, terminalHoldMs = 10000, locale = Locale.getLocale() } = {}) {
   if (typeof codexHome !== 'string' || !codexHome) throw new TypeError(Locale.t('codexHome 必须是目录路径', {}, locale));
   if (typeof onChange !== 'function') throw new TypeError(Locale.t('onChange 必须是函数', {}, locale));
   if (!Number.isFinite(pollMs) || pollMs < 10) throw new TypeError(Locale.t('pollMs 必须不少于 10 毫秒', {}, locale));
@@ -177,20 +184,30 @@ export function createCodexWatcher({ codexHome = process.env.CODEX_HOME || join(
   function applyRecord(record, cursor, mode, linePosition) {
     if (!record || typeof record !== 'object') return;
     const payload = record.payload;
+    const updatedAt = timestampOf(record, cursor.mtimeMs);
     if (record.type === 'session_meta' && payload && typeof payload === 'object') {
       cursor.threadId = safeId(payload.id ?? payload.session_id, cursor.threadId);
       cursor.source = payload.thread_source ?? payload.source;
       cursor.excluded = excludedSources.has(cursor.source);
+      // 目录只留项目名，不向任务概览投影日志路径、提示词或工具参数。
+      cursor.project = typeof payload.cwd === 'string' ? payload.cwd.split(/[\\/]/).filter(Boolean).at(-1)?.slice(0, 120) || '' : '';
     }
     if (cursor.excluded) return;
     // QQ只接管具体回合；同一会话随后在桌面开始的新回合继续正常跟随。
     const explicitTurn=payload?.turn_id??payload?.turnId??payload?.turn?.id??payload?.root_turn_id;
     const validTurn=typeof explicitTurn==='string'&&/^[\w-]{1,160}$/.test(explicitTurn)?explicitTurn:undefined;
     const startsTurn=record.type==='turn_context'||record.type==='event_msg'&&payload?.type==='task_started';
-    if(validTurn&&(startsTurn||!cursor.turnId))cursor.turnId=validTurn;
+    if(validTurn&&(startsTurn||!cursor.turnId)){
+      if(cursor.turnId!==validTurn){cursor.model=null;cursor.effort=null;cursor.startedAt=updatedAt;}
+      cursor.turnId=validTurn;
+    }
     const turnId=validTurn??cursor.turnId;
     const separatelyTracked=excludeThread(cursor.threadId,turnId);
-    const updatedAt = timestampOf(record, cursor.mtimeMs);
+    if(record.type==='turn_context'){
+      cursor.model=taskModel(payload?.model);cursor.effort=taskEffort(payload?.effort??payload?.reasoning_effort);
+      const current=threads.get(cursor.threadId);
+      if(current&&current.turnId===turnId){current.model=cursor.model;current.effort=cursor.effort;}
+    }
     if (record.type === 'event_msg' && payload?.type === 'token_count') {
       const next = usageFrom(payload.rate_limits, locale);
       if (next && updatedAt >= quotaTimestamp) { quota = next; quotaTimestamp = updatedAt; publish(); }
@@ -201,12 +218,14 @@ export function createCodexWatcher({ codexHome = process.env.CODEX_HOME || join(
     if (!transition) return;
     const previous = threads.get(cursor.threadId);
     if (!previous || updatedAt >= previous.updatedAt) {
-      threads.set(cursor.threadId, { threadId: cursor.threadId, turnId, state: transition.state, active: transition.active, updatedAt, observedAt: Date.now(), sequence: ++sequence, sourcePath: cursor.path });
+      threads.set(cursor.threadId, { threadId: cursor.threadId, turnId, state: transition.state, active: transition.active, updatedAt, observedAt: Date.now(), sequence: ++sequence, sourcePath: cursor.path,
+        project:cursor.project||'',model:cursor.model??null,effort:cursor.effort??null,startedAt:cursor.startedAt??(previous?.turnId===turnId?previous?.startedAt??updatedAt:updatedAt),phase:phaseFor(record,transition.state) });
       // 只保存归约后的状态；不积累原始日志、工具结果和对话正文。
       if (threads.size > MAX_THREADS) {
         const oldest = [...threads.values()].sort((a, b) => Number(a.active) - Number(b.active) || a.updatedAt - b.updatedAt)[0];
         threads.delete(oldest.threadId);
       }
+      if(running&&!bootstrapping&&!separatelyTracked)try{onTask(taskView(threads.get(cursor.threadId)));}catch{/* 目录异常不改变原工作状态。 */}
     }
     let notification;
     if (transition.notice&&!separatelyTracked) {
@@ -388,5 +407,10 @@ export function createCodexWatcher({ codexHome = process.env.CODEX_HOME || join(
     startPromise = undefined;
   }
 
-  return { start, stop, snapshot };
+  const taskView=row=>({
+    threadId:row.threadId,turnId:row.turnId??null,project:row.project||'',state:row.state,active:row.active,
+    model:row.model??null,effort:row.effort??null,provenance:row.model?'host-record':'unknown',phase:row.phase||'unknown',startedAt:row.startedAt??row.updatedAt,at:row.updatedAt,
+  });
+  const tasks = () => [...threads.values()].filter(row=>!excludeThread(row.threadId,row.turnId)).map(taskView);
+  return { start, stop, snapshot, tasks };
 }

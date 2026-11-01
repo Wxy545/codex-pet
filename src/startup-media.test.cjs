@@ -2,6 +2,15 @@
 const test=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs/promises'),path=require('node:path'),{tmpdir}=require('node:os'),{EventEmitter}=require('node:events'),{pathToFileURL}=require('node:url');
 const Media=require('./startup-media.cjs');
 const MP4=Buffer.from('000000186674797069736f6d0000020069736f6d69736f32000000086d646174','hex');
+test('本机片段可重命名和裁剪，有限组合按顺序保存且只传验证副本',async t=>{
+ const f=await fixture(t);const a=(await f.store.importFile(f.source)).items[0],b=(await f.store.importFile(f.source)).items[1];
+ await f.store.edit({id:a.id,name:'Opening',startMs:1000,endMs:3000});await f.store.edit({id:b.id,startMs:500,endMs:4500});await f.store.sequence({ids:[b.id,a.id]});
+ const scene=await f.store.resolveScene('codex');assert.equal(scene.custom.durationMs,6000);assert.deepEqual(scene.custom.clips.map(x=>[x.startMs,x.endMs]),[[500,4500],[1000,3000]]);assert.equal(f.store.state().items[0].name,'Opening');assert.equal(JSON.stringify(f.store.state()).includes(f.dataRoot),false);
+ const restored=Media.createMediaStore({dataRoot:f.dataRoot,probe:async()=>{throw Error('unexpected');}});assert.deepEqual(restored.state().sequence,[b.id,a.id]);assert.deepEqual((await restored.resolveScene('codex')).custom.clips,scene.custom.clips);
+ for(const patch of[{id:a.id,startMs:3000,endMs:1000},{id:a.id,name:'C:\\secret\\clip.mp4'},{id:a.id,endMs:7000},{id:'../bad',name:'bad'}])await assert.rejects(f.store.edit(patch),/invalid/);
+ await assert.rejects(f.store.sequence({ids:Array(9).fill(a.id)}),/invalid/);await assert.rejects(f.store.sequence({ids:['missing']}),/invalid/);
+ await f.store.remove(a.id);assert.deepEqual(f.store.state().sequence,[b.id]);assert.equal((await f.store.resolveScene('codex')).custom.durationMs,4000);
+});
 async function fixture(t,probe=async()=>({duration:6.2,width:1920,height:1080})){const dataRoot=await fs.mkdtemp(path.join(tmpdir(),'startup-media-'));t.after(()=>fs.rm(dataRoot,{recursive:true,force:true}));const source=path.join(dataRoot,'my-intro.mp4');await fs.writeFile(source,MP4);return{dataRoot,source,store:Media.createMediaStore({dataRoot,probe})};}
 test('本地导入解码后收库，保存副本且不改原片，状态不返回原路径',async t=>{
  const f=await fixture(t);const loaded=await f.store.importFile(f.source);assert.equal(loaded.items.length,1);const item=loaded.items[0];assert.equal(item.name,'my-intro.mp4');assert.equal(item.durationMs,6200);assert.equal(item.width,1920);assert.equal(loaded.selectedVideo,item.id);assert.equal(JSON.stringify(loaded).includes(f.dataRoot),false);assert.equal(item.file,undefined);assert.deepEqual(await fs.readFile(f.source),MP4);

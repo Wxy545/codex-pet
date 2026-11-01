@@ -1,0 +1,7 @@
+import test from'node:test';import assert from'node:assert/strict';import{mkdtemp,readFile,rm}from'node:fs/promises';import{tmpdir}from'node:os';import{join}from'node:path';import{createRemoteActivity}from'../src/remote-activity.mjs';
+test('多远程连接独立收尾，原生Harness只保留自己的安全元数据',async t=>{
+ const root=await mkdtemp(join(tmpdir(),'pet-remote-activity-'));t.after(()=>rm(root,{recursive:true,force:true}));const service=await createRemoteActivity({dataRoot:root,terminalMs:20,heartbeatMs:10});t.after(()=>service.dispose());
+ service.observe('qq',{application:'codex',state:'working',activeCount:1});service.observe('telegram',{application:'harness',channel:'telegram-bot',state:'waiting',activeCount:1,prompt:'private'});assert.equal(service.snapshot().state,'waiting');assert.equal(service.snapshot().activeCount,2);
+ service.observe('qq',{application:'codex',state:'idle'});assert.equal(service.snapshot().application,'harness');await new Promise(r=>setTimeout(r,30));const record=JSON.parse(await readFile(join(root,'qq-activity.json'),'utf8'));assert.equal(record.application,'harness');assert.equal(record.state,'waiting');assert.equal(JSON.stringify(record).includes('private'),false);
+ service.observe('telegram',{application:'harness',state:'success'});await new Promise(r=>setTimeout(r,50));assert.equal(service.snapshot(),null);await service.dispose();assert.equal(JSON.parse(await readFile(join(root,'qq-activity.json'),'utf8')).state,'idle');
+});

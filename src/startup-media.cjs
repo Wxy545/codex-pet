@@ -7,9 +7,12 @@ const {pathToFileURL}=require('node:url');
 const L=require('./codex-locale.cjs');
 const THEMES=['auto','chatgpt','deepseek','workbuddy'];
 const MAX_BYTES=256*1024*1024,MAX_ITEMS=8,MAX_PIXELS=8847360;
-const CHANNELS={get:'startup-media:get',import:'startup-media:import',preferences:'startup-media:preferences',remove:'startup-media:remove',preview:'startup-media:preview'};
+const CHANNELS={get:'startup-media:get',import:'startup-media:import',preferences:'startup-media:preferences',edit:'startup-media:edit',sequence:'startup-media:sequence',remove:'startup-media:remove',preview:'startup-media:preview'};
 const idValid=value=>typeof value==='string'&&/^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/.test(value);
 const object=value=>value&&typeof value==='object'&&!Array.isArray(value);
+const clipRange=item=>({startMs:item.startMs??0,endMs:item.endMs??item.durationMs});
+const rangeValid=item=>{const r=clipRange(item);return Number.isInteger(r.startMs)&&Number.isInteger(r.endMs)&&r.startMs>=0&&r.endMs-r.startMs>=250&&r.endMs<=item.durationMs;};
+const nameValid=name=>typeof name==='string'&&name.trim().length>0&&name.length<=160&&!/[\u0000-\u001f]|[A-Z]:[\\/]|\\\\|file:\/\//i.test(name);
 const fail=code=>{throw new Error(code);};
 const metadataValid=value=>value&&Number.isFinite(value.duration)&&value.duration>=.25&&value.duration<=60&&Number.isInteger(value.width)&&Number.isInteger(value.height)&&value.width>=16&&value.height>=16&&value.width<=4096&&value.height<=4096&&value.width*value.height<=MAX_PIXELS;
 function videoHeader(file,extension){let fd;try{fd=fs.openSync(file,'r');const header=Buffer.alloc(512),length=fs.readSync(fd,header,0,512,0);if(extension==='.mp4')return length>=16&&header.subarray(4,8).equals(Buffer.from('ftyp'));return extension==='.webm'&&length>=12&&header.subarray(0,4).equals(Buffer.from('1a45dfa3','hex'))&&header.subarray(4,length).includes(Buffer.from('4282847765626d','hex'));}catch{return false;}finally{if(fd!==undefined)fs.closeSync(fd);}}
@@ -19,16 +22,18 @@ async function hashFile(file){const hash=createHash('sha256');for await(const by
 function createMediaStore({dataRoot,probe}={}){
  if(!dataRoot||!path.isAbsolute(dataRoot)||typeof probe!=='function')throw new TypeError('startup media dependencies required');
  const directory=path.join(dataRoot,'startup-media','custom'),file=path.join(dataRoot,'startup-appearance.json');let error=null,queue=Promise.resolve();
- let value={schemaVersion:1,theme:'auto',selectedVideo:'builtin',items:[]};
- const validItem=item=>object(item)&&idValid(item.id)&&['.mp4','.webm'].some(ext=>item.file===item.id+ext)&&typeof item.name==='string'&&item.name.length<=160&&Number.isInteger(item.bytes)&&item.bytes>=16&&item.bytes<=MAX_BYTES&&/^[a-f0-9]{64}$/.test(item.sha256)&&metadataValid({duration:item.durationMs/1000,width:item.width,height:item.height});
+ let value={schemaVersion:1,theme:'auto',selectedVideo:'builtin',items:[],sequence:[]};
+ const validItem=item=>object(item)&&idValid(item.id)&&['.mp4','.webm'].some(ext=>item.file===item.id+ext)&&nameValid(item.name)&&Number.isInteger(item.bytes)&&item.bytes>=16&&item.bytes<=MAX_BYTES&&/^[a-f0-9]{64}$/.test(item.sha256)&&metadataValid({duration:item.durationMs/1000,width:item.width,height:item.height})&&rangeValid(item);
+ const sequenceValid=(ids,items)=>Array.isArray(ids)&&ids.length<=MAX_ITEMS&&ids.every(id=>items.some(item=>item.id===id))&&ids.reduce((sum,id)=>{const r=clipRange(items.find(item=>item.id===id));return sum+r.endMs-r.startMs;},0)<=60000;
  function assertPaths(){for(const target of[dataRoot,path.dirname(directory),directory,file])try{if(fs.lstatSync(target).isSymbolicLink())fail('storage-failed');}catch(e){if(e.code!=='ENOENT')throw e;}}
- try{assertPaths();const stat=fs.statSync(file);if(!stat.isFile()||stat.size>128*1024)fail('storage-failed');const saved=JSON.parse(fs.readFileSync(file,'utf8'));if(!object(saved)||saved.schemaVersion!==1||!THEMES.includes(saved.theme)||!Array.isArray(saved.items)||saved.items.length>MAX_ITEMS||saved.items.some(item=>!validItem(item))||new Set(saved.items.map(item=>item.id)).size!==saved.items.length||saved.selectedVideo!=='builtin'&&!saved.items.some(item=>item.id===saved.selectedVideo))fail('storage-failed');value=saved;}
+ try{assertPaths();const stat=fs.statSync(file);if(!stat.isFile()||stat.size>128*1024)fail('storage-failed');const saved=JSON.parse(fs.readFileSync(file,'utf8'));if(!object(saved)||saved.schemaVersion!==1||!THEMES.includes(saved.theme)||!Array.isArray(saved.items)||saved.items.length>MAX_ITEMS||saved.items.some(item=>!validItem(item))||new Set(saved.items.map(item=>item.id)).size!==saved.items.length||!sequenceValid(saved.sequence||[],saved.items)||saved.selectedVideo==='sequence'&&!(saved.sequence?.length)||!['builtin','sequence'].includes(saved.selectedVideo)&&!saved.items.some(item=>item.id===saved.selectedVideo))fail('storage-failed');value={...saved,sequence:saved.sequence||[]};}
  catch(e){if(e.code!=='ENOENT')error='storage_failed';}
  function available(item){try{assertPaths();const candidate=path.join(directory,item.file);const stat=fs.lstatSync(candidate);return !stat.isSymbolicLink()&&stat.isFile()&&stat.size===item.bytes&&videoHeader(candidate,path.extname(item.file));}catch{return false;}}
- const state=()=>({theme:value.theme,selectedVideo:value.selectedVideo,items:value.items.map(item=>({id:item.id,name:item.name,durationMs:item.durationMs,width:item.width,height:item.height,bytes:item.bytes,available:available(item)})),limits:{maxSeconds:60,maxBytes:MAX_BYTES,maxItems:MAX_ITEMS},...(error?{error}:{})});
+ const state=()=>({theme:value.theme,selectedVideo:value.selectedVideo,sequence:[...value.sequence],items:value.items.map(item=>({id:item.id,name:item.name,durationMs:item.durationMs,...clipRange(item),width:item.width,height:item.height,bytes:item.bytes,available:available(item)})),limits:{maxSeconds:60,maxBytes:MAX_BYTES,maxItems:MAX_ITEMS},...(error?{error}:{})});
  const serialize=fn=>{const result=queue.catch(()=>{}).then(()=>{if(error)fail('storage-failed');assertPaths();return fn();});queue=result;return result;};
  async function save(next){assertPaths();await io.mkdir(dataRoot,{recursive:true});const temp=file+'.tmp-'+randomUUID();try{await io.writeFile(temp,JSON.stringify(next,null,2)+'\n',{flag:'wx'});await io.rename(temp,file);value=next;}catch(e){await io.unlink(temp).catch(()=>{});throw e;}}
- async function importFile(source){return serialize(async()=>{
+ async function importFile(source,clip={}){return serialize(async()=>{
+  if(!object(clip)||Object.keys(clip).some(key=>!['name','startMs','endMs'].includes(key))||clip.name!==undefined&&!nameValid(clip.name))fail('invalid-media');
   if(value.items.length>=MAX_ITEMS)fail('capacity');if(typeof source!=='string'||!path.isAbsolute(source)||/^(\\\\|\/\/)/.test(source))fail('invalid-media');
   const extension=path.extname(source).toLowerCase();if(!['.mp4','.webm'].includes(extension))fail('invalid-media');let stat;try{stat=await io.lstat(source);}catch{fail('invalid-media');}
   if(stat.isSymbolicLink()||!stat.isFile()||stat.size<16||stat.size>MAX_BYTES||!videoHeader(source,extension))fail('invalid-media');
@@ -36,19 +41,21 @@ function createMediaStore({dataRoot,probe}={}){
   try{
    await io.copyFile(source,destination,fs.constants.COPYFILE_EXCL);created=true;const copied=await io.lstat(destination);if(copied.size!==stat.size||!videoHeader(destination,extension))fail('invalid-media');
    let metadata;try{metadata=await probe(destination);}catch{fail('decode-failed');}if(!metadataValid(metadata))fail('invalid-media');
-   const item={id,file:name,name:path.basename(source).slice(0,160),durationMs:Math.round(metadata.duration*1000),width:metadata.width,height:metadata.height,bytes:copied.size,sha256:await hashFile(destination)};
+   const item={id,file:name,name:path.basename(source).slice(0,160),durationMs:Math.round(metadata.duration*1000),width:metadata.width,height:metadata.height,bytes:copied.size,sha256:await hashFile(destination),...clip};if(!validItem(item))fail('invalid-media');
    await save({...value,selectedVideo:id,items:[...value.items,item]});return state();
   }catch(e){if(created)await io.unlink(destination).catch(()=>{});throw e;}
  });}
- async function preferences(patch){return serialize(async()=>{if(!object(patch)||!Object.keys(patch).length||Object.keys(patch).some(key=>!['theme','selectedVideo'].includes(key))||patch.theme!==undefined&&!THEMES.includes(patch.theme)||patch.selectedVideo!==undefined&&patch.selectedVideo!=='builtin'&&!value.items.some(item=>item.id===patch.selectedVideo))fail('invalid-preferences');await save({...value,...patch});return state();});}
+ async function preferences(patch){return serialize(async()=>{if(!object(patch)||!Object.keys(patch).length||Object.keys(patch).some(key=>!['theme','selectedVideo'].includes(key))||patch.theme!==undefined&&!THEMES.includes(patch.theme)||patch.selectedVideo!==undefined&&patch.selectedVideo!=='builtin'&&!(patch.selectedVideo==='sequence'&&value.sequence.length)&&!value.items.some(item=>item.id===patch.selectedVideo))fail('invalid-preferences');await save({...value,...patch});return state();});}
+ async function edit(patch){return serialize(async()=>{if(!object(patch)||Object.keys(patch).some(key=>!['id','name','startMs','endMs'].includes(key))||!idValid(patch.id)||!value.items.some(item=>item.id===patch.id)||patch.name!==undefined&&!nameValid(patch.name))fail('invalid-clip-edit');const items=value.items.map(item=>item.id===patch.id?{...item,...Object.fromEntries(['name','startMs','endMs'].filter(key=>patch[key]!==undefined).map(key=>[key,key==='name'?patch[key].trim():patch[key]]))}:item);if(!items.every(validItem)||!sequenceValid(value.sequence,items))fail('invalid-clip-range');await save({...value,items});return state();});}
+ async function sequence(patch){return serialize(async()=>{if(!object(patch)||Object.keys(patch).length!==1||!sequenceValid(patch.ids,value.items)||!patch.ids.length)fail('invalid-clip-sequence');await save({...value,selectedVideo:'sequence',sequence:[...patch.ids]});return state();});}
  async function remove(id){return serialize(async()=>{if(!idValid(id)||!value.items.some(item=>item.id===id))fail('invalid-media-id');const item=value.items.find(item=>item.id===id),candidate=path.join(directory,item.file);try{if((await io.lstat(candidate)).isSymbolicLink())fail('storage-failed');}catch(e){if(e.code!=='ENOENT')throw e;}
-  await save({...value,selectedVideo:value.selectedVideo===id?'builtin':value.selectedVideo,items:value.items.filter(item=>item.id!==id)});try{await io.unlink(candidate);}catch(e){if(e.code!=='ENOENT')fail('remove-failed');}return state();
+  const sequence=value.sequence.filter(item=>item!==id);await save({...value,sequence,selectedVideo:value.selectedVideo===id||value.selectedVideo==='sequence'&&!sequence.length?'builtin':value.selectedVideo,items:value.items.filter(item=>item.id!==id)});try{await io.unlink(candidate);}catch(e){if(e.code!=='ENOENT')fail('remove-failed');}return state();
  });}
  async function resolveScene(host){
   const theme=value.theme==='auto'?(host==='workbuddy'?'workbuddy':host==='harness'?'deepseek':'chatgpt'):value.theme;
-  if(error||value.selectedVideo==='builtin')return{theme,custom:null};const item=value.items.find(item=>item.id===value.selectedVideo);if(!item||!available(item))fail('media-unavailable');const candidate=path.join(directory,item.file);if(await hashFile(candidate)!==item.sha256)fail('media-unavailable');return{theme,custom:{url:pathToFileURL(candidate).href,durationMs:item.durationMs,width:item.width,height:item.height}};
+  if(error||value.selectedVideo==='builtin')return{theme,custom:null};const ids=value.selectedVideo==='sequence'?value.sequence:[value.selectedVideo],clips=[];let first;for(const id of ids){const item=value.items.find(item=>item.id===id);if(!item||!available(item))fail('media-unavailable');const candidate=path.join(directory,item.file);if(await hashFile(candidate)!==item.sha256)fail('media-unavailable');first??=item;clips.push({url:pathToFileURL(candidate).href,...clipRange(item),durationMs:item.durationMs});}if(!clips.length)fail('media-unavailable');return{theme,custom:{url:clips[0].url,durationMs:clips.reduce((sum,clip)=>sum+clip.endMs-clip.startMs,0),width:first.width,height:first.height,clips}};
  }
- return{state,importFile,preferences,remove,resolveScene};
+ return{state,importFile,preferences,edit,sequence,remove,resolveScene};
 }
 
 /** 固定隐藏页探测元数据与首帧解码，不依赖ffmpeg，不显示窗口或读取任意URL。 */
@@ -83,12 +90,15 @@ function install({electron=require('electron'),dataRoot=process.env.DSH_HOME,fil
   [CHANNELS.get]:event=>trusted(event)&&currentHost()!=='harness'?{ok:true,state:store.state()}:response('host_unavailable'),
   [CHANNELS.import]:event=>run(event,async()=>{const chosen=await dialog.showOpenDialog(BrowserWindow.fromWebContents(event.sender),{title:L.getLocale()==='zh-CN'?'导入启动视频':'Import startup video',properties:['openFile','dontAddToRecent'],filters:[{name:'MP4 / WebM',extensions:['mp4','webm']}]});if(chosen.canceled)return{cancelled:true};if(chosen.filePaths?.length!==1)fail('invalid-media');await store.importFile(chosen.filePaths[0]);return{};}),
   [CHANNELS.preferences]:(event,patch)=>run(event,async()=>{await store.preferences(patch);return{};}),
+  [CHANNELS.edit]:(event,patch)=>run(event,async()=>{await store.edit(patch);return{};}),
+  [CHANNELS.sequence]:(event,patch)=>run(event,async()=>{await store.sequence(patch);return{};}),
   [CHANNELS.remove]:(event,id)=>run(event,async()=>{await store.remove(id);return{};}),
   [CHANNELS.preview]:event=>run(event,async()=>{if(!preview||await preview()!==true)fail('preview-unavailable');return{};}),
  };
  for(const[channel,handler]of Object.entries(handlers))ipcMain.handle(channel,handler);
  function dispose(){if(disposed)return;disposed=true;probe.dispose?.();for(const channel of Object.values(CHANNELS))ipcMain.removeHandler(channel);app.removeListener('before-quit',dispose);}
  app.once('before-quit',dispose);
- return{state:store.state,preferences:store.preferences,resolveScene:store.resolveScene,setPreview:fn=>{if(typeof fn!=='function')throw new TypeError('preview callback required');preview=fn;},dispose};
+ const mutate=name=>async(...args)=>{const state=await store[name](...args);publish();return state;};
+ return{state:store.state,preferences:mutate('preferences'),edit:mutate('edit'),sequence:mutate('sequence'),importFile:mutate('importFile'),resolveScene:store.resolveScene,setPreview:fn=>{if(typeof fn!=='function')throw new TypeError('preview callback required');preview=fn;},dispose};
 }
 module.exports={createMediaStore,createDecoderProbe,install,THEMES,CHANNELS};

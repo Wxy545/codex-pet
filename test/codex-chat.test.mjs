@@ -5,6 +5,7 @@ import { PassThrough, Writable } from 'node:stream';
 import { existsSync, readFileSync } from 'node:fs';
 import { dirname, isAbsolute } from 'node:path';
 import { createCodexChatHandler, MAX_CHAT_BODY_BYTES } from '../src/codex-chat.mjs';
+import { createCodexActivityGate } from '../src/codex-tasks.mjs';
 
 class Response extends EventEmitter {
   statusCode = 200;
@@ -54,6 +55,21 @@ function rig(options = {}) {
   };
   return { handler, calls, children, start, complete };
 }
+
+test('用途策略解析的本次模型与强度实际传CLI，响应保留请求来源',async()=>{
+ let requested;const r=rig({resolveExecution:async value=>{requested=value;return{model:'synthetic-luna',effort:'low',provenance:'requested'};}});
+ const run=r.start({messages:[{role:'user',content:'聊两句'}],execution:{model:'synthetic-luna',effort:'low'}});
+ await new Promise(resolve=>setImmediate(resolve));r.complete(run.child);await run.pending;
+ assert.ok(requested,'用途解析器应在发出请求前被调用');assert.equal(requested.purpose,'chat');assert.equal(r.calls[0].args[r.calls[0].args.indexOf('--model')+1],'synthetic-luna');
+ assert.ok(r.calls[0].args.includes('model_reasoning_effort="low"'));
+ assert.equal(JSON.parse(run.res.data).execution.model,'synthetic-luna');
+});
+
+test('手选模型失效时停止，不生成默认模型请求，释放活动锁',async t=>{
+ const gate=createCodexActivityGate();const r=rig({activityGate:gate,resolveExecution:async()=>{throw Object.assign(Error('no'),{code:'model_unavailable'});}});t.after(()=>r.handler.dispose());
+ const run=r.start();await new Promise(resolve=>setImmediate(resolve));assert.equal(r.calls.length,0);await run.pending;
+ assert.equal(JSON.parse(run.res.data).error.code,'model_unavailable');const release=gate.acquire('next');assert.equal(typeof release,'function');release();
+});
 
 test('returns final assistant text without a shell and keeps persona inside bounded input', async () => {
   const r = rig();

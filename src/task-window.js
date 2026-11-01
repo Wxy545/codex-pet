@@ -119,7 +119,7 @@
     event.preventDefault();
     if (fields.submit.disabled) return;
     void operate(async () => {
-      receive(await api.submitTask({ cwd: fields.directory.value, task: fields.task.value, permission: permission(), confirmed: true }), true);
+      receive(await api.submitTask({ cwd: fields.directory.value, task: fields.task.value, permission: permission(), confirmed: true, execution:window.executionPicker?.value() }), true);
     });
   });
   fields.cancel.addEventListener('click', () => operate(async () => { receive(await api.cancelTask(snapshot.id), true); }));

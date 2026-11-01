@@ -11,6 +11,7 @@
   <script defer src="codex-locale.cjs"></script>
   <script defer src="panel-locale.js"></script>
   <script defer src="panel-navigation.js"></script>
+  <script defer src="execution-picker.js"></script>
   <script defer src="task-window.js"></script>
 </head>
 <body data-panel="tasks">
@@ -25,6 +26,7 @@
         <div class="field-label"><label for="task" data-i18n="任务">Task</label><span id="character-count" class="field-note">0 / 12000</span></div>
         <textarea id="task" rows="4" maxlength="12000" required></textarea>
       </div>
+      <div data-execution-picker></div>
       <fieldset id="permissions">
         <legend data-i18n="本次权限">Permissions for this task</legend>
         <label class="permission-option"><input type="radio" name="permission" value="read-only" checked><span><span data-i18n="只读查看">Read only</span><small data-i18n="分析、检查和回答问题，禁止写入文件。">Inspect and answer questions without writing files.</small></span></label>

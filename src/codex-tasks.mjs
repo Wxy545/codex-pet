@@ -25,6 +25,10 @@ const ERRORS = {
   output_limit: [502, '任务输出超过上限，已请求停止本次执行。'],
   permission_violation: [502, '只读任务出现文件变更请求，已请求停止。'],
   tools_disabled: [502, '任务请求了未开放的外部能力，已请求停止。'],
+  catalog_unavailable: [409, '模型目录暂不可用，请刷新后重试。'],
+  model_unavailable: [409, '所选模型当前不可用，请重新选择。'],
+  unsupported_effort: [400, '所选模型不支持该思考强度。'],
+  invalid_policy: [400, '模型用途设置格式不正确。'],
 };
 
 function taskError(code, locale = Locale.getLocale()) {
@@ -47,11 +51,11 @@ export function createCodexActivityGate() {
 function validateBody(body, locale) {
   if (!body || typeof body !== 'object' || Array.isArray(body)) throw taskError('invalid_input', locale);
   if (body.confirmed !== true) throw taskError('confirmation_required', locale);
-  if (Object.keys(body).some(key => !['cwd', 'task', 'permission', 'confirmed'].includes(key))) throw taskError('invalid_input', locale);
+  if (Object.keys(body).some(key => !['cwd', 'task', 'permission', 'confirmed','execution'].includes(key))) throw taskError('invalid_input', locale);
   if (typeof body.cwd !== 'string' || !isAbsolute(body.cwd) || body.cwd.length > 32768) throw taskError('invalid_cwd', locale);
   if (typeof body.task !== 'string' || !body.task.trim() || body.task.length > 12000) throw taskError('invalid_input', locale);
   if (!['read-only', 'workspace-write'].includes(body.permission)) throw taskError('invalid_input', locale);
-  return { cwd: body.cwd, task: body.task.trim(), permission: body.permission };
+  return { cwd: body.cwd, task: body.task.trim(), permission: body.permission,execution:body.execution };
 }
 
 function terminateOwnChild(child) {
@@ -64,7 +68,7 @@ function terminateOwnChild(child) {
 }
 
 /** POST接受后后台执行；snapshot供轮询，取消必须携带当前任务ID。 */
-export function createCodexTaskHandler({ codexPath, timeoutMs = 600000, spawnImpl = spawn, terminateImpl = terminateOwnChild, fsImpl = {}, activityGate, onChange = () => {}, locale = Locale.getLocale() } = {}) {
+export function createCodexTaskHandler({ codexPath, timeoutMs = 600000, spawnImpl = spawn, terminateImpl = terminateOwnChild, fsImpl = {}, activityGate, onChange = () => {}, resolveExecution, locale = Locale.getLocale() } = {}) {
   if (typeof codexPath !== 'string' || !codexPath) throw new TypeError('codexPath is required');
   if (!Number.isFinite(timeoutMs) || timeoutMs <= 0) throw new TypeError('timeoutMs must be positive');
   if (typeof onChange !== 'function') throw new TypeError('onChange must be a function');
@@ -125,9 +129,13 @@ export function createCodexTaskHandler({ codexPath, timeoutMs = 600000, spawnImp
       canonicalCwd = await io.realpath(input.cwd);
       if (!(await io.stat(canonicalCwd)).isDirectory()) throw failure('invalid_cwd');
     } catch { release(token); throw failure('invalid_cwd'); }
+    let execution;
+    try{if(resolveExecution){const chosen=await resolveExecution({purpose:'task',override:input.execution});execution={model:chosen.model,effort:chosen.effort,provenance:'requested'};}}
+    catch(error){release(token);throw failure(error.code||'invalid_policy');}
     if (token.stopReason) { release(token); throw failure('cancelled'); }
     const view = { id: randomUUID(), state: 'running', cwd: canonicalCwd, permission: input.permission, startedAt: new Date().toISOString(), progress: [], summary: '' };
     token.view = view;
+    if(execution)view.execution=execution;
     last = view;
     note(view, 'thinking', '已确认范围，正在启动本次任务');
     // 本机验收版本用旧sandbox选项实际发出只读上下文；命名内置profile才能保留确认过的权限。
@@ -141,6 +149,8 @@ export function createCodexTaskHandler({ codexPath, timeoutMs = 600000, spawnImp
       ...(process.platform === 'win32' ? ['-c', 'windows.sandbox="unelevated"'] : []),
       '-c', 'approval_policy="never"', '-c', 'web_search="disabled"',
       '-c', 'developer_instructions=' + JSON.stringify(Locale.t(TASK_RULES, {}, locale)),
+      ...(execution?.model?['--model',execution.model]:[]),
+      ...(execution?.effort?['-c','model_reasoning_effort='+JSON.stringify(execution.effort)]:[]),
       ...DISABLED_TASK_FEATURES.flatMap(feature => ['--disable', feature]), '-',
     ];
     const decoder = new StringDecoder('utf8');

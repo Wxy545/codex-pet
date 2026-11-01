@@ -46,7 +46,7 @@
  }
  function install({window,document,PetSprite}){
   if(!PetSprite?.prototype)return{dispose(){}};
-  const proto=PetSprite.prototype,controllers=new Map();let closed=false,revision=0,telemetry={enabled:Boolean(window.petTelemetry),metrics:null},unsubscribe=()=>{};
+  const proto=PetSprite.prototype,controllers=new Map();let closed=false,revision=0,telemetry={enabled:Boolean(window.petTelemetry),metrics:null},unsubscribe=()=>{},taskCounts=null,taskTimer=null;
   const originals=new Map(),sending=new Set(),locale=()=>window.CodexLocale?.getLocale?.()==='zh-CN'?'zh-CN':'en';
   const areas=()=>typeof WORK_AREAS!=='undefined'&&Array.isArray(WORK_AREAS)?WORK_AREAS:[];
   function layout(control){return{height:control.sprite.height,canvasWidth:control.sprite.size,top:control.sprite.height+8,footerHeight:control.footerHeight||0,width:control.footerWidth||0};}
@@ -71,6 +71,7 @@
    const root=element('div','pet-status-footer'),quota=element('div','pet-status-quota'),button=element('button','pet-status-quota-toggle'),summary=element('span','pet-status-quota-label'),bar=element('span','pet-status-quota-track'),fill=element('span','pet-status-quota-fill'),details=element('div','pet-status-quota-details'),strip=element('div','pet-status-strip');
    button.type='button';bar.setAttribute('role','progressbar');bar.setAttribute('aria-valuemin','0');bar.setAttribute('aria-valuemax','100');bar.appendChild(fill);button.append(summary,bar);details.hidden=true;quota.append(button,details);root.append(quota,strip);sprite.el.appendChild(root);
    const control={sprite,root,quota,button,summary,bar,fill,details,strip,expanded:false,balance:sprite.balanceState||null,view:null};controllers.set(sprite,control);
+   if(window.petWorkbench){const tasks=element('button','pet-status-quota is-interactive pet-status-tasks');tasks.type='button';tasks.hidden=true;tasks.addEventListener('click',event=>{event.preventDefault();event.stopPropagation();window.petWorkbench.open();});root.append(tasks);control.tasks=tasks;}
    button.addEventListener('click',event=>{if(!control.view?.details.length)return;event.preventDefault();event.stopPropagation();control.expanded=!control.expanded;render(control);});
    render(control);return control;
   }
@@ -79,7 +80,7 @@
    // bottomPad=(360-FEET_Y)/360*height，因此height就是舞台330基准的脚底锚点。
    const info=layout(control);root.style.left=sprite.size/2+'px';root.style.top=info.top+'px';root.style.width=Math.min(260,Math.max(180,sprite.size*.42))+'px';
    const enabled=sprite.pet?.balanceEnabled===true,view=quotaView(control.balance,window.PetShared||{},language);control.view=view;
-   const signature=JSON.stringify([enabled,language,view,telemetry,control.expanded]);if(control.signature===signature){measure(control);return;}control.signature=signature;
+   const signature=JSON.stringify([enabled,language,view,telemetry,control.expanded,taskCounts]);if(control.signature===signature){measure(control);return;}control.signature=signature;
    quota.hidden=!enabled;sprite.el.classList.toggle('has-status-quota',enabled);summary.textContent='';
    if(view.details.length){for(const row of view.details){const item=element('span','pet-status-quota-summary-window');item.textContent=`${row.label} ${Math.round(row.remaining)}%`;summary.appendChild(item);}}
    else summary.textContent=view.text;
@@ -90,7 +91,8 @@
    if(control.expanded)for(const row of view.details){const line=element('div','pet-status-quota-row'),label=element('span','pet-status-quota-window'),value=element('span','pet-status-quota-value'),reset=element('span','pet-status-quota-reset');label.textContent=row.label;value.textContent=language==='zh-CN'?`剩余 ${Math.round(row.remaining)}%`:`${Math.round(row.remaining)}% left`;reset.textContent=row.reset;line.append(label,value,reset);details.appendChild(line);}
    strip.hidden=telemetry.enabled===false;strip.replaceChildren();
    for(const item of telemetryView(telemetry.metrics,language)){const cell=element('span','pet-status-metric'),label=element('span','pet-status-metric-label'),value=element('span','pet-status-metric-value');label.textContent=item.label;value.textContent=item.value;cell.setAttribute('title',item.detail);cell.append(label,value);strip.appendChild(cell);}
-   root.hidden=quota.hidden&&strip.hidden;measure(control);sync(sprite);
+   if(control.tasks){control.tasks.hidden=!taskCounts||!(taskCounts.activeCount||taskCounts.pendingCount);control.tasks.textContent=language==='zh-CN'?`任务 ${taskCounts?.activeCount||0} · 待处理 ${taskCounts?.pendingCount||0}`:`Tasks ${taskCounts?.activeCount||0} · Pending ${taskCounts?.pendingCount||0}`;}
+   root.hidden=quota.hidden&&strip.hidden&&(!control.tasks||control.tasks.hidden);measure(control);sync(sprite);
   }
   function update(value){if(closed||!value||typeof value!=='object')return;revision++;telemetry={enabled:value.enabled!==false,metrics:value.metrics||null};for(const control of controllers.values())render(control);}
   function wrap(name,fn){if(typeof proto[name]!=='function')return;const original=proto[name];originals.set(name,original);proto[name]=fn(original);}
@@ -111,11 +113,12 @@
    const control=ensure(this);if(control)render(control);return result;
   });
   for(const name of ['onBalanceTick','showBalanceNow','showBalanceNotice'])wrap(name,original=>function(state){const control=ensure(this);if(control)control.balance=state||null;const result=original.apply(this,arguments);if(control)render(control);return result;});
-  wrap('inputBusy',original=>function(){const control=controllers.get(this);return original.apply(this,arguments)||Boolean(control&&!control.quota.hidden&&control.view?.details.length);});
+  wrap('inputBusy',original=>function(){const control=controllers.get(this);return original.apply(this,arguments)||Boolean(control&&(!control.quota.hidden&&control.view?.details.length||control.tasks&&!control.tasks.hidden));});
   wrap('dispose',original=>function(){const control=controllers.get(this);if(control){control.root.remove();this.el.classList.remove('has-status-quota');controllers.delete(this);}return original.apply(this,arguments);});
   const bridge=window.petTelemetry;
   if(bridge){try{unsubscribe=bridge.onState(update)||(()=>{});}catch{}const initial=revision;try{Promise.resolve(bridge.getState()).then(value=>{if(revision===initial)update(value);},()=>{});}catch{}}
-  function dispose(){if(closed)return;closed=true;try{unsubscribe();}catch{}for(const control of controllers.values()){control.root.remove();control.sprite.el.classList.remove('has-status-quota');}controllers.clear();for(const[name,original]of originals)proto[name]=original;}
+  if(window.petWorkbench){let pending=false;const refresh=async()=>{if(closed||pending||document.hidden)return;pending=true;try{const value=await window.petWorkbench.counts();if(value?.ok&&Number.isInteger(value.activeCount)&&Number.isInteger(value.pendingCount)){taskCounts={activeCount:value.activeCount,pendingCount:value.pendingCount};for(const control of controllers.values())render(control);}}catch{}finally{pending=false;}};taskTimer=setInterval(refresh,3000);void refresh();}
+  function dispose(){if(closed)return;closed=true;if(taskTimer!==null)clearInterval(taskTimer);try{unsubscribe();}catch{}for(const control of controllers.values()){control.root.remove();control.sprite.el.classList.remove('has-status-quota');}controllers.clear();for(const[name,original]of originals)proto[name]=original;}
   window.addEventListener('beforeunload',dispose,{once:true});return{dispose};
  }
  if(typeof module==='object'&&module.exports){module.exports={telemetryView,quotaView,constrainFooterSpace,install};return;}
