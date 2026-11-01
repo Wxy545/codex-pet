@@ -2,8 +2,9 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {EventEmitter} from 'node:events';
 import {PassThrough,Writable} from 'node:stream';
-import {mkdtempSync,mkdirSync,writeFileSync,readFileSync,rmSync,existsSync} from 'node:fs';
-import {join} from 'node:path';
+import {mkdtempSync,mkdirSync,writeFileSync,readFileSync,rmSync,existsSync,realpathSync,symlinkSync,renameSync,linkSync} from 'node:fs';
+import {join,resolve} from 'node:path';
+import {execFileSync} from 'node:child_process';
 import {tmpdir} from 'node:os';
 let Module={};try{Module=await import('../src/role-generator.mjs');}catch(error){if(error.code!=='ERR_MODULE_NOT_FOUND')throw error;}
 function fixture(t){const root=mkdtempSync(join(tmpdir(),'role-generator-'));t.after(()=>rmSync(root,{recursive:true,force:true}));const put=(name,body='')=>{const path=join(root,name);mkdirSync(join(path,'..'),{recursive:true});writeFileSync(path,body);return path;};return{root,put};}
@@ -25,6 +26,24 @@ function acpPeer(extra=()=>{},agentCapabilities={}){return childPeer((frame,chil
 function wb(f){const nodePath=f.put('native/node.exe'),cliPath=f.put('native/cli/bin/codebuddy');f.put('native/cli/package.json',JSON.stringify({name:'@genie/agent-cli',version:'2.165.0'}));f.put('native/cli/product.json',JSON.stringify({productName:'WorkBuddy'}));const configDir=join(f.root,'workbuddy-home');mkdirSync(configDir);return{nodePath,cliPath,configDir};}
 function harness(f){const command=f.put('native/dsh.exe'),home=join(f.root,'harness-home');f.put('harness-home/profiles/web/package.json','{}');return{command,home,profile:'web',version:'0.2.1-rc.5'};}
 function generator(t,f,options={}){assert.equal(typeof Module.createRoleChatGenerator,'function');const service=Module.createRoleChatGenerator({dataRoot:join(f.root,'data'),projectRoot:f.root,codexPath:f.put('codex.exe'),...options});t.after(()=>service.dispose());return service;}
+function shortPath(t,path){const canonical=realpathSync.native(path);assert.equal(/["%&|<>^!\r\n]/.test(canonical),false);const alias=execFileSync(process.env.ComSpec||'cmd.exe',['/d','/u','/c','for %I in ("'+canonical+'") do @echo %~sI'],{windowsHide:true,windowsVerbatimArguments:true,encoding:'utf16le'}).trim();if(resolve(alias).toLowerCase()===canonical.toLowerCase()){t.skip('当前卷未提供测试目录的8.3别名');return null;}assert.match(alias,/~[0-9]/);assert.equal(realpathSync.native(alias),canonical);return alias;}
+
+test('Windows8.3数据根可进入真实Codex无工具生成管线，工作目录采用canonical路径',{skip:process.platform!=='win32'},async t=>{
+ const f=fixture(t),data=join(f.root,'data');mkdirSync(data);const alias=shortPath(t,data);if(!alias)return;const peer=childPeer((_input,child)=>{child.send({type:'item.completed',item:{type:'agent_message',phase:'final_answer',text:'别名路径回复'}});child.finish();},{jsonLines:false}),service=generator(t,f,{dataRoot:alias,spawnImpl:peer.spawnImpl});
+ assert.equal((await service.generate(request())).text,'别名路径回复');assert.equal(peer.launch[2].cwd,join(realpathSync.native(data),'role-chat','workspace'));assert.ok(peer.launch[1].includes('--ignore-user-config'));assert.ok(peer.launch[1].includes('shell_tool'));
+});
+
+test('Windows8.3的Harness根可创建独立禁工具profile，不改变原生profile',{skip:process.platform!=='win32'},async t=>{
+ const f=fixture(t),native=harness(f),alias=shortPath(t,native.home);if(!alias)return;const original=readFileSync(join(native.home,'profiles','web','package.json'),'utf8'),peer=acpPeer(),service=generator(t,f,{getNative:async()=>({...native,home:alias}),spawnImpl:peer.spawnImpl});
+ assert.equal((await service.generate(request('harness'))).text,'原生闲聊回复');const args=peer.launch[1],profile=args[args.indexOf('--profile')+1],directory=join(realpathSync.native(native.home),'profiles',profile),patch=JSON.parse(readFileSync(join(directory,'cordis.patch.yml'),'utf8'));assert.match(profile,/^codex-pet-chat-/);assert.equal(patch.find(row=>row.id==='tool-bash').disabled,true);assert.equal(patch.find(row=>row.id==='mcp-client').disabled,true);assert.equal(patch.find(row=>row.insert)?.insert[0].name,join(directory,'chat-guard.mjs'));assert.equal(readFileSync(join(native.home,'profiles','web','package.json'),'utf8'),original);
+});
+
+test('角色生成数据根或Harness祖先的真实junction仍拒绝，旧guard硬链接也不可用',async t=>{
+ const f=fixture(t),outside=join(f.root,'outside'),alias=join(f.root,'linked');mkdirSync(outside);symlinkSync(outside,alias,process.platform==='win32'?'junction':'dir');
+ assert.throws(()=>generator(t,f,{dataRoot:alias}),{code:'role_generator_storage_unsafe'});assert.throws(()=>generator(t,f,{dataRoot:join(alias,'new-data')}),{code:'role_generator_storage_unsafe'});assert.equal(existsSync(join(outside,'new-data')),false);
+ const native=harness(f),original=join(f.root,'original-harness');renameSync(native.home,original);symlinkSync(original,native.home,process.platform==='win32'?'junction':'dir');const blocked=generator(t,f,{getNative:async()=>native,spawnImpl:()=>{throw Error('must not spawn');}});await assert.rejects(blocked.generate(request('harness')),{code:'role_generator_storage_unsafe'});
+ rmSync(native.home);renameSync(original,native.home);const peer=acpPeer(),service=generator(t,f,{getNative:async()=>native,spawnImpl:peer.spawnImpl});await service.generate(request('harness'));const args=peer.launch[1],guard=join(native.home,'profiles',args[args.indexOf('--profile')+1],'chat-guard.mjs');linkSync(guard,join(f.root,'guard-hardlink.mjs'));await assert.rejects(service.generate(request('harness')),{code:'role_generator_profile_modified'});
+});
 
 test('Codex角色生成走隔离禁工具CLI，保留完整来信和资料，模型档位来自用途解析器',async t=>{
  const f=fixture(t),peer=childPeer((_input,child)=>{child.send({type:'item.completed',item:{type:'agent_message',phase:'final_answer',text:'真实正文'}});child.send({type:'turn.completed',usage:{input_tokens:10,output_tokens:4}});child.finish();},{jsonLines:false});let selected;

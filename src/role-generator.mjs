@@ -1,7 +1,7 @@
 import {spawn} from 'node:child_process';
 import {createHash,randomBytes,randomUUID} from 'node:crypto';
 import {lstatSync,mkdirSync,readFileSync,realpathSync,writeFileSync,renameSync,unlinkSync,existsSync} from 'node:fs';
-import {isAbsolute,basename,dirname,join,resolve} from 'node:path';
+import {isAbsolute,basename,dirname,join,resolve,parse,sep} from 'node:path';
 import {StringDecoder} from 'node:string_decoder';
 import {mkdtemp,writeFile,unlink,rmdir} from 'node:fs/promises';
 import {createCodexChildEnv} from './codex-child-env.mjs';
@@ -39,8 +39,11 @@ export function createRoleChatGuard(ctx){
  ctx.on('tools/pre-execute',async()=>({kind:'deny',reason:'Companion chat has no tools'}),true);
  ctx.on('tools/execute',async()=>{fail('role_generator_tools_forbidden');},true);
 }
-function directory(path){
- mkdirSync(path,{recursive:true,mode:0o700});const info=lstatSync(path);if(!info.isDirectory()||info.isSymbolicLink()||realpathSync(path)!==resolve(path))fail('role_generator_storage_unsafe');return realpathSync(path);
+function directory(path,{create=true}={}){
+ const requested=resolve(path),root=parse(requested).root,parts=requested.slice(root.length).split(sep).filter(Boolean);
+ const inspect=missing=>{let current=root;for(const part of ['',...parts]){if(part)current=join(current,part);let info;try{info=lstatSync(current);}catch(error){if(missing&&error.code==='ENOENT')return;throw error;}if(!info.isDirectory()||info.isSymbolicLink())fail('role_generator_storage_unsafe');}};
+ // 8.3与大小写由系统规范化；根和每一级祖先仍逐段拒绝真实链接。
+ inspect(create);if(create)mkdirSync(requested,{recursive:true,mode:0o700});inspect(false);return realpathSync.native(requested);
 }
 function workBuddySpec(native){
  if(!native||![native.nodePath,native.cliPath,native.configDir].every(path=>isAbsolute(path??''))||!/^node(?:\.exe)?$/i.test(basename(native.nodePath))||!file(native.nodePath)||!file(native.cliPath))fail('not_installed');
@@ -50,8 +53,8 @@ function workBuddySpec(native){
 }
 function ownHarnessProfile(native,cwd){
  if(!native||!isAbsolute(native.command??'')||!file(native.command)||!/^dsh(?:\.cmd|\.exe)?$/i.test(basename(native.command))||!isAbsolute(native.home??'')||!['0.2.1-rc.2','0.2.1-rc.5'].includes(native.version)||!field(native.profile)||!file(join(native.home,'profiles',native.profile,'package.json')))fail('not_installed');
- const parent=join(native.home,'profiles'),info=lstatSync(parent);if(!info.isDirectory()||info.isSymbolicLink()||realpathSync(parent)!==resolve(parent))fail('role_generator_storage_unsafe');
- const digest=createHash('sha256').update(cwd+'\0'+native.version+'\0role-chat-v1').digest('hex').slice(0,18),profile='codex-pet-chat-'+digest,root=join(parent,profile);directory(root);
+ const parent=directory(join(native.home,'profiles'),{create:false});
+ const digest=createHash('sha256').update(cwd+'\0'+native.version+'\0role-chat-v1').digest('hex').slice(0,18),profile='codex-pet-chat-'+digest,root=directory(join(parent,profile));
  const guard=`import {createRoleChatGuard} from ${JSON.stringify(new URL('./role-generator.mjs',import.meta.url).href)};\nexport const name='codex-pet-chat-guard';\nexport const inject=['tools'];\nexport function apply(ctx){createRoleChatGuard(ctx);}\n`;
  const files={
   'package.json':JSON.stringify({name:profile,private:true,dependencies:{'@deepseek-ai/dsh-base':native.version,'@deepseek-ai/dsh-acp-app':native.version},dsh:{profile:{bundles:['@deepseek-ai/dsh-base','@deepseek-ai/dsh-acp-app']}}},null,2)+'\n',
@@ -81,7 +84,7 @@ function promptOf(input){
 export function createRoleChatGenerator({dataRoot,projectRoot,codexPath,resolveExecution,getNative,spawnImpl=spawn,activityGate,timeoutMs=120000,locateCodexImpl=locateCodex}={}){
  if(!isAbsolute(dataRoot??'')||!isAbsolute(projectRoot??'')||!Number.isInteger(timeoutMs)||timeoutMs<10||timeoutMs>300000||typeof spawnImpl!=='function'||getNative!==undefined&&typeof getNative!=='function'||resolveExecution!==undefined&&typeof resolveExecution!=='function')fail('role_generator_configuration_invalid');
  const base=directory(dataRoot),chatRoot=directory(join(base,'role-chat')),cwd=directory(join(chatRoot,'workspace'));let disposed=false;const active=new Set();
- const nativeFor=getNative||((host)=>host==='workbuddy'?resolveWorkBuddyNative({dataRoot,projectRoot}):resolveHarnessNative({dataRoot,projectRoot}));
+ const nativeFor=getNative||((host)=>host==='workbuddy'?resolveWorkBuddyNative({dataRoot:base,projectRoot}):resolveHarnessNative({dataRoot:base,projectRoot}));
  async function run(input,imageParts,imageFiles){
   if(disposed)fail('role_generator_disposed');
   if(!object(input)||!['codex','workbuddy','harness'].includes(input.host)||!['chat','qq-chat','whisper','memory','summary','image','translation'].includes(input.purpose)||!text(input.text,16384)||!text(input.context??'',8192,true)||!field(input.character?.id)||!text(input.character?.name,120)||!text(input.character?.persona??'',8000,true)||!Array.isArray(input.tools)||input.tools.length||input.signal!==undefined&&typeof input.signal?.addEventListener!=='function')fail('role_generator_input_invalid');
