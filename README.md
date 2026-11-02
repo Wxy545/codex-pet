@@ -11,8 +11,6 @@ Built on [dsh-pet](https://github.com/PC2005-cloud/dsh-pet), with task status, d
   <img src="docs/assets/curly-sheep-idle.webp" width="260" alt="Curly the sheep breathing and blinking">
 </p>
 
-[![ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/wxy545)
-
 ## Install
 
 Windows 64-bit. Send the matching message below to the assistant you use.
@@ -113,17 +111,6 @@ After updating the source, run `node scripts/prepare-runtime.mjs` to prepare the
 ## DeepSeek Harness
 
 The dragon girl's 23 clips are also available as a [DeepSeek Harness plugin](harness/README.md). It uses Harness sessions, balance and chat through dsh-pet. Follow that guide to install it in your Harness profile.
-
-## Buy me a coffee
-
-Want to see more dragon-girl animations? You can help fund the video work through [Ko-fi](https://ko-fi.com/wxy545) or the WeChat code below. If you have already made an animation, share it in an [Issue](https://github.com/wajncn/codex-pet/issues) and I’ll adapt it for the pet. See the [animation guide](docs/animation-contributions.md) for specs.
-
-<details>
-<summary>WeChat support</summary>
-
-<img src="docs/assets/wechat-support.jpg" width="220" alt="WeChat support QR code">
-
-</details>
 
 ## Credits and license
 

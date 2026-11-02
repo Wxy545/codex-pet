@@ -11,8 +11,6 @@
   <img src="docs/assets/curly-sheep-idle.webp" width="260" alt="卷卷小羊呼吸和眨眼">
 </p>
 
-[![ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/wxy545)
-
 ## 安装
 
 支持 Windows 64 位。选择你正在使用的助手，把对应的一句话发给它即可。
@@ -113,17 +111,6 @@ Codex 和 dsh-pet 的更新检查、源码运行及故障排查见[维护文档]
 ## DeepSeek Harness
 
 龙娘的 23 段 Q 版动画也可以[安装为 DeepSeek Harness 插件](harness/README.md)，通过原生 dsh-pet 跟随 Harness 会话、余额和聊天。安装步骤与 profile 选择见插件说明。
-
-## 请我喝杯咖啡
-
-想让龙娘有更多动作，可以通过 [Ko-fi](https://ko-fi.com/wxy545) 或下方微信赞赏码支持视频制作。你也可以在 [Issue](https://github.com/wajncn/codex-pet/issues) 发来已经生成好的动作视频，我来适配进桌宠。投稿规格见[动画投稿说明](docs/animation-contributions.md)。
-
-<details>
-<summary>微信赞赏</summary>
-
-<img src="docs/assets/wechat-support.jpg" width="220" alt="微信赞赏码">
-
-</details>
 
 ## 致谢与许可
 
