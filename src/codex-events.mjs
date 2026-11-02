@@ -40,50 +40,6 @@ function timestampOf(record, fallback) {
   return Number.isFinite(parsed) ? parsed : fallback;
 }
 
-function windowLabel(minutes, locale) {
-  if (!Number.isFinite(minutes) || minutes <= 0) return Locale.t('额度窗口', {}, locale);
-  if (minutes % 1440 === 0) return Locale.t('{count} 天额度', { count: minutes / 1440 }, locale);
-  if (minutes % 60 === 0) return Locale.t('{count} 小时额度', { count: minutes / 60 }, locale);
-  return Locale.t('{count} 分钟额度', { count: minutes }, locale);
-}
-
-// 额度来自真实 rate_limits 字段；不使用 token 数推算账号余额。
-function usageFrom(rateLimits, locale) {
-  const groups = Array.isArray(rateLimits) ? rateLimits : [rateLimits];
-  const windows = [];
-  for (const group of groups) {
-    if (!group || typeof group !== 'object') continue;
-    for (const key of ['primary', 'secondary']) {
-      const value = group[key];
-      if (!value || typeof value.used_percent !== 'number' || !Number.isFinite(value.used_percent)) continue;
-      const usage = {
-        usedPercent: Math.min(100, Math.max(0, value.used_percent)),
-        windowLabel: Number.isFinite(value.window_minutes) && value.window_minutes > 0
-          ? windowLabel(value.window_minutes, locale)
-          : typeof value.window_label === 'string' && value.window_label.trim()
-            ? value.window_label.trim().slice(0, 80) : Locale.t('额度窗口', {}, locale),
-      };
-      if (Number.isFinite(value.window_minutes) && value.window_minutes > 0) usage.windowMinutes = value.window_minutes;
-      if (typeof value.resets_at === 'number' && Number.isFinite(value.resets_at)) usage.resetsAt = value.resets_at;
-      windows.push(usage);
-    }
-  }
-  return windows.length ? { windows } : undefined;
-}
-
-function usageSnapshot(quota) {
-  if (!quota) return undefined;
-  const now = Date.now() / 1000;
-  const windows = quota.windows.map(window => ({ ...window, ...(window.resetsAt !== undefined && window.resetsAt <= now ? { stale: true } : {}) }));
-  const fresh = windows.filter(window => !window.stale);
-  const selected = [...(fresh.length ? fresh : windows)].sort((a, b) => b.usedPercent - a.usedPercent)[0];
-  // 重置时间已过代表这条观测过期，不能据此把实际使用率改成 0。
-  const result = { usedPercent: selected.usedPercent, windowLabel: selected.windowLabel, windows };
-  if (selected.resetsAt !== undefined) result.resetsAt = selected.resetsAt;
-  if (selected.stale) result.stale = true;
-  return result;
-}
-
 function transitionFor(record) {
   const payload = record.payload;
   if (!payload || typeof payload !== 'object') return undefined;
@@ -142,8 +98,6 @@ export function createCodexWatcher({ codexHome = process.env.CODEX_HOME || join(
   let startedAt = 0;
   let nextDiscovery = 0;
   let sequence = 0;
-  let quota;
-  let quotaTimestamp = -Infinity;
   let published;
 
   function snapshot() {
@@ -159,7 +113,6 @@ export function createCodexWatcher({ codexHome = process.env.CODEX_HOME || join(
     const state = terminalExpired ? 'idle' : selected?.state ?? 'idle';
     const task = Locale.t(TASK_TEXT[state], {}, locale);
     const result = { state, task: active.length > 1 ? Locale.t('{count} 个会话{task}', { count: active.length, task }, locale) : task, activeCount: active.length };
-    if (quota) result.usage = usageSnapshot(quota);
     if (selected) result.threadId = selected.threadId;
     return result;
   }
@@ -183,10 +136,6 @@ export function createCodexWatcher({ codexHome = process.env.CODEX_HOME || join(
     }
     if (cursor.excluded) return;
     const updatedAt = timestampOf(record, cursor.mtimeMs);
-    if (record.type === 'event_msg' && payload?.type === 'token_count') {
-      const next = usageFrom(payload.rate_limits, locale);
-      if (next && updatedAt >= quotaTimestamp) { quota = next; quotaTimestamp = updatedAt; publish(); }
-    }
     const transition = transitionFor(record);
     if (!transition) return;
     const previous = threads.get(cursor.threadId);

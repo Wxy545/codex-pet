@@ -5,7 +5,7 @@
 把这段话直接发给 Windows 版 WorkBuddy：
 
 ```text
-请读取 https://github.com/Wxy545/codex-pet/blob/main/INSTALL.workbuddy.md，帮我在这台 Windows 上下载安装并启动 Codex Pet。由你执行仓库根目录的 install.ps1 -CompanionHost workbuddy，自动识别正在运行的 WorkBuddy，完成运行环境准备、原生事件 Hook 注册、跟随启动和首次启动。新安装使用默认的卷卷小羊，保留已有安装和形象选择。遇到失败请给出实际错误和日志位置。
+请读取 https://github.com/wajncn/codex-pet/blob/main/INSTALL.workbuddy.md，帮我在这台 Windows 上下载安装并启动 Codex Pet。由你执行仓库根目录的 install.ps1 -CompanionHost workbuddy，自动识别正在运行的 WorkBuddy，完成运行环境准备、原生事件 Hook 注册、跟随启动和首次启动。新安装使用默认的卷卷小羊，保留已有安装和形象选择。遇到失败请给出实际错误和日志位置。
 ```
 
 ## 给 WorkBuddy 的执行步骤
@@ -17,7 +17,7 @@
 ```powershell
 $ErrorActionPreference = 'Stop'
 $installer = Join-Path $env:TEMP ('codex-pet-workbuddy-install-' + [Guid]::NewGuid().ToString('N') + '.ps1')
-Invoke-WebRequest 'https://raw.githubusercontent.com/Wxy545/codex-pet/main/install.ps1' -UseBasicParsing -OutFile $installer
+Invoke-WebRequest 'https://raw.githubusercontent.com/wajncn/codex-pet/main/install.ps1' -UseBasicParsing -OutFile $installer
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File $installer -CompanionHost workbuddy
 if ($LASTEXITCODE -ne 0) { throw "Codex Pet 安装失败，退出码：$LASTEXITCODE。请保留安装器的实际错误。" }
 ```

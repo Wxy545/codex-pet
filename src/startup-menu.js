@@ -20,7 +20,11 @@
       label: `${state.mode === mode ? '✓ ' : ''}${labels[index]}`, action: 'codex-startup-mode', startupMode: mode,
     }));
     children.push({ label: zh ? '预览演出' : 'Preview scene', action: 'codex-startup-preview' });
-    return mount.call(this, { ...options, tree: [...options.tree, { label: zh ? '启动演出' : 'Startup scene', children }] });
+    const tree = [...options.tree];
+    // 退出入口始终留在菜单末尾，避免后续挂接把危险操作放到中间。
+    const quitIndex = tree.findIndex(item => item.action === 'pet-quit');
+    tree.splice(quitIndex < 0 ? tree.length : quitIndex, 0, { label: zh ? '启动演出' : 'Startup scene', children });
+    return mount.call(this, { ...options, tree });
   };
   const action = PetSprite.prototype.onMenuAction;
   PetSprite.prototype.onMenuAction = function (leaf) {

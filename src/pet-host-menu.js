@@ -19,10 +19,14 @@
     const zh=(window.CodexLocale?.getLocale()||navigator.language).startsWith('zh');
     const tree=filter(options.tree);
     tree.push({label:zh?'联动应用':'Companion app',children:[['codex','Codex'],['workbuddy','WorkBuddy']].map(([id,label])=>({label:(id===host?'✓ ':'')+label,action:'pet-select-host',host:id}))});
+    tree.push({label:zh?'退出桌宠':'Quit Codex Pet',action:'pet-quit'});
     return mount.call(this,{...options,tree});
   };
   const action=PetSprite.prototype.onMenuAction;
   PetSprite.prototype.onMenuAction=function(leaf){
+    if(leaf?.action==='pet-quit'){
+      this.closeMenu();void bridge.quitPet().catch(()=>console.warn('[Codex Pet] The desktop pet could not be closed.'));return;
+    }
     if(leaf?.action==='pet-select-host'){
       this.closeMenu();void bridge.selectHost(leaf.host).catch(()=>console.warn('[Codex Pet] Companion app could not be changed.'));return;
     }

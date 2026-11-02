@@ -4,13 +4,13 @@
   "private": true,
   "type": "module",
   "description": "Codex Pet: a Windows desktop companion for Codex and WorkBuddy, based on dsh-pet",
-  "homepage": "https://github.com/Wxy545/codex-pet#readme",
+  "homepage": "https://github.com/wajncn/codex-pet#readme",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/Wxy545/codex-pet.git"
+    "url": "git+https://github.com/wajncn/codex-pet.git"
   },
   "bugs": {
-    "url": "https://github.com/Wxy545/codex-pet/issues"
+    "url": "https://github.com/wajncn/codex-pet/issues"
   },
   "license": "MIT",
   "scripts": {

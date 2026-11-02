@@ -16,16 +16,16 @@ function runPs(script, env = {}) {
   }).trim();
 }
 
-const loadInstallerCommitFunction = `$ErrorActionPreference='Stop'; . (Join-Path $env:PET_SCRIPT_ROOT 'scripts/locale.ps1'); $installerRepo='Wxy545/codex-pet'; $ast=[Management.Automation.Language.Parser]::ParseFile((Join-Path $env:PET_SCRIPT_ROOT 'install.ps1'),[ref]$null,[ref]$null); $fn=$ast.Find({param($node) $node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq 'Get-InstallerSourceCommit'},$true); if(-not $fn){throw 'SOURCE_COMMIT_FUNCTION_MISSING'}; . ([scriptblock]::Create($fn.Extent.Text));`;
+const loadInstallerCommitFunction = `$ErrorActionPreference='Stop'; . (Join-Path $env:PET_SCRIPT_ROOT 'scripts/locale.ps1'); $installerRepo='wajncn/codex-pet'; $ast=[Management.Automation.Language.Parser]::ParseFile((Join-Path $env:PET_SCRIPT_ROOT 'install.ps1'),[ref]$null,[ref]$null); $fn=$ast.Find({param($node) $node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq 'Get-InstallerSourceCommit'},$true); if(-not $fn){throw 'SOURCE_COMMIT_FUNCTION_MISSING'}; . ([scriptblock]::Create($fn.Extent.Text));`;
 
 test('固定提交解析真实函数正常REST只返回该SHA，不访问Atom', windowsOnly, () => {
   const result=JSON.parse(runPs(loadInstallerCommitFunction+`$global:petTestUrls=@(); function global:Invoke-RestMethod { param($Uri); $global:petTestUrls+=$Uri; @{object=@{sha=('a'*40)}} }; function global:Invoke-WebRequest { throw 'ATOM_MUST_NOT_RUN' }; @{sha=(Get-InstallerSourceCommit);urls=$global:petTestUrls}|ConvertTo-Json -Compress`));
-  assert.equal(result.sha,'a'.repeat(40));assert.deepEqual(result.urls,['https://api.github.com/repos/Wxy545/codex-pet/git/ref/heads/main']);
+  assert.equal(result.sha,'a'.repeat(40));assert.deepEqual(result.urls,['https://api.github.com/repos/wajncn/codex-pet/git/ref/heads/main']);
 });
 
 test('固定提交解析仅HTTP403/429改读同一官方仓库Atom首entry，不取较旧的合法项', windowsOnly, () => {
   const result=JSON.parse(runPs(loadInstallerCommitFunction+`$global:petTestUrls=@(); function global:Invoke-RestMethod { param($Uri); $global:petTestUrls+=$Uri; $e=[Exception]::new('API_LIMITED'); $e|Add-Member -NotePropertyName Response -NotePropertyValue ([pscustomobject]@{StatusCode=$global:petTestStatus}); throw $e }; function global:Invoke-WebRequest { param($Uri); $global:petTestUrls+=$Uri; @{Content=('<feed xmlns="http://www.w3.org/2005/Atom"><entry><id>tag:github.com,2008:Grit::Commit/'+('b'*40)+'</id></entry><entry><id>tag:github.com,2008:Grit::Commit/'+('c'*40)+'</id></entry></feed>')} }; $items=@(); foreach($status in @(403,429)){$global:petTestStatus=$status; $items+=Get-InstallerSourceCommit}; @{items=$items;urls=$global:petTestUrls}|ConvertTo-Json -Compress`));
-  assert.deepEqual(result.items,['b'.repeat(40),'b'.repeat(40)]);assert.deepEqual(result.urls,[...Array(2)].flatMap(()=>['https://api.github.com/repos/Wxy545/codex-pet/git/ref/heads/main','https://github.com/Wxy545/codex-pet/commits/main.atom']));
+  assert.deepEqual(result.items,['b'.repeat(40),'b'.repeat(40)]);assert.deepEqual(result.urls,[...Array(2)].flatMap(()=>['https://api.github.com/repos/wajncn/codex-pet/git/ref/heads/main','https://github.com/wajncn/codex-pet/commits/main.atom']));
 });
 
 test('Atom坏XML、缺entry、首SHA非法均失败；其它HTTP/传输错误或REST坏SHA不走Atom', windowsOnly, () => {
@@ -63,8 +63,8 @@ test('无旧安装时实际解析的新默认目录和GitHub请求都使用codex
     const result = JSON.parse(runPs(script));
     // CI的TEMP可能是8.3短路径；比较同一目录的规范路径，不能把长短名称当成安装目录错误。
     assert.equal(result.target.toLowerCase(), join(realpathSync.native(folder), 'codex-pet').toLowerCase());
-    assert.equal(result.repo, 'Wxy545/codex-pet');
-    assert.match(result.message, /https:\/\/api\.github\.com\/repos\/Wxy545\/codex-pet\/git\/ref\/heads\/main/);
+    assert.equal(result.repo, 'wajncn/codex-pet');
+    assert.match(result.message, /https:\/\/api\.github\.com\/repos\/wajncn\/codex-pet\/git\/ref\/heads\/main/);
   } finally { rmSync(folder, { recursive: true, force: true }); }
 });
 
@@ -99,7 +99,7 @@ test('安装器固定提交的zip和解压目录跟随新仓库名，不进入�
     for(const status of [200,403]){
       const script = `$ErrorActionPreference='Stop';$env:LOCALAPPDATA=${psQuote(folder)};$global:petTestStatus=${status};function global:Get-UICulture { [Globalization.CultureInfo]::GetCultureInfo('en-US') };$global:petTestUrls=@();function global:Invoke-RestMethod { param($Uri);$global:petTestUrls+=$Uri;if($global:petTestStatus -eq 403){$e=[Exception]::new('API_LIMITED');$e|Add-Member -NotePropertyName Response -NotePropertyValue ([pscustomobject]@{StatusCode=403});throw $e};@{object=@{sha=('a'*40)}} };function global:Invoke-WebRequest { param($Uri,$OutFile);$global:petTestUrls+=$Uri;if($Uri.EndsWith('.atom')){return @{Content=('<feed xmlns="http://www.w3.org/2005/Atom"><entry><id>tag:github.com,2008:Grit::Commit/'+('a'*40)+'</id></entry></feed>')}};[IO.File]::WriteAllText($OutFile,'fake zip') };function global:Expand-Archive { param($LiteralPath,$DestinationPath);$stage=Join-Path $DestinationPath ('codex-pet-'+('a'*40));New-Item -ItemType Directory -Path (Join-Path $stage 'scripts') -Force | Out-Null;[IO.File]::WriteAllText((Join-Path $stage 'package.json'),'{}');[IO.File]::WriteAllText((Join-Path $stage 'scripts/prepare-runtime.mjs'),''); };try { . (Join-Path $env:PET_SCRIPT_ROOT 'install.ps1') -NoStart -NoFollow 6>$null } catch { @{urls=$global:petTestUrls;stage=$appStage;message=$_.Exception.Message} | ConvertTo-Json -Compress }`;
       const result = JSON.parse(runPs(script));
-      assert.equal(result.urls.at(-1), 'https://github.com/Wxy545/codex-pet/archive/' + 'a'.repeat(40) + '.zip');
+      assert.equal(result.urls.at(-1), 'https://github.com/wajncn/codex-pet/archive/' + 'a'.repeat(40) + '.zip');
       assert.equal(result.urls.length,status===200?2:3);
       assert.match(result.stage, /codex-pet-a{40}$/);
       assert.match(result.message, /expected project files/);

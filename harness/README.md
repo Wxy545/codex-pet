@@ -2,9 +2,9 @@
 
 [English](#install) | [简体中文](#安装)
 
-The chibi white dragon girl from [Codex Pet](https://github.com/Wxy545/codex-pet), running as a native [dsh-pet](https://github.com/PC2005-cloud/dsh-pet) pet pack in DeepSeek Harness. The pack has 23 transparent videos, five click reactions, two ways to wander, and spellbook reading, gem guarding, wing care, cushion breaks, snacks, and greetings.
+The chibi white dragon girl from [Codex Pet](https://github.com/wajncn/codex-pet), running as a native [dsh-pet](https://github.com/PC2005-cloud/dsh-pet) pet pack in DeepSeek Harness. The pack has 23 transparent videos, five click reactions, two ways to wander, and spellbook reading, gem guarding, wing care, cushion breaks, snacks, and greetings.
 
-You can ask Codex: **Install White Dragon Girl from https://github.com/Wxy545/codex-pet in my DeepSeek Harness. Follow harness/README.md and use the CLI that belongs to my Harness installation.**
+You can ask Codex: **Install White Dragon Girl from https://github.com/wajncn/codex-pet in my DeepSeek Harness. Follow harness/README.md and use the CLI that belongs to my Harness installation.**
 
 ## Install
 
@@ -34,7 +34,7 @@ At startup, this bundle applies the upstream leftward-walk correction to the sel
 
 ## 安装
 
-也可以直接对 Codex 说：**把 https://github.com/Wxy545/codex-pet 的白龙娘插件装到我正在用的 DeepSeek Harness，按 harness/README.md 选择对应的官方 CLI，保留现有宠物设置。**
+也可以直接对 Codex 说：**把 https://github.com/wajncn/codex-pet 的白龙娘插件装到我正在用的 DeepSeek Harness，按 harness/README.md 选择对应的官方 CLI，保留现有宠物设置。**
 
 Windows 上需要 DeepSeek Harness **0.2.1-rc.2**、`dsh-pet` **0.3.8** 和 Node.js **22.12 或更新版**。普通 npm 版 Harness CLI 还需要 PATH 中有 `pnpm`。在 Codex Pet 项目目录运行：
 
@@ -54,4 +54,4 @@ Harness 桌面版需要先启动一次、再完全退出，用 `-Profile desktop
 
 ## Credits and license
 
-Built on [PC2005-cloud/dsh-pet](https://github.com/PC2005-cloud/dsh-pet). The White Dragon Girl design is used with the creator's permission; credit: Xiaohongshu **233534463**. The animation videos were generated with MiniMax H3 and edited for this pet. Code uses MIT; character and animation terms are separate. See the bundled `NOTICE.md` and the repository's [third-party notices](https://github.com/Wxy545/codex-pet/blob/main/THIRD_PARTY_NOTICES.md).
+Built on [PC2005-cloud/dsh-pet](https://github.com/PC2005-cloud/dsh-pet). The White Dragon Girl design is used with the creator's permission; credit: Xiaohongshu **233534463**. The animation videos were generated with MiniMax H3 and edited for this pet. Code uses MIT; character and animation terms are separate. See the bundled `NOTICE.md` and the repository's [third-party notices](https://github.com/wajncn/codex-pet/blob/main/THIRD_PARTY_NOTICES.md).

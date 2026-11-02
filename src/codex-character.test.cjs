@@ -43,11 +43,11 @@ test('卷卷可切换且默认仍是白龙，小羊独立中英人设和昵称�
  await store.select({character:'bluefish',mode:'q'});assert.equal(C.readCharacter(f.root).id,'bluefish');
 });
 
-test('WorkBuddy只在配置投影禁用每只宠物的余额和自动碎念，不改原配置或Codex选择',t=>{
+test('配置投影禁用余额查询，WorkBuddy额外禁用自动碎念且不改原配置',t=>{
  const f=fixture(t),previous=process.env.CODEX_PET_HOST;const config={main:{pets:[{id:'main',balanceEnabled:true,whisperEnabled:true},{id:'second',balanceEnabled:true,whisperEnabled:true}]}};
  try{
   process.env.CODEX_PET_HOST='workbuddy';const projected=C.projectConfig(config,{dataRoot:f.root});assert.ok(projected.main.pets.every(p=>p.balanceEnabled===false&&p.whisperEnabled===false));assert.ok(config.main.pets.every(p=>p.balanceEnabled===true&&p.whisperEnabled===true));
-  process.env.CODEX_PET_HOST='codex';const codex=C.projectConfig(config,{dataRoot:f.root});assert.ok(codex.main.pets.every(p=>p.balanceEnabled===true&&p.whisperEnabled===true));
+   process.env.CODEX_PET_HOST='codex';const codex=C.projectConfig(config,{dataRoot:f.root});assert.ok(codex.main.pets.every(p=>p.balanceEnabled===false&&p.whisperEnabled===true));
  }finally{if(previous===undefined)delete process.env.CODEX_PET_HOST;else process.env.CODEX_PET_HOST=previous;}
 });
 

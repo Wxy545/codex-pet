@@ -1,17 +1,16 @@
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
-import { readFile, writeFile, mkdir, readdir, stat, open, rename, mkdtemp, rm } from 'node:fs/promises';
-import { homedir, tmpdir } from 'node:os';
-import { basename, dirname, join, resolve } from 'node:path';
+import { readFile, writeFile, mkdir, readdir, stat, open, rename } from 'node:fs/promises';
+import { homedir } from 'node:os';
+import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { randomUUID } from 'node:crypto';
 import { locateCodex } from '../src/codex-path.mjs';
-import { createCodexChildEnv } from '../src/codex-child-env.mjs';
 
 const execute = promisify(execFile);
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const KNOWN = 'known';
-const CONTRACT_REVISION = 2;
+const CONTRACT_REVISION = 3;
 const normalizedPath = value => String(value ?? '').replaceAll('\\', '/').toLowerCase();
 const hasVersion = component => typeof component?.version === 'string' && component.version.length > 0;
 
@@ -56,41 +55,12 @@ export function inspectChatRequirements(source) {
   return inspectAdapterRequirements(source, 'DISABLED_FEATURES');
 }
 
-/** 操作任务使用命名权限，不能回归到本机已证实会丢失写权限的旧参数组合。 */
-export function inspectTaskRequirements(source) {
-  const result = inspectAdapterRequirements(source, 'DISABLED_TASK_FEATURES');
-  if (result.status !== 'passed') return { ...result, reason: 'task-source-contract-unrecognized' };
-  const mapping = source.match(/const\s+permissionProfile\s*=\s*input\.permission\s*===\s*['"]workspace-write['"]\s*\?\s*['"](:[a-z-]+)['"]\s*:\s*['"](:[a-z-]+)['"]\s*;/);
-  const args = source.match(/const\s+args\s*=\s*\[([\s\S]*?)\];/)?.[1] ?? '';
-  const valid = mapping?.[1] === ':workspace' && mapping?.[2] === ':read-only'
-    && args.includes('default_permissions=') && args.includes('windows.sandbox="unelevated"')
-    && !result.flags.includes('--sandbox') && !/sandbox_mode=|sandbox_workspace_write\./.test(args);
-  return { ...result, status: valid ? 'passed' : 'failed', reason: 'static-task-permission-requirements', permissionProfiles: valid ? [':read-only', ':workspace'] : [], windowsSandbox: valid ? 'unelevated' : undefined };
-}
-
-/** 诊断JSON只取权限段的固定枚举，正文、工具参数和全局指令不会进入报告。 */
-export function inspectPermissionPrompt(output, expectedMode) {
-  let parsed;
-  try { parsed = JSON.parse(output); } catch { return { status: 'unknown', reason: 'permission-prompt-json-unavailable' }; }
-  const sections = [];
-  function walk(value) {
-    if (typeof value === 'string') sections.push(...(value.match(/<permissions instructions>[\s\S]*?<\/permissions instructions>/g) ?? []));
-    else if (value && typeof value === 'object') Object.values(value).forEach(walk);
-  }
-  walk(parsed);
-  if (sections.length !== 1) return { status: 'unknown', reason: 'permission-section-unrecognized' };
-  const section = sections[0];
-  const mode = section.match(/sandbox_mode[`'"]?\s*(?:is|=)\s*[`'"]?(read-only|workspace-write|danger-full-access)/)?.[1];
-  const network = /Network access is disabled/i.test(section) ? 'disabled' : /Network access is restricted/i.test(section) ? 'restricted' : /Network access is enabled/i.test(section) ? 'enabled' : undefined;
-  return { status: !mode || !network ? 'unknown' : mode === expectedMode && ['disabled', 'restricted'].includes(network) ? 'passed' : 'failed', reason: 'isolated-permission-config-render', ...(mode ? { mode } : {}), ...(network ? { network } : {}) };
-}
-
 const safeName = value => typeof value === 'string' && /^[A-Za-z0-9_.-]{1,80}$/.test(value);
 
-/** 返回类型和字段名，不保留消息、命令、token数或额度值。 */
+/** 返回类型和字段名，不保留消息、命令或 token 数。 */
 export function inspectEventShapes(records) {
   const shapes = new Map();
-  let started = false; let completed = false; let activity = false; let quota = false; let incompatibleQuota = false;
+  let started = false; let completed = false; let activity = false;
   for (const record of records) {
     if (!record || !['event_msg', 'response_item', 'session_meta'].includes(record.type)) continue;
     const payload = record.payload;
@@ -107,23 +77,14 @@ export function inspectEventShapes(records) {
         activity ||= ['Reasoning', 'CommandExecution', 'FileChange', 'McpToolCall', 'AgentMessage'].includes(payload.item.type);
         fields?.add(`item.type:${payload.item.type}`);
       }
-      if (subtype === 'token_count' && payload.rate_limits && typeof payload.rate_limits === 'object') {
-        for (const name of ['primary', 'secondary']) {
-          const window = payload.rate_limits[name];
-          if (!window) continue;
-          if (typeof window.used_percent === 'number' && Number.isFinite(window.used_percent)) quota = true;
-          else if (Object.hasOwn(window, 'used_percent')) incompatibleQuota = true;
-          for (const field of ['used_percent', 'window_minutes', 'resets_at']) if (Object.hasOwn(window, field)) fields?.add(`rate_limits.${name}.${field}:${typeof window[field]}`);
-        }
-      }
     }
     if (record.type === 'response_item' && ['function_call', 'custom_tool_call', 'reasoning', 'message'].includes(subtype)) activity = true;
   }
-  const support = { lifecycle: started && completed, activity, quota };
+  const support = { lifecycle: started && completed, activity };
   const missing = Object.entries(support).filter(([, value]) => !value).map(([name]) => name);
   return {
-    status: incompatibleQuota ? 'failed' : missing.length ? 'unknown' : 'passed',
-    reason: incompatibleQuota ? 'quota-field-type-changed' : missing.length ? 'recent-log-evidence-incomplete' : 'recent-log-shapes-supported',
+    status: missing.length ? 'unknown' : 'passed',
+    reason: missing.length ? 'recent-log-evidence-incomplete' : 'recent-log-shapes-supported',
     support, missing,
     observed: [...shapes].map(([type, fields]) => ({ type, fields: [...fields].sort() })),
   };
@@ -146,36 +107,6 @@ async function detectCli(run, platform, env, locateCli) {
   const result = await run(path, ['--version']);
   const version = result.code === 0 ? result.stdout.trim().match(/^codex(?:-cli)?\s+([^\s]+)$/i)?.[1] : undefined;
   return version ? { status: KNOWN, path, version } : { status: 'unknown', path, reason: 'cli-version-unavailable' };
-}
-
-async function inspectPermissionProfiles(run, codexPath, requirements, platform, env) {
-  if (!codexPath || requirements.status !== 'passed') return { status: 'unknown', reason: 'task-permission-contract-unavailable' };
-  const temporaryRoot = resolve(tmpdir());
-  const temporary = await mkdtemp(join(temporaryRoot, 'codex-compat-policy-'));
-  try {
-    const isolatedEnv = createCodexChildEnv(env);
-    // 此诊断不需要登录；隔离用户配置和认证变量，既不读取主配置，也不向模型服务发请求。
-    for (const name of Object.keys(isolatedEnv)) if (/^(?:CODEX_HOME|CODEX_API_KEY|OPENAI_.*|AZURE_OPENAI_.*)$/i.test(name)) delete isolatedEnv[name];
-    isolatedEnv.CODEX_HOME = temporary;
-    const strictArgs = ['app-server', '--print-startup-config', '--strict-config', '-c', 'default_permissions=":workspace"'];
-    if (platform === 'win32') strictArgs.push('-c', 'windows.sandbox="unelevated"');
-    const strict = await run(codexPath, strictArgs, { cwd: temporary, env: isolatedEnv, timeoutMs: 15000 });
-    let strictJson;
-    try { strictJson = JSON.parse(strict.stdout); } catch { /* 不保留原始配置或诊断输出。 */ }
-    const configuration = { status: strict.code !== 0 ? 'failed' : typeof strictJson?.appServerVersion === 'string' && Object.hasOwn(strictJson, 'configRequirements') ? 'passed' : 'unknown', reason: 'isolated-strict-config-recognition' };
-    const profiles = [];
-    for (const [profile, mode] of [[':read-only', 'read-only'], [':workspace', 'workspace-write']]) {
-      const args = ['debug', 'prompt-input', '-c', 'default_permissions=' + JSON.stringify(profile), '-c', 'approval_policy="never"', '-c', 'project_doc_max_bytes=0'];
-      if (platform === 'win32') args.push('-c', 'windows.sandbox="unelevated"');
-      args.push(...requirements.disabledFeatures.flatMap(name => ['--disable', name]), '权限配置诊断，不调用工具。');
-      const result = await run(codexPath, args, { cwd: temporary, env: isolatedEnv, timeoutMs: 15000 });
-      profiles.push({ profile, ...(result.code === 0 ? inspectPermissionPrompt(result.stdout, mode) : { status: 'failed', reason: 'permission-config-render-failed', timedOut: Boolean(result.timedOut) }) });
-    }
-    return { status: foldedStatus([configuration, ...profiles]), reason: 'task-permission-config-contract', verification: 'isolated-config-and-prompt-render-no-model-no-execution', ...(platform === 'win32' ? { windowsSandbox: 'unelevated' } : {}), configuration, profiles };
-  } finally {
-    // 只删除本次创建、且已验证位于系统临时根下的独占目录。
-    if (dirname(resolve(temporary)) === temporaryRoot && basename(temporary).startsWith('codex-compat-policy-')) await rm(temporary, { recursive: true, force: true });
-  }
 }
 
 const DESKTOP_QUERY = String.raw`
@@ -303,18 +234,11 @@ export async function checkCodexCompatibility({ root = ROOT, force = false, plat
 
   const checks = report.checks;
   checks.cliVersion = { status: current.cli.status === KNOWN ? 'passed' : 'unknown', reason: current.cli.reason ?? 'executable-version-read' };
-  let chatRequirements; let taskRequirements;
+  let chatRequirements;
   try { chatRequirements = inspectChatRequirements(await readFile(join(root, 'src', 'codex-chat.mjs'), 'utf8')); }
   catch { chatRequirements = { status: 'unknown', reason: 'chat-source-unavailable', flags: [], disabledFeatures: [] }; }
-  try { taskRequirements = inspectTaskRequirements(await readFile(join(root, 'src', 'codex-tasks.mjs'), 'utf8')); }
-  catch { taskRequirements = { status: 'unknown', reason: 'task-source-unavailable', flags: [], disabledFeatures: [] }; }
   checks.chatSource = chatRequirements;
-  checks.taskSource = taskRequirements;
-  const requirements = {
-    status: foldedStatus([chatRequirements, taskRequirements]),
-    flags: [...new Set([...chatRequirements.flags, ...taskRequirements.flags])],
-    disabledFeatures: [...new Set([...chatRequirements.disabledFeatures, ...taskRequirements.disabledFeatures])],
-  };
+  const requirements = chatRequirements;
   const helpResult = current.cli.path ? await run(current.cli.path, ['exec', '--help']) : { code: 1, stdout: '' };
   if (helpResult.code !== 0) {
     checks.execHelp = { status: current.cli.path ? 'failed' : 'unknown', reason: 'exec-help-unavailable' };
@@ -334,7 +258,6 @@ export async function checkCodexCompatibility({ root = ROOT, force = false, plat
     const missingFeatures = requirements.disabledFeatures.filter(name => !knownFeatures.has(name));
     checks.disabledFeatures = { status: features.code !== 0 ? 'failed' : !knownFeatures.size ? 'unknown' : missingFeatures.length ? 'failed' : 'passed', reason: 'read-only-feature-recognition', requestedCount: requirements.disabledFeatures.length, missingFeatures };
   } else checks.disabledFeatures = { status: 'unknown', reason: 'cli-or-feature-contract-unavailable' };
-  checks.permissionProfiles = await inspectPermissionProfiles(run, current.cli.path, taskRequirements, platform, env);
   const tests = await run(process.execPath, ['--test', '--test-concurrency=1', 'test/*.test.mjs', 'src/*.test.cjs'], { timeoutMs: 60000 });
   report.testsRun = true;
   checks.regressionTests = { status: tests.code === 0 ? 'passed' : 'failed', exitCode: tests.code, timedOut: Boolean(tests.timedOut), reason: 'local-mocked-regression-suite' };
@@ -343,7 +266,7 @@ export async function checkCodexCompatibility({ root = ROOT, force = false, plat
   report.coreStatus = foldedStatus(checks);
   checks.desktopVersion = { status: current.desktop.status === KNOWN ? 'passed' : 'unknown', reason: current.desktop.source ?? current.desktop.reason };
   report.status = report.coreStatus === 'passed' && checks.desktopVersion.status === 'unknown' ? 'unknown' : report.coreStatus;
-  report.limitations = ['CLI JSON能力核对帮助声明和本地解析回归；权限profile与Windows沙箱枚举只验证隔离配置渲染，未执行工具或发送真实模型请求。'];
+  report.limitations = ['CLI JSON 能力核对帮助声明和本地解析回归，未执行工具或发送真实模型请求。'];
   const nextBaseline = { ...baseline, schemaVersion: 1, lastAttempt: { checkedAt, status: report.coreStatus, version: versionStamp(current) } };
   if (report.coreStatus === 'passed') {
     nextBaseline.lastSuccessfulVersion = versionStamp(current, baseline.lastSuccessfulVersion);

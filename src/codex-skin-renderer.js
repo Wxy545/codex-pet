@@ -675,7 +675,7 @@
     scale.appendChild(maximum);
     const status = document.createElement('div');
     status.className = 'codex-pet-size-status';
-    status.textContent = t('拖动滑块实时预览，松开后保存');
+    status.textContent = t('拖动滑块或按左右方向键调整，松开后保存');
     panel.appendChild(head);
     panel.appendChild(slider);
     panel.appendChild(scale);
@@ -709,16 +709,34 @@
       },
     };
     const onDocumentPointerDown = event => { if (!root.contains || !root.contains(event.target)) state.close(); };
-    const onDocumentKeyDown = event => { if (event.key === 'Escape') state.close(); };
+    const previewSize = value => {
+      const size = normalizeSize(value);
+      slider.value = String(size);
+      output.textContent = `${size} px`;
+      slider.setAttribute?.('aria-valuetext', `${size} px`);
+      status.dataset.error = 'false';
+      status.textContent = t('拖动滑块或按左右方向键调整，松开后保存');
+      previewSpriteSize(sprite, size);
+    };
+    const onDocumentKeyDown = event => {
+      if (event.key === 'Escape') {
+        state.close();
+      } else if (!saving && (event.key === 'ArrowLeft' || event.key === 'ArrowRight')) {
+        event.preventDefault?.();
+        previewSize(Number(slider.value) + (event.key === 'ArrowLeft' ? -1 : 1));
+      }
+    };
+    const onDocumentKeyUp = event => {
+      if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return;
+      event.preventDefault?.();
+      void commitSize();
+    };
     listen(document, 'mousedown', onDocumentPointerDown, true);
     listen(document, 'keydown', onDocumentKeyDown, true);
+    listen(document, 'keyup', onDocumentKeyUp, true);
     listen(slider, 'input', () => {
       const value = normalizeSize(slider.value);
-      output.textContent = `${value} px`;
-      slider.setAttribute?.('aria-valuetext', `${value} px`);
-      status.dataset.error = 'false';
-      status.textContent = t('拖动滑块实时预览，松开后保存');
-      previewSpriteSize(sprite, value);
+      previewSize(value);
     });
     listen(slider, 'change', () => { void commitSize(); });
 
@@ -771,6 +789,7 @@
     root.style.left = `${left + originBeforeExpand.x - originAfterExpand.x}px`;
     root.style.top = `${top + originBeforeExpand.y - originAfterExpand.y}px`;
     root.style.visibility = '';
+    slider.focus?.();
 
     activeSizePanel = state;
     sprite.menuOpen = true;
@@ -796,11 +815,11 @@
       const registeredChildren = preserveRegistered || (copy.label === shared.MORE_MENU_LABEL && hasRegisteredMenu(copy.children));
       if (copy.children) copy.children = decorateTree(copy.children, registeredChildren);
       if (preserveRegistered || copy.action === 'third-party') return [copy];
+      if (['chat', 'show-balance', 'codex-task-panel'].includes(copy.action)) return [];
       if (selected?.originalVideo && model.locale === 'en' && (copy.anim ? actionEntry(copy.anim).group === 'category:文字' : copy.label === '文字' && hasAnimationMenu(node.children))) return [];
       if (limited && copy.anim && !readyNativeAction(limited, copy.anim) && !readyEventAction(limited, copy.anim)) return [];
       if (limited && copy.children?.length === 0 && hasAnimationMenu(node.children)) return [];
       if (typeof copy.label === 'string') copy.label = copy.anim ? selected?.copy?.actionLabels?.[copy.anim] || t(copy.label) : selected?.copy?.menuLabels?.[copy.label] || t(copy.label);
-      if (copy.action === 'chat' && window.codexChatPanel?.open) copy.label = t('图文对话');
       if (copy.anim && selected && !selected.originalVideo) {
         const entry = actionEntry(copy.anim);
         const resolved = A.resolveAction(entry, selected.manifest, selected.assets);
@@ -815,7 +834,6 @@
   shared.mountContextMenu = function (options) {
     if (!options.tree.some(item => ['chat', 'open-site'].includes(item.action))) return mountContextMenu.apply(this, arguments);
     const tree = decorateTree(options.tree);
-    if (window.codexTaskPanel?.open) tree.push({ label: t('操作任务'), action: 'codex-task-panel' });
     if (model) tree.push({
       label: t('形象'),
       children: [
@@ -826,10 +844,6 @@
     return mountContextMenu.call(this, { ...options, tree });
   };
   const menuAction = proto.onMenuAction;
-  function openPanel(open) {
-    const failed = () => console.warn('[龙娘桌宠] 窗口未能打开。');
-    try { void Promise.resolve(open()).catch(failed); } catch { failed(); }
-  }
   proto.onMenuAction = function (leaf) {
     if (leaf?.action === 'codex-pet-size') {
       this.closeMenu();
@@ -841,8 +855,7 @@
       void bridge.select({ character: leaf.character, mode: 'q' }).then(applyModel).catch(() => console.warn('[龙娘桌宠] 形象未能切换，请确认本地素材已就绪。'));
       return;
     }
-    if (leaf?.action === 'codex-task-panel' && window.codexTaskPanel?.open) { this.closeMenu(); openPanel(() => window.codexTaskPanel.open()); return; }
-    if (leaf?.action === 'chat' && window.codexChatPanel?.open) { this.closeMenu(); openPanel(() => window.codexChatPanel.open()); return; }
+    if (['chat', 'show-balance', 'codex-task-panel'].includes(leaf?.action)) { this.closeMenu(); return; }
     return menuAction.apply(this, arguments);
   };
   function applyModel(value) {

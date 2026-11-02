@@ -34,10 +34,10 @@ test('真实WorkBuddy独立宿主不要求Codex且保留旧AI设置，事件/鉴
   const base=`http://127.0.0.1:${runtime.port}`;
   const request=(path,{method='GET',body,headers={}}={})=>fetch(base+path,{method,headers:{'x-dsh-pet-token':runtime.token,...(body?{'content-type':'application/json'}:{}),...headers},body:body?JSON.stringify(body):undefined,signal:AbortSignal.timeout(3000)});
   const health=await (await request('/health')).json();assert.equal(health.host,'workbuddy');
-  const capability=await (await request('/dsh-pet-7340/pet-host')).json();assert.equal(capability.capabilities.chat,false);assert.equal(capability.capabilities.quota,false);
+  const capability=await (await request('/dsh-pet-7340/pet-host')).json();assert.equal(capability.capabilities.chat,false);assert.equal(capability.capabilities.tasks,false);assert.equal(capability.capabilities.quota,false);
   const ai=await (await request('/standalone-ai/settings')).json();assert.equal(ai.enabled,false);assert.equal(ai.hasKey,false);
-  assert.equal((await request('/dsh-pet-7340/codex-chat',{method:'POST',body:{messages:[]}})).status,409);
-  assert.equal((await request('/dsh-pet-7340/codex-tasks')).status,409);
+  const removedChat=await request('/dsh-pet-7340/codex-chat',{method:'POST',body:{messages:[]}});assert.ok(removedChat.status>=400&&removedChat.status<500);
+  const removedTasks=await request('/dsh-pet-7340/codex-tasks');assert.ok(removedTasks.status>=400&&removedTasks.status<500);
   const env={CODEBUDDY_SESSION_ID:'synthetic-session',CODEBUDDY_CONVERSATION_REQUEST_ID:'synthetic-request'};
   const event=name=>normalizeHookInput({hook_event_name:name,session_id:'synthetic-session',tool_use_id:'synthetic-tool',tool_name:'Read',final_stop_reason:'completed'},{env});
   const start=event('UserPromptSubmit');
@@ -56,7 +56,7 @@ test('真实WorkBuddy独立宿主不要求Codex且保留旧AI设置，事件/鉴
   const missing=await request('/dsh-pet-7340/pet-host',{method:'POST',body:{host:'codex'}});assert.equal(missing.status,409);assert.equal((await missing.json()).error,'codex_missing');
   assert.equal(JSON.parse(await readFile(join(root,'data/host.json'),'utf8')).host,'workbuddy');
   assert.equal(await readFile(join(root,'data/dsh-pet/standalone-ai.json'),'utf8'),privateAi);
-  await request('/shutdown',{method:'POST'});await once(child,'exit');assert.equal(child.exitCode,0);
+  await request('/shutdown',{method:'POST'});await once(child,'exit');assert.equal(child.exitCode,0,output.slice(-2000));
  }finally{
   if(child&&child.exitCode===null){child.kill('SIGTERM');await Promise.race([once(child,'exit'),delay(3000)]);}
   await rm(root,{recursive:true,force:true});

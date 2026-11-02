@@ -224,7 +224,8 @@ function projectConfig(config, { dataRoot = process.env.DSH_HOME } = {}) {
   if (!main) return config;
   const next = { ...main, pets: (main.pets ?? []).map(pet => {
     const copy = namedCopy(character.id, character.locale, pet.name);
-    return { ...pet, ...(workbuddy ? { balanceEnabled: false, whisperEnabled: false } : {}), name: copy.name, whisperPrompt: composePersona({ ...character, persona: copy.persona }, pet.whisperPrompt || main.whisperPrompt) };
+    // 桌宠不再查询或展示账户余额；保留动作素材，但不启动余额轮询。
+    return { ...pet, balanceEnabled: false, ...(workbuddy ? { whisperEnabled: false } : {}), name: copy.name, whisperPrompt: composePersona({ ...character, persona: copy.persona }, pet.whisperPrompt || main.whisperPrompt) };
   }) };
   next.whisperPrompt = composePersona({ ...character, persona: namedCopy(character.id, character.locale, character.name).persona }, main.whisperPrompt);
   if (character.id !== 'bluefish' || character.locale === 'en') {

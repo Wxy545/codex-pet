@@ -9,7 +9,10 @@ test('宿主选择保留旧安装Codex默认，已保存选择优先于重启子
   const root=fixture(t);assert.equal(Host.readHost(root,''),'codex');
   Host.writeHost(root,'workbuddy');assert.equal(Host.readHost(root,'codex'),'workbuddy');
   assert.equal(Host.publicHost('workbuddy').capabilities.chat,false);
-  assert.equal(Host.publicHost('codex').capabilities.quota,true);
+  assert.equal(Host.publicHost('codex').capabilities.chat,false);
+  assert.equal(Host.publicHost('codex').capabilities.images,false);
+  assert.equal(Host.publicHost('codex').capabilities.tasks,false);
+  assert.equal(Host.publicHost('codex').capabilities.quota,false);
   assert.throws(()=>Host.writeHost(root,'harness'));assert.equal(Host.readHost(root,''),'workbuddy');
 });
 test('宿主设置不跟随目标文件和data根junction，不修改链接外配置',t=>{

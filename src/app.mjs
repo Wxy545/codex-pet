@@ -10,8 +10,6 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import { locateCodex } from './codex-path.mjs';
 import { createCodexWatcher } from './codex-events.mjs';
 import { createCodexChatHandler, MAX_CHAT_BODY_BYTES } from './codex-chat.mjs';
-import { createCodexActivityGate, createCodexTaskHandler, MAX_TASK_BODY_BYTES } from './codex-tasks.mjs';
-import { codexQuotaResult } from './quota.mjs';
 import Character from './codex-character.cjs';
 import Locale from './codex-locale.cjs';
 import Startup from './codex-startup.cjs';
@@ -64,13 +62,13 @@ async function start() {
   const configFile = join(home, 'dsh-pet', 'main-config.jsonc');
   if (!existsSync(configFile)) {
     writeFileSync(configFile, JSON.stringify({
-      pets: [{ id: 'main', name: '大肥鱼', size: 320, display: 'desktop', balanceEnabled: true,
+      pets: [{ id: 'main', name: '大肥鱼', size: 320, display: 'desktop', balanceEnabled: false,
         whisperEnabled: true, workStatusEnabled: true, fixedEnabled: false,
         position: { corner: 'bottom-right', marginX: 80, marginY: 30 },
         whisperPrompt: '' }],
       notificationsEnabled: true, confineToScreen: true,
       whisperImageEnabled: false, chatImageEnabled: false,
-      eventsRefreshSec: { balance: 600, whisper: 600 },
+      eventsRefreshSec: { whisper: 600 },
     }, null, 2));
   }
   // 选择WorkBuddy时不查找Codex CLI，也不读取或改写Codex的账号/AI设置。
@@ -80,10 +78,7 @@ async function start() {
   if (!existsSync(hostPath)) throw new Error(t('请先运行 setup.ps1 准备运行时。'));
   const host = await import(pathToFileURL(hostPath).href);
   const logger = host.createStandaloneLogger();
-  const activityGate = createCodexActivityGate();
-  let receiveTaskChange = () => {};
-  const chatHandler = isCodex ? createCodexChatHandler({ codexPath, cwd: home, timeoutMs: 120000, activityGate }) : null;
-  const taskHandler = isCodex ? createCodexTaskHandler({ codexPath, activityGate, onChange: view => receiveTaskChange(view) }) : null;
+  const chatHandler = isCodex ? createCodexChatHandler({ codexPath, cwd: home, timeoutMs: 120000 }) : null;
   const chatToken = randomBytes(32).toString('base64url');
   const chatServer = isCodex ? createServer(async (req, res) => {
     if (req.method !== 'POST' || req.url !== '/v1/chat/completions') return json(res, 404, { error: 'not found' });
@@ -117,28 +112,20 @@ async function start() {
   let eventReady = false;
   let updateChain = Promise.resolve();
   let lastState = '';
-  let lastQuota = '';
   let stopping = false;
-  let manualTaskView = null;
-  let manualTerminalUntil = 0;
-  let manualTimer;
   let processTimer = null;
   let processChecking = false;
-  const activeTaskStates = new Set(['running', 'cancelling']);
-  const terminalTaskStates = new Set(['completed', 'failed', 'cancelled', 'timed_out']);
   routes.push({ kind: 'exact', path: `${prefix}/pet-host`, handler: async (req, res) => {
     if (req.headers['x-dsh-pet-token'] !== security.token || req.headers.origin) return json(res, 403, {error: 'unauthorized'});
     if (req.method === 'GET') return json(res, 200, PetHost.publicHost(companionHost));
     if (req.method !== 'POST') return json(res, 405, {error: 'method not allowed'});
-    let releaseSwitch, readyFile, changedPreference=false;
+    let readyFile, changedPreference=false;
     try {
       const body = await requestJson(req, 1024);
       if (!body || !PetHost.validHost(body.host) || Object.keys(body).some(key => key !== 'host')) return json(res, 400, {error: 'invalid host'});
       if (body.host === companionHost) return json(res, 200, PetHost.publicHost(companionHost));
       if (switchingHost || snapshot.activeCount) return json(res, 409, {error: 'host_busy'});
       if (body.host === 'codex') {try {locateCodex();} catch {return json(res, 409, {error:'codex_missing'});}}
-      releaseSwitch = activityGate.acquire('host-switch');
-      if (!releaseSwitch) return json(res, 409, {error: 'host_busy'});
       switchingHost = true;
       PetHost.writeHost(home, body.host);
       changedPreference=true;
@@ -153,7 +140,7 @@ async function start() {
       json(res, 202, {...PetHost.publicHost(body.host), restarting: true});
       setTimeout(() => { if (switchingHost) void shutdown(); }, 350).unref();
     } catch {
-      switchingHost = false;releaseSwitch?.();
+      switchingHost = false;
       if(changedPreference)try{PetHost.writeHost(home,companionHost);}catch{}
       if(readyFile)await unlink(readyFile).catch(()=>{});
       if (!res.writableEnded) json(res, 500, {error: 'host_switch_failed'});
@@ -184,11 +171,6 @@ async function start() {
     if (req.method !== 'POST') return json(res, 405, { error: 'method not allowed' });
     json(res, 200, startup.take());
   } });
-  routes.push({ kind: 'exact', path: `${prefix}/codex-character`, handler: (req, res) => {
-    if (req.method !== 'GET') return json(res, 405, { error: 'method not allowed' });
-    if (req.headers['x-dsh-pet-token'] !== security.token || req.headers.origin) return json(res, 403, { error: 'unauthorized' });
-    json(res, 200, Character.safeIdentity(Character.readCharacter(home)));
-  } });
   routes.push({ kind: 'exact', path: `${prefix}/pet-size`, handler: async (req, res) => {
     if (req.method !== 'POST') return json(res, 405, { error: 'method not allowed' });
     if (req.headers['x-dsh-pet-token'] !== security.token || req.headers.origin) return json(res, 403, { error: 'unauthorized' });
@@ -212,29 +194,6 @@ async function start() {
     if (req.method !== 'GET') return json(res, 405, { error: 'method not allowed' });
     json(res, 200, { ...snapshot, codexHome: undefined });
   } });
-  routes.push({ kind: 'exact', path: `${prefix}/codex-chat`, handler: async (req, res) => {
-    if (!chatHandler || switchingHost) return json(res, 409, {error: {code: 'host_unavailable', message: t('当前联动应用未提供桌宠聊天接口。')}});
-    if (req.method !== 'POST') return json(res, 405, { error: 'method not allowed' });
-    try { await chatHandler(req, res, await requestJson(req, MAX_CHAT_BODY_BYTES)); }
-    catch { if (!res.writableEnded) json(res, 400, { error: { code: 'invalid_input', message: t('图文消息格式不正确。') } }); }
-  } });
-  routes.push({ kind: 'exact', path: `${prefix}/codex-tasks`, handler: async (req, res) => {
-    if (!taskHandler || switchingHost) return json(res, 409, {error: {code: 'host_unavailable', message: t('请在 WorkBuddy 中提交操作任务。')}});
-    if (req.method === 'GET') return json(res, 200, taskHandler.snapshot());
-    if (req.method !== 'POST') return json(res, 405, { error: 'method not allowed' });
-    try { await taskHandler(req, res, await requestJson(req, MAX_TASK_BODY_BYTES)); }
-    catch { if (!res.writableEnded) json(res, 400, { error: { code: 'invalid_input', message: t('操作任务格式不正确。') } }); }
-  } });
-  routes.push({ kind: 'exact', path: `${prefix}/codex-tasks/cancel`, handler: async (req, res) => {
-    if (!taskHandler || switchingHost) return json(res, 409, {error: {code: 'host_unavailable', message: t('请在 WorkBuddy 中提交操作任务。')}});
-    if (req.method !== 'POST') return json(res, 405, { error: 'method not allowed' });
-    try {
-      const body = await requestJson(req, 2048);
-      if (!body || typeof body.id !== 'string' || Object.keys(body).some(key => key !== 'id')) return json(res, 400, { error: { code: 'invalid_input', message: t('取消请求格式不正确。') } });
-      if (!taskHandler.cancel(body.id)) return json(res, 409, { error: { code: 'stale_task', message: t('任务状态已经变化。') } });
-      json(res, 200, taskHandler.snapshot());
-    } catch { if (!res.writableEnded) json(res, 400, { error: { code: 'invalid_input', message: t('取消请求格式不正确。') } }); }
-  } });
   const context = host.createStandaloneContext({ port: () => port, logger, routes, ai, authenticatedUrl: security.authenticatedUrl });
   const server = await host.listenStandaloneServer({ routes, logger, port: Number(process.env.CODEX_PET_PORT || 3080), security, ai,
     status: () => ({ name: 'codex-pet', pid: process.pid, port, host: companionHost }), onShutdown: () => { void shutdown(); } });
@@ -247,7 +206,6 @@ async function start() {
   process.env.CODEX_PET_API_TOKEN = security.token;
   process.env.CODEX_PET_LAUNCHER = join(root, existsSync(join(root, 'Start Codex Pet.vbs')) ? 'Start Codex Pet.vbs' : '启动龙娘桌宠.vbs');
   host.apply(context.ctx);
-  const releaseQuota = isCodex ? context.ctx.get('petApi7340').balance.register({ id: 'standalone', fetch: async () => codexQuotaResult(snapshot.usage) }) : () => {};
   async function petRequest(method, path, body) {
     const response = await fetch(`http://127.0.0.1:${port}${prefix}${path}`, { method,
       headers: { 'x-dsh-pet-token': security.token, ...(body ? { 'content-type': 'application/json' } : {}) },
@@ -255,16 +213,8 @@ async function start() {
     if (!response.ok) throw new Error(t('桌宠状态同步失败（{status}）', { status: response.status }));
     return response;
   }
-  // 操作面板与主聊天统一决定外观，普通轮询不能把仍在运行的操作任务切回待机。
   function updateDisplay() {
-    const active = activeTaskStates.has(manualTaskView?.state);
-    const terminal = manualTerminalUntil > Date.now() && terminalTaskStates.has(manualTaskView?.state);
-    const showManual = (active && mainSnapshot.state !== 'waiting') || (terminal && !mainSnapshot.activeCount);
-    const next = showManual ? {
-      ...mainSnapshot, state: active ? 'working' : manualTaskView.state === 'completed' ? 'success' : manualTaskView.state === 'cancelled' ? 'idle' : 'error',
-      task: active ? t('正在处理已确认的目录任务') : manualTaskView.state === 'completed' ? t('操作任务已返回结果') : manualTaskView.state === 'cancelled' ? '' : t('操作任务未完成'),
-      activeCount: (mainSnapshot.activeCount || 0) + Number(active),
-    } : mainSnapshot;
+    const next = mainSnapshot;
     snapshot = next;
     updateChain = updateChain.then(async () => {
       if (stopping) return;
@@ -274,27 +224,8 @@ async function start() {
         else await petRequest('POST', '/work-status', { state: next.state, task: Array.from(next.task || '').slice(0, 40).join('') || null });
         lastState = stateKey;
       }
-      const quotaKey = JSON.stringify(next.usage || null);
-      if (quotaKey !== lastQuota && next.usage && next.state === 'idle') {
-        await petRequest('POST', '/balance'); lastQuota = quotaKey;
-      }
     }).catch(error => logger.warn(error.message));
   }
-  receiveTaskChange = view => {
-    const previousState = manualTaskView?.state;
-    manualTaskView = view;
-    if (terminalTaskStates.has(view.state) && view.state !== previousState) {
-      manualTerminalUntil = Date.now() + 10000;
-      clearTimeout(manualTimer);
-      manualTimer = setTimeout(updateDisplay, 10020);
-      if (view.state !== 'cancelled') {
-        notices.push({ id: randomBytes(12).toString('hex'), kind: view.state === 'completed' ? 'success' : 'error',
-          title: t(view.state === 'completed' ? '操作任务已返回结果' : '操作任务未完成'), body: t('打开 Codex Pet 的操作任务面板查看结果。'), threadId: null });
-        if (notices.length > 24) notices.shift();
-      }
-    }
-    updateDisplay();
-  };
   // 桌宠跟随用户聊天，内部子代理的中间完成不作为整项任务完成提醒。
   const watcher = isCodex ? createCodexWatcher({ codexHome, excludeThreadSources: ['pet-chat', 'pet-task', 'subagent'], onChange: (next, event) => {
     mainSnapshot = next;
@@ -308,19 +239,17 @@ async function start() {
   shutdown = async () => {
     if (stopping) return;
     stopping = true;
-    clearTimeout(manualTimer);
     clearInterval(processTimer);
     await watcher.stop();
     chatHandler?.dispose();
-    taskHandler?.dispose();
     workbuddy.dispose();
-    releaseQuota();
     await context.dispose();
     await server.close();
     if (chatServer) await new Promise(resolveClose => chatServer.close(resolveClose));
     releaseRuntime();
     await unlink(bridgeFile).catch(() => {});
-    process.exit(0);
+    // 关闭所有监听器后让事件循环自然结束，避免 Windows 上 process.exit 与句柄收尾竞态。
+    process.exitCode = 0;
   };
   process.on('SIGINT', () => { void shutdown(); });
   process.on('SIGTERM', () => { void shutdown(); });
@@ -346,7 +275,7 @@ async function start() {
     void checkWorkBuddyProcess();
   }
   logger.info(t('Codex Pet 已启动，本机端口 {port}，动画与互动基于 dsh-pet 0.3.8。', { port }));
-  logger.info(isCodex ? t('右键可点播动作、查看额度或对话；自动碎碎念默认十分钟一次，可在 AI 设置中关闭。') : t('桌宠已联动 WorkBuddy，右键可点播动作和切换形象。'));
+  logger.info(isCodex ? t('右键可点播动作；自动碎碎念默认十分钟一次，可在 AI 设置中关闭。') : t('桌宠已联动 WorkBuddy，右键可点播动作和切换形象。'));
 }
 
 function json(res, status, body) {

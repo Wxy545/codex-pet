@@ -3,18 +3,18 @@
 在 Windows 的 Codex 聊天里发这句话：
 
 ```text
-帮我安装并启动 https://github.com/Wxy545/codex-pet，按仓库的 INSTALL.md 操作。
+帮我安装并启动 https://github.com/wajncn/codex-pet，按仓库的 INSTALL.md 操作。
 ```
 
 如果要跟随 WorkBuddy，改用：
 
 ```text
-请读取 https://github.com/Wxy545/codex-pet/blob/main/INSTALL.workbuddy.md，帮我在这台 Windows 上下载安装并启动 WorkBuddy 桌宠。
+请读取 https://github.com/wajncn/codex-pet/blob/main/INSTALL.workbuddy.md，帮我在这台 Windows 上下载安装并启动 WorkBuddy 桌宠。
 ```
 
 WorkBuddy 的完整自动安装步骤见 [INSTALL.workbuddy.md](INSTALL.workbuddy.md)。由 WorkBuddy 完成下载、环境准备、原生事件 Hook 注册、跟随启动和首次启动。
 
-需要 Windows 64 位，无需管理员权限。Codex 模式需要本机已安装并登录 Codex CLI，聊天、看图和文件任务通过它处理。WorkBuddy 模式当前适配 Windows 客户端 5.9.3，安装器会识别正在运行的 WorkBuddy，不需要 Codex CLI。
+需要 Windows 64 位，无需管理员权限。Codex 模式需要本机已安装并登录 Codex CLI，自动碎碎念通过它处理。WorkBuddy 模式当前适配 Windows 客户端 5.9.3，安装器会识别正在运行的 WorkBuddy，不需要 Codex CLI。
 
 ## 执行安装
 
@@ -22,7 +22,7 @@ WorkBuddy 的完整自动安装步骤见 [INSTALL.workbuddy.md](INSTALL.workbudd
 
 ```powershell
 $installer = Join-Path $env:TEMP ('codex-pet-install-' + [Guid]::NewGuid().ToString('N') + '.ps1')
-Invoke-WebRequest 'https://raw.githubusercontent.com/Wxy545/codex-pet/main/install.ps1' -UseBasicParsing -OutFile $installer
+Invoke-WebRequest 'https://raw.githubusercontent.com/wajncn/codex-pet/main/install.ps1' -UseBasicParsing -OutFile $installer
 ```
 
 安装为 Codex 桌宠：
@@ -68,7 +68,7 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File $installer -CompanionHos
 
 确认安装进程成功退出、桌宠出现，且 `data/app-error.log` 没有启动错误。
 
-- Codex：在主聊天完成一次回复，观察工作状态变化，再从桌宠右键菜单查看额度或打开对话。
+- Codex：在主聊天完成一次回复，观察桌宠的工作状态变化和完成通知。
 - WorkBuddy：在客户端执行一次任务，观察思考、工具执行、等待确认和完成动作。切到其他应用后，检查完成或确认通知。
 
 Codex 新安装默认白龙娘，提供 23 段 Q 版视频；WorkBuddy 新安装默认卷卷小羊，提供 7 段透明动画。右键「形象」可切换这两只角色或保留 106 段动画的大肥鱼。已有形象选择保留，切换联动应用也不会重置角色。
@@ -87,7 +87,7 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File "安装目录\scripts\di
 
 ## 切换已有安装的联动应用
 
-右键「联动应用」选择 Codex 或 WorkBuddy；有聊天或任务正在运行时，先等它结束。选择保存在安装目录的 `data/host.json`，与角色选择分开。更新时保留 `data/`。
+右键「联动应用」选择 Codex 或 WorkBuddy；有任务或 AI 请求正在运行时，先等它结束。选择保存在安装目录的 `data/host.json`，与角色选择分开。更新时保留 `data/`。
 
 已有 Codex 桌宠第一次接入 WorkBuddy 时，先在桌宠安装目录执行一次插件安装，填入实际的 WorkBuddy 程序路径：
 
@@ -97,7 +97,7 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File workbuddy/install.ps1 -A
 
 然后从右键菜单切换到 WorkBuddy。切回 Codex 时需要本机 Codex CLI 可用。插件安装与移除见 [workbuddy/README.md](workbuddy/README.md)。
 
-WorkBuddy 模式保留工作状态、桌面互动、跟随启动、完成与确认通知。由于没有可供本接入使用的可靠账号聊天与额度 API，桌宠中的聊天、图片输入、文件任务、额度和 AI 碎碎念入口会隐藏；聊天和新任务在 WorkBuddy 内提交。
+WorkBuddy 模式保留工作状态、桌面互动、跟随启动、完成与确认通知。聊天和新任务在 WorkBuddy 内提交；自动碎碎念仅在 Codex 模式启动。
 
 手动源码安装、配置与更新见[维护文档](docs/maintenance.md)。
 
@@ -106,7 +106,7 @@ WorkBuddy 模式保留工作状态、桌面互动、跟随启动、完成与确�
 在 Codex 中发送：
 
 ```text
-帮我把 https://github.com/Wxy545/codex-pet 的白龙娘插件装到 DeepSeek Harness，按 harness/README.md 操作，保留已有宠物和配置。
+帮我把 https://github.com/wajncn/codex-pet 的白龙娘插件装到 DeepSeek Harness，按 harness/README.md 操作，保留已有宠物和配置。
 ```
 
 这一入口使用 Harness 的原生 dsh-pet 插件和 23 段白龙娘 Q 版动画。所需 CLI、profile 选择和安装命令见 [Harness 插件说明](harness/README.md)。

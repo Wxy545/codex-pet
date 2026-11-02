@@ -25,11 +25,23 @@ test('忙碌时保留原宿主并提示，托盘明确当前选择',async()=>{
  assert.deepEqual(f.controller.trayItems()[0].submenu.map(x=>x.checked),[false,true]);
  await assert.rejects(f.controller.select('other'),/invalid/);f.controller.dispose();
 });
+test('退出只走本机shutdown接口，IPC拒绝外部页面且失败时提示重试',async()=>{
+ const f=fixture(200);
+ assert.deepEqual(await f.handlers.get(Host.CHANNELS.quit)(f.event),{ok:true});
+ assert.deepEqual(f.calls[0],['POST','/shutdown']);
+ assert.throws(()=>f.handlers.get(Host.CHANNELS.quit)({...f.event,senderFrame:{}}),/denied/);
+ const tray=f.controller.trayItems();
+ assert.equal(tray.at(-2).type,'separator');assert.equal(typeof tray.at(-1).click,'function');
+ const failed=fixture(500);
+ await assert.rejects(failed.controller.quit(),/pet-quit-unavailable/);
+ assert.equal(failed.dialogs.length,1);
+ f.controller.dispose();failed.controller.dispose();
+});
 test('WorkBuddy菜单移除未接入账号入口，保留互动、动作点播和第三方菜单',async()=>{
- let mounted,selected;
+ let mounted,selected,quitCalls=0;
  const foreign={action:'third-party',children:[{action:'chat',label:'custom'}]};
  const shared={mountContextMenu:v=>{mounted=v;return{close(){}};},displayMenuBranch:()=>({action:'display'}),buildMoreBranch:()=>foreign,buildMenuTree:()=>[{label:'Balance levels',children:[{anim:'balance-1',label:'Plenty'}]}]};
- const window={PetShared:shared,__dshPetDebug:{},petHost:{initialHost:'workbuddy',getState:async()=>({host:'workbuddy'}),selectHost:async id=>{selected=id;}},addEventListener(){},CodexLocale:{getLocale:()=> 'en'}};
+ const window={PetShared:shared,__dshPetDebug:{},petHost:{initialHost:'workbuddy',getState:async()=>({host:'workbuddy'}),selectHost:async id=>{selected=id;},quitPet:async()=>{quitCalls++;}},addEventListener(){},CodexLocale:{getLocale:()=> 'en'}};
  const context=vm.createContext({window,S:shared,OPEN_TARGET:'web',navigator:{language:'en',platform:'Win32'},console});
  // 执行上游实际onContextMenu；禁止假造不存在的PetSprite.mountContextMenu方法。
  vm.runInContext(readFileSync(join(__dirname,'../node_modules/dsh-pet/runtime/electron-helper/sprite.js'),'utf8'),context);
@@ -40,6 +52,8 @@ test('WorkBuddy菜单移除未接入账号入口，保留互动、动作点播�
  assert.ok(!mounted.tree.some(x=>['chat','balance','show-balance','codex-task-panel','whisper'].includes(x.action)));
  assert.equal(mounted.tree.find(x=>x.action==='open-site').label,'Open WorkBuddy');
  assert.ok(mounted.tree.some(x=>x.action==='home'));assert.equal(mounted.tree.find(x=>x.action==='third-party'),foreign);
- assert.ok(mounted.tree.find(x=>x.label==='Balance levels'));assert.equal(mounted.tree.at(-1).label,'Companion app');
+ assert.ok(mounted.tree.find(x=>x.label==='Balance levels'));assert.ok(mounted.tree.some(x=>x.label==='Companion app'));
+ assert.equal(mounted.tree.at(-1).label,'Quit Codex Pet');
  sprite.onMenuAction({action:'pet-select-host',host:'codex'});await Promise.resolve();assert.equal(selected,'codex');
+ sprite.onMenuAction({action:'pet-quit'});await Promise.resolve();assert.equal(quitCalls,1);
 });

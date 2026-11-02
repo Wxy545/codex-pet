@@ -38,13 +38,9 @@ async function until(predicate, message = '等待事件适配器更新') {
   assert.fail(message);
 }
 
-test('English事件状态、窗口与通知固定文案可读，线程ID与自报窗口名保留', async t => {
+test('English事件状态与通知固定文案可读，线程ID保留', async t => {
   const f = await fixture(t, { 'a.jsonl': meta('thread-a') + event('task_started'), 'b.jsonl': meta('thread-b') + event('task_started') }, { locale: 'en' });
   await f.watcher.start(); assert.equal(f.watcher.snapshot().task, '2 chats · Thinking');
-  await appendFile(join(f.dir, 'a.jsonl'), event('token_count', { rate_limits: { primary: { used_percent: 8, window_minutes: 300 }, secondary: { used_percent: 12, window_label: '自报窗口名' } } }));
-  await until(() => f.watcher.snapshot().usage?.usedPercent === 12);
-  assert.equal(f.watcher.snapshot().usage.windows[0].windowLabel, '5-hour window');
-  assert.equal(f.watcher.snapshot().usage.windows[1].windowLabel, '自报窗口名');
   await appendFile(join(f.dir, 'a.jsonl'), event('request_user_input', { turn_id: 'approval-en' }));
   await until(() => f.notifications.length === 1);
   assert.equal(f.notifications[0].title, 'Codex needs your input'); assert.equal(f.notifications[0].threadId, 'thread-a');
@@ -109,50 +105,6 @@ test('启动只重建状态，旧完成不通知；新完成去重，pet-chat �
   assert.equal(f.notifications[0].kind, 'complete');
   await new Promise(resolve => setTimeout(resolve, 100));
   assert.equal(f.notifications.length, 1);
-});
-
-test('额度只读真实字段，选择使用率最高的有效窗口，缺失时不伪造余额', async t => {
-  const f = await fixture(t, { 'quota.jsonl': meta('quota') });
-  await f.watcher.start();
-  assert.equal(f.watcher.snapshot().usage, undefined);
-  await appendFile(join(f.dir, 'quota.jsonl'), event('token_count', { rate_limits: {
-    primary: { used_percent: 32.5, window_minutes: 300, resets_at: 1800000000 },
-    secondary: { used_percent: 87, window_minutes: 10080, resets_at: 1800500000 },
-    credits: { balance: 'PRIVATE_CREDIT_STRING' },
-  } }));
-  await until(() => f.watcher.snapshot().usage?.usedPercent === 87);
-  assert.deepEqual(f.watcher.snapshot().usage, {
-    usedPercent: 87, windowLabel: '7 天额度', resetsAt: 1800500000,
-    windows: [
-      { usedPercent: 32.5, windowMinutes: 300, windowLabel: '5 小时额度', resetsAt: 1800000000 },
-      { usedPercent: 87, windowMinutes: 10080, windowLabel: '7 天额度', resetsAt: 1800500000 },
-    ],
-  });
-  await appendFile(join(f.dir, 'quota.jsonl'), event('token_count', { rate_limits: { primary: { used_percent: 0, window_minutes: 300, resets_at: 1800600000 } } }));
-  await until(() => f.watcher.snapshot().usage?.usedPercent === 0);
-  assert.equal(f.watcher.snapshot().usage.windowLabel, '5 小时额度');
-  assert.equal(JSON.stringify(f.changes).includes('PRIVATE_CREDIT_STRING'), false);
-});
-
-test('额度保留真实窗口；重置时间已过只标记过期，不把旧额度改成0', async t => {
-  const f = await fixture(t, { 'stale.jsonl': meta('stale') });
-  await f.watcher.start();
-  const past = Math.floor(Date.now() / 1000) - 60;
-  await appendFile(join(f.dir, 'stale.jsonl'), event('token_count', { rate_limits: {
-    primary: { used_percent: 93, window_minutes: 300, resets_at: past },
-  } }));
-  await until(() => f.watcher.snapshot().usage?.usedPercent === 93);
-  assert.equal(f.watcher.snapshot().usage.stale, true);
-  assert.equal(f.watcher.snapshot().usage.windows[0].stale, true);
-  assert.equal(f.watcher.snapshot().usage.windows.length, 1);
-  await appendFile(join(f.dir, 'stale.jsonl'), event('token_count', { rate_limits: {
-    primary: { used_percent: 8, window_minutes: 300, resets_at: past + 3600 },
-    secondary: { used_percent: 20, window_label: '自报额度窗口', resets_at: past + 7200 },
-  } }));
-  await until(() => f.watcher.snapshot().usage?.usedPercent === 20);
-  assert.equal(f.watcher.snapshot().usage.stale, undefined);
-  assert.equal(f.watcher.snapshot().usage.windows[1].windowLabel, '自报额度窗口');
-  assert.equal(f.watcher.snapshot().usage.windows[1].windowMinutes, undefined);
 });
 
 test('取消和错误只结束对应会话，不覆盖其他正在工作的会话', async t => {

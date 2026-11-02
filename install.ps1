@@ -18,7 +18,7 @@ function Get-CodexPetText {
 $ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue'
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
-$installerRepo = 'Wxy545/codex-pet'
+$installerRepo = 'wajncn/codex-pet'
 $installerTarget = [IO.Path]::GetFullPath($InstallDir)
 $installerTemp = Join-Path ([IO.Path]::GetTempPath()) ('codex-pet-' + [Guid]::NewGuid().ToString('N'))
 $installerOldPath = $env:PATH

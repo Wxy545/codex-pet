@@ -1,5 +1,5 @@
-// 保留上游原文件；只生成固定版本的 Codex 宿主入口和额度解析补丁。
-import { readFile, writeFile, copyFile, mkdir } from 'node:fs/promises';
+// 保留上游原文件；只生成固定版本的 Codex 宿主入口。
+import { readFile, writeFile, copyFile, mkdir, rm } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { resolve, dirname } from 'node:path';
 import { localizeHost, localizeCore, localizeEvents, localizeIndexHtml } from './runtime-locale-patches.mjs';
@@ -16,13 +16,6 @@ const pkg=resolve(root,'node_modules/dsh-pet');
 const meta=JSON.parse(await readFile(resolve(pkg,'package.json'),'utf8'));
 if(meta.version!=='0.3.8') throw new Error('运行时版本必须是 dsh-pet 0.3.8，请按锁文件安装。');
 
-const oldGate='if (monthly === void 0 || monthly === null) return null;';
-const newGate='if (monthly === null || (monthly === void 0 && rolling === void 0 && weekly === void 0)) return null;';
-function quotaPatch(text){
-  if(text.includes(newGate)) return text;
-  if(text.split(oldGate).length!==2) throw new Error('额度补丁定位失败，停止使用不匹配的运行时。');
-  return text.replace(oldGate,newGate);
-}
 let source=await readFile(resolve(pkg,'lib/standalone.js'),'utf8');
 source=patchHostAssets(source);
 source=patchStandaloneResponses(source);
@@ -43,17 +36,18 @@ source=patchOnce(source,'\t\tstate.writePet(petId, "say", result.image ?', '\t\t
 source=patchOnce(source,'\t\tif (!generated.ok) return generated;\n\t\tconst now = Date.now();','\t\tif (!generated.ok) return generated;\n\t\tif (CodexCharacter.characterKey(CodexCharacter.readCharacter()) !== CodexCharacter.characterKey(characterAtStart)) return CodexCharacter.changedResult();\n\t\tconst now = Date.now();','聊天过期回复');
 source=patchOnce(source,'const USER_TEXT = "随便说一句日常碎碎念，一句就好，20 字以内。";','const USER_TEXT = process.env.CODEX_PET_LOCALE === "en" ? "Say one short, natural everyday thought in English, under 20 words." : "随便说一句日常碎碎念，一句就好，20 字以内。";','碎念语言');
 source=localizeHost(source);
-// 只有独立的图文入口接收大图片，原配置/命令路由继续保留上游请求体上限。
+// 已删除独立图文窗口；旧安装残留的放大上限回退到上游配置/命令请求体限制。
 const bodyLimitAnchor='const limit = pathname === "/standalone-ai/settings" ? MAX_SETTINGS_BYTES : MAX_REQUEST_BYTES;';
-if(source.split(bodyLimitAnchor).length!==2) throw new Error('图文请求大小补丁定位失败。');
-source=source.replace(bodyLimitAnchor,'const limit = pathname === "/dsh-pet-7340/codex-chat" ? 17 * 1024 * 1024 : pathname === "/standalone-ai/settings" ? MAX_SETTINGS_BYTES : MAX_REQUEST_BYTES;');
+const oldBodyLimit='const limit = pathname === "/dsh-pet-7340/codex-chat" ? 17 * 1024 * 1024 : pathname === "/standalone-ai/settings" ? MAX_SETTINGS_BYTES : MAX_REQUEST_BYTES;';
+if(source.includes(oldBodyLimit)) source=source.replace(oldBodyLimit,bodyLimitAnchor);
+else if(source.split(bodyLimitAnchor).length!==2) throw new Error('请求体上限定位失败。');
 const invocation='main().then((code) => {';
 const index=source.lastIndexOf(invocation);
 if(index<0 || source.indexOf(invocation)!==index) throw new Error('宿主入口定位失败。');
 const host=source.slice(0,index)+`\nexport { apply, createStandaloneContext, createStandaloneLogger, createStandaloneAi, createAiConfig, createRequestSecurity, listenStandaloneServer, writeStandaloneRuntime, packageRoot };\n`;
 await writeFile(resolve(pkg,'lib/codex-host.js'),host);
 const core=resolve(pkg,'runtime/electron-helper/shared-core.js');
-await writeFile(core,localizeCore(quotaPatch(await readFile(core,'utf8'))));
+await writeFile(core,localizeCore(await readFile(core,'utf8')));
 const events=resolve(pkg,'runtime/electron-helper/events.js');
 await writeFile(events,localizeEvents(patchDesktopWorkEvents(patchDesktopBalanceEvents(await readFile(events,'utf8')))));
 const sprite=resolve(pkg,'runtime/electron-helper/sprite.js');
@@ -69,14 +63,16 @@ const noticeHook="require(process.env.CODEX_PET_HOST === 'workbuddy' ? './workbu
 if(mainCode.includes(oldNoticeHook)){mainCode=mainCode.replaceAll(oldNoticeHook,noticeHook);await writeFile(main,mainCode);}
 if(!mainCode.includes(noticeHook)) await writeFile(main,mainCode+'\n'+noticeHook+'\n');
 mainCode=await readFile(main,'utf8');
-const extensionHook=`// codex-pet-extensions-v2
+const extensionHook=`// codex-pet-extensions-v4
 const codexPanelRequest = require('./codex-api.cjs').createHostRequest();
 const codexPetHost = require('./pet-host-menu.cjs').install({hostRequest:codexPanelRequest});
-const codexTaskPanel = require('./codex-task-window.cjs').install({hostRequest:codexPanelRequest});
-const codexChatPanel = require('./codex-chat-window.cjs').install({hostRequest:codexPanelRequest,openTaskPanel:()=>codexTaskPanel.open()});
-require('./codex-skins.cjs').install({hostRequest,settingRequest:codexPanelRequest,dataRoot:process.env.DSH_HOME,onSelectionChanged:async model=>{const character=model.characters.find(item=>item.id===model.selection.character);codexChatPanel.onCharacterChanged?.({id:model.selection.character,name:character.copy.name,locale:model.locale});if(tray){tray.destroy();tray=null;}await startTray();}});
+require('./codex-skins.cjs').install({hostRequest,settingRequest:codexPanelRequest,dataRoot:process.env.DSH_HOME,onSelectionChanged:async()=>{if(tray){tray.destroy();tray=null;}await startTray();}});
 // codex-pet-extensions-end`;
-if(mainCode.includes('// codex-pet-extensions-v2')){
+if(mainCode.includes('// codex-pet-extensions-v4')){
+  mainCode=mainCode.replace(/\/\/ codex-pet-extensions-v4[\s\S]*?\/\/ codex-pet-extensions-end/,extensionHook);
+}else if(mainCode.includes('// codex-pet-extensions-v3')){
+  mainCode=mainCode.replace(/\/\/ codex-pet-extensions-v3[\s\S]*?\/\/ codex-pet-extensions-end/,extensionHook);
+}else if(mainCode.includes('// codex-pet-extensions-v2')){
   mainCode=mainCode.replace(/\/\/ codex-pet-extensions-v2[\s\S]*?\/\/ codex-pet-extensions-end/,extensionHook);
 }else if(mainCode.includes('// codex-pet-extensions-v1')){
   const old="// codex-pet-extensions-v1\nconst codexPanelRequest = require('./codex-api.cjs').createHostRequest();\nconst codexTaskPanel = require('./codex-task-window.cjs').install({hostRequest:codexPanelRequest});\nrequire('./codex-chat-window.cjs').install({hostRequest:codexPanelRequest,openTaskPanel:()=>codexTaskPanel.open()});\nrequire('./codex-skins.cjs').install({hostRequest,dataRoot:process.env.DSH_HOME});";
@@ -92,11 +88,19 @@ if(!mainCode.includes(hostTray)) mainCode=patchOnce(mainCode,'...codexStartup.tr
 await writeFile(main,mainCode);
 const preload=resolve(pkg,'runtime/electron-helper/preload.js');
 let preloadCode=await readFile(preload,'utf8');
-const preloadHook=`// codex-pet-preloads-v1
+const preloadHook=`// codex-pet-preloads-v3
+require('./codex-skins.cjs').installPreload();`;
+const oldPreloadHook=`// codex-pet-preloads-v1
 require('./codex-task-window.cjs').installPreload();
 require('./codex-chat-window.cjs').installPreload();
 require('./codex-skins.cjs').installPreload();`;
-if(!preloadCode.includes('// codex-pet-preloads-v1')) await writeFile(preload,preloadCode+'\n'+preloadHook+'\n');
+const taskPreloadHook=`// codex-pet-preloads-v2
+require('./codex-task-window.cjs').installPreload();
+require('./codex-skins.cjs').installPreload();`;
+if(preloadCode.includes(taskPreloadHook)) preloadCode=preloadCode.replace(taskPreloadHook,preloadHook);
+else if(preloadCode.includes(oldPreloadHook)) preloadCode=preloadCode.replace(oldPreloadHook,preloadHook);
+else if(!preloadCode.includes('// codex-pet-preloads-v3')) preloadCode+='\n'+preloadHook+'\n';
+await writeFile(preload,preloadCode);
 preloadCode=await readFile(preload,'utf8');
 const startupPreload="require('./codex-startup.cjs').installPreload();";
 if(!preloadCode.includes(startupPreload)) await writeFile(preload,preloadCode+'\n'+startupPreload+'\n');
@@ -111,10 +115,12 @@ if(!htmlCode.includes('src="pet-host-menu.js"')) htmlCode=patchOnce(htmlCode,'<s
 await writeFile(html,htmlCode);
 for(const file of ['codex-notifications.cjs','foreground-codex.ps1','codex-api.cjs','pet-host.cjs','pet-host-menu.cjs','pet-host-menu.js',
   'workbuddy-notifications.cjs','foreground-workbuddy.ps1','workbuddy-target.ps1',
-  'codex-task-window.cjs','task-preload.cjs','task-window.html','task-window.js','task-window.css',
-  'codex-chat-window.cjs','chat-preload.cjs','chat-window.html','chat-window.js','chat-window.css',
   'codex-skins.cjs','codex-skin-renderer.js','skin-actions.cjs','codex-character.cjs','codex-locale.cjs','locale-en.cjs','codex-runtime-locale.cjs','panel-locale.js','runtime-range.cjs']){
   await copyFile(resolve(root,'src',file),resolve(pkg,'runtime/electron-helper',file));
+}
+for(const file of ['codex-chat-window.cjs','chat-preload.cjs','chat-window.html','chat-window.js','chat-window.css',
+  'codex-task-window.cjs','task-preload.cjs','task-window.html','task-window.js','task-window.css']){
+  await rm(resolve(pkg,'runtime/electron-helper',file),{force:true});
 }
 for(const file of ['codex-startup.cjs','startup-target.ps1','startup-preload.cjs','startup-menu.js','startup-window.html','startup-window.js','startup-window.css','startup-cinema.js','startup-cinema.css','startup-sheep.js','startup-sheep.css']){
   await copyFile(resolve(root,'src',file),resolve(pkg,'runtime/electron-helper',file));

@@ -2,13 +2,13 @@
 
 [Project home](../README.md) · [项目中文介绍](../README.zh-CN.md)
 
-White Dragon Girl has 23 chibi clips, covering core interactions, work states and everyday gestures. Recent additions include spellbook reading, hugging a gem, a cushion break, a star-cookie snack, wing fanning, a wave, a ticklish shrug and wing-assisted steps. There are five click reactions and two walking actions. Balance and chatter events reuse suitable clips; shared entries are labelled in the right-click menu.
+White Dragon Girl has 23 chibi clips, covering core interactions, work states and everyday gestures. Recent additions include spellbook reading, hugging a gem, a cushion break, a star-cookie snack, wing fanning, a wave, a ticklish shrug and wing-assisted steps. There are five click reactions and two walking actions. Chatter events reuse suitable clips; shared entries are labelled in the right-click menu.
 
-Curly the sheep has seven transparent clips: breathing, walking, a cheerful response, thinking, typing, waiting, and waving. Success shares the cheerful response; errors and low-quota states share thinking.
+Curly the sheep has seven transparent clips: breathing, walking, a cheerful response, thinking, typing, waiting, and waving. Success shares the cheerful response; errors share thinking.
 
 We welcome new gestures and improvements to existing clips. A small action that suits the character is a good place to start.
 
-Open an [Issue](https://github.com/Wxy545/codex-pet/issues) with a preview before making a full set. The maintainer reviews the source and permissions, adapts the clip, and checks its playback in the pet on Windows.
+Open an [Issue](https://github.com/wajncn/codex-pet/issues) with a preview before making a full set. The maintainer reviews the source and permissions, adapts the clip, and checks its playback in the pet on Windows.
 
 ## What to send
 
@@ -51,6 +51,6 @@ Code and documentation use MIT. Third-party assets keep their own licenses; do n
 
 先开 Issue 附小预览、动作名称、时长和来源许可，再决定是否做整套。最终素材需要实际透明通道，并检查循环、动作衔接和 Windows 播放。保留绿底源视频，背景整段使用同一纯色，后期再抠像。
 
-白龙娘已有 23 段 Q 版视频，点击回应共五种、走位两种；卷卷小羊有 7 段透明视频，覆盖待机、行走、开心回应、思考、打字、等待和招呼。小羊的完成状态共用开心回应，出错和低额度共用思考。角色来源与许可分别见[白龙娘](../assets/white-dragon/NOTICE.md)和[卷卷小羊](../assets/curly-sheep/NOTICE.md)的素材说明。
+白龙娘已有 23 段 Q 版视频，点击回应共五种、走位两种；卷卷小羊有 7 段透明视频，覆盖待机、行走、开心回应、思考、打字、等待和招呼。小羊的完成状态共用开心回应，出错共用思考。角色来源与许可分别见[白龙娘](../assets/white-dragon/NOTICE.md)和[卷卷小羊](../assets/curly-sheep/NOTICE.md)的素材说明。
 
 生成前先看首尾图：姿势、手持道具或工作桌已经到位，呆毛、耳、角、鞋、角色原有的翼尾和道具完整，每边至少留 20% 空白。先修构图，再提交视频。当前 MiniMax Design 的 H3 首尾帧模式继承图片本身比例，参数以实时模型合约为准。行走循环要保留连续步态，点击和招呼要保留进入与回原姿态的过程；出现彩色背景变化、角尾变形或手部穿模时，修好后再投稿。

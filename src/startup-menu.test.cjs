@@ -11,7 +11,7 @@ function fixture({locale='en',host='codex',deferInitial=false}={}) {
  // 不伪造不存在的原型mount：执行上游实际onContextMenu以及onMenuAction调用链。
  vm.runInContext(readFileSync(join(__dirname,'../node_modules/dsh-pet/runtime/electron-helper/sprite.js'),'utf8'),context);
  if(host==='workbuddy'){
-  window.petHost={initialHost:host,getState:async()=>({host}),selectHost:async()=>{}};window.CodexLocale={getLocale:()=>locale};
+  window.petHost={initialHost:host,getState:async()=>({host}),selectHost:async()=>{},quitPet:async()=>{}};window.CodexLocale={getLocale:()=>locale};
   vm.runInContext(readFileSync(join(__dirname,'pet-host-menu.js'),'utf8'),context);
  }
  vm.runInContext(readFileSync(join(__dirname,'startup-menu.js'),'utf8'),context);
@@ -34,6 +34,7 @@ test('原sprite真实右键出现启动演出菜单，中英文模式及预览�
 test('WorkBuddy过滤账号入口后启动演出和联动应用共存，不丢动作或恢复聊天余额',async()=>{
  const f=fixture({host:'workbuddy'});await f.flush();const tree=f.open().tree;
  assert.ok(tree.find(node=>node.label==='Startup scene'));assert.ok(tree.find(node=>node.label==='Companion app'));assert.ok(tree.find(node=>node.label==='Actions'));
+ assert.equal(tree.at(-1).action,'pet-quit');
  assert.equal(tree.find(node=>node.action==='open-site')?.label,'Open WorkBuddy');
  assert.ok(!tree.some(node=>['chat','show-balance','whisper','codex-task-panel'].includes(node.action)));
  // home/reload是主菜单稳定技术ID；没有chat/open-site时仍能加启动选项。
