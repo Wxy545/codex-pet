@@ -25,6 +25,13 @@ test('新装身份按宿主默认：WorkBuddy卷卷、Codex白龙，首选媒体
   process.env.CODEX_PET_HOST='codex';fs.unlinkSync(path.join(f.root,'skins/white-dragon/sprites.png'));assert.equal(C.readCharacter(f.root).id,'bluefish');
  }finally{if(previous===undefined)delete process.env.CODEX_PET_HOST;else process.env.CODEX_PET_HOST=previous;}
 });
+test('上游睡眠只保留原鱼，自有角色不继承鱼睡姿或一分钟梦话入口',t=>{
+ const f=fixture(t);f.write('skins/white-dragon/sprites.png',f.png);
+ const sleep=[{start:['鱼睡前'],loop:['鱼睡着'],end:['鱼起床']}],animations={idle:['呼吸'],sleep},config={main:{pets:[{id:'main',name:'大肥鱼'}],animations}};
+ const dragon=C.projectConfig(config,{dataRoot:f.root});assert.deepEqual(dragon.main.animations.sleep,[]);assert.deepEqual(dragon.main.sleepEndTexts,[]);assert.deepEqual(dragon.main.sleepRefuseTexts,[]);assert.deepEqual(config.main.animations.sleep,sleep);assert.deepEqual(dragon.main.animations.idle,['呼吸']);
+ f.write('skins/selection.json',{character:'bluefish',mode:'q'});const fish=C.projectConfig(config,{dataRoot:f.root});assert.equal(fish.main.animations,animations);assert.deepEqual(fish.main.animations.sleep,sleep);
+ L.setLocale('en');const english=C.projectConfig({main:{...config.main,sleepRefuseTexts:['我在睡觉，别烦我……','自定义台词保持原文'],sleepStartTexts:['那我去睡啦，晚安。'],sleepEndTexts:['唔……我醒了。']}},{dataRoot:f.root});assert.equal(english.main.sleepRefuseTexts[0],'I’m sleeping. Let me rest…');assert.equal(english.main.sleepRefuseTexts[1],'自定义台词保持原文');assert.equal(english.main.sleepStartTexts[0],'Off to sleep. Good night!');assert.equal(english.main.sleepEndTexts[0],'Mm… I’m awake.');
+});
 
 test('卷卷可切换且默认仍是白龙，小羊独立中英人设和昵称不混入鱼龙身份',async t=>{
  const f=fixture(t),manifest=JSON.parse(fs.readFileSync(path.join(__dirname,'../assets/curly-sheep/manifest.json'),'utf8'));

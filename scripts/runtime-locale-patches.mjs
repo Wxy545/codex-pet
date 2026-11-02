@@ -10,21 +10,30 @@ export function localizeIndexHtml(source){
   const scripts=['locale-en.cjs','codex-locale.cjs','skin-actions.cjs','pet-host-menu.js','codex-skin-renderer.js','startup-menu.js'];
   // 先移除自己管理的标签，再一次插入；干净安装与旧helper必须有相同的依赖顺序。
   for(const file of scripts){const escaped=file.replaceAll('.','\\.');source=source.replace(new RegExp('[\\t ]*<script\\s+src=["\\\'](?:\\./)?'+escaped+'["\\\']><\\/script>[\\t ]*\\r?\\n?','g'),'');}
-  const anchor='<script src="./sprite.js"></script>';
+  const anchor=source.includes('<script src="./sprite/menu.js"></script>')?'<script src="./sprite/menu.js"></script>':'<script src="./sprite.js"></script>';
   source=one(source,anchor,anchor+'\n'+scripts.map(file=>'    <script src="'+file+'"></script>').join('\n'),'主窗口脚本顺序');
   return source.replace('<title>dsh-pet 桌宠（桌面模式）</title>','<title>Codex Pet</title>').replace('<title>龙娘桌宠</title>','<title>Codex Pet</title>');
 }
 
 export function localizeHost(source){
+  const modularSettings=source.includes('//#region src/standalone/server/handlers.ts');
   source=source.replace(/^(#![^\n]*\n)?/,'$1import CodexRuntimeLocale from "../runtime/electron-helper/codex-runtime-locale.cjs";\nimport CodexLocale from "../runtime/electron-helper/codex-locale.cjs";\nconst codexFixedText=(value,values)=>CodexLocale.t(value,values);\n');
-  source=region(source,'//#region src/standalone/settings.ts','//#region src/standalone/settings-page.ts',literals,'AI设置校验');
+  source=region(source,'//#region src/standalone/settings.ts',modularSettings?'//#endregion\n//#region src/standalone/request-security.ts':'//#region src/standalone/settings-page.ts',literals,'AI设置校验');
+  if(modularSettings)source=region(source,'//#region src/standalone/request-security.ts','//#endregion\n//#region src/standalone/server/respond.ts',literals,'本机请求鉴权');
   source=one(source,'const settingsPage = `','const settingsPage = CodexRuntimeLocale.settingsHtml(`','AI设置HTML');
   source=one(source,'</noscript></main></body></html>`;','</noscript></main></body></html>`);','AI设置HTML结束');
   source=one(source,'const settingsScript = `','const settingsScript = CodexRuntimeLocale.settingsScript(`','AI设置脚本');
-  source=one(source,"})();\n`;\n\n//#endregion\n//#region src/standalone/server.ts","})();\n`);\n\n//#endregion\n//#region src/standalone/server.ts",'AI设置脚本结束');
+  const nextRegion=source.includes('//#region src/standalone/request-body.ts')?'request-body.ts':'server.ts';
+  source=one(source,"})();\n`;\n\n//#endregion\n//#region src/standalone/"+nextRegion,"})();\n`);\n\n//#endregion\n//#region src/standalone/"+nextRegion,'AI设置脚本结束');
   // 只翻译设置HTTP接口/连接测试的固定错误，不翻译reply或任何配置字符串。
-  source=region(source,'function settingsHandler(ai)','function dispatch(options, shutdownSecurity)',literals,'AI设置请求');
-  source=region(source,'async testConnection(', '\n\t\tcanWhisper:',code=>{
+  // 0.4将HTTP处理器移到静态页面之前；范围必须止于模块边界，不能把HTML属性和客户端JS当宿主字符串包裹。
+  source=region(source,'function settingsHandler(ai)',modularSettings?'//#endregion\n//#region src/standalone/settings-page.ts':'function dispatch(options, shutdownSecurity)',literals,'AI设置请求');
+  if(modularSettings)source=region(source,'//#region src/standalone/request-body.ts','//#endregion\n//#region src/standalone/server/listener.ts',literals,'AI请求正文');
+  if(source.includes('async function testAiConnection(fetcher, current$2, input) {')){
+    source=region(source,'function missingField(baseUrl, model, apiKey)', '\n//#endregion\n//#region src/standalone/ai-provider/create.ts',code=>{
+      code=literals(code);return one(code,'return `连接失败：${raw}`;','return codexFixedText("连接失败：{message}",{message:raw});','AI连接错误');
+    },'AI连接测试');
+  }else source=region(source,'async testConnection(', '\n\t\tcanWhisper:',code=>{
     code=literals(code);
     return one(code,'message: `连接失败：${rawMsg}`','message: codexFixedText("连接失败：{message}",{message:rawMsg})','AI连接错误');
   },'AI连接测试');
@@ -47,8 +56,13 @@ export function localizeCore(source){
   const start='function resetInText(iso)',end='const windowsHandler =';
   source=region(source,start,end,code=>{
     code=one(code,'text: w.label + "额度已用 " + Math.round(w.percent) + "%"','text: codexFixedText("{label}额度已用 {percent}%",{label:w.label,percent:Math.round(w.percent)})','额度主行');
-    code=one(code,'text: reset ? reset + "重置" : "已重置"','text: '+resetTemplate,'额度重置主行');
-    code=one(code,'const resetText = reset === "" ? "已重置" : reset + "重置";','const resetText = '+resetTemplate+';','额度重置详情');
+    if(code.includes('function resetPhrase(reset) {')){
+      code=one(code,'if (reset === "") return "重置时间未知";\n\treturn reset === "已重置" ? reset : reset + "重置";','if (reset === "") return codexFixedText("重置时间未知");\n\treturn reset === codexFixedText("已重置") ? reset : codexFixedText("{time}后重置",{time:reset});','额度重置公用模板');
+      if(code.split('text: resetPhrase(reset)').length!==2||code.split('const resetText = resetPhrase(reset);').length!==2)throw Error('额度重置调用本地化锚点不匹配。');
+    }else{
+      code=one(code,'text: reset ? reset + "重置" : "已重置"','text: '+resetTemplate,'额度重置主行');
+      code=one(code,'const resetText = reset === "" ? "已重置" : reset + "重置";','const resetText = '+resetTemplate+';','额度重置详情');
+    }
     // 新模板已经包裹；只处理尚未包裹的固定单位和空数据提示。
     for(const value of ['已重置',' 天',' 小时','额度数据不可用'])code=code.replaceAll('"'+value+'"',(token,index,whole)=>whole.slice(Math.max(0,index-15),index).endsWith('codexFixedText(')?token:'codexFixedText('+token+')');
     return code;

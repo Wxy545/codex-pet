@@ -36,7 +36,7 @@ try {
     $taskExistingPet = Join-Path $taskProfileRoot 'node_modules/dsh-pet/package.json'
     if (Test-Path -LiteralPath $taskExistingPet) {
         $taskPetMetadata = Get-Content -LiteralPath $taskExistingPet -Raw | ConvertFrom-Json
-        if ($taskPetMetadata.version -ne '0.3.8') { throw ('This bundle requires dsh-pet 0.3.8. Kept the existing version {0}.' -f $taskPetMetadata.version) }
+        if ($taskPetMetadata.version -ne '0.4.0') { throw ('This bundle requires dsh-pet 0.4.0. Kept the existing version {0}.' -f $taskPetMetadata.version) }
     }
     & $NodeCommand (Join-Path $PSScriptRoot 'build-harness-plugin.mjs') | Out-Null
     if ($LASTEXITCODE -ne 0) { throw 'The White Dragon Girl bundle could not be built.' }
@@ -44,7 +44,7 @@ try {
     $taskBundleDirectory = Join-Path $taskRoot 'data/harness-plugin'
     if (-not (Test-Path -LiteralPath (Join-Path $taskBundleDirectory 'pack.json'))) { throw 'The prepared bundle is incomplete.' }
     # 两层按官方CLI顺序安装；只由dsh维护所选profile的依赖与bundle列表。
-    & $DshCommand plugin --profile $Profile add 'dsh-pet@0.3.8'
+    & $DshCommand plugin --profile $Profile add 'dsh-pet@0.4.0'
     if ($LASTEXITCODE -ne 0) { throw 'dsh-pet installation failed; the dragon bundle was not activated.' }
     & $DshCommand plugin --profile $Profile add $taskBundleDirectory
     if ($LASTEXITCODE -ne 0) { throw 'The dragon bundle installation failed.' }

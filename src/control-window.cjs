@@ -92,6 +92,8 @@ function createController({electron,hostRequest,apiRequest,skins,startup,petHost
   });
   if(!pets.some(p=>p.id===value.petId))throw fault('invalid_input');
   const body={pets,...pick(value,['confineToScreen','physics'])};
+  // 本页只编辑六个既有项；新版体感开关和用户高级项由原配置保留。
+  if(own(value,'physics'))body.physics={...(record(merged.physics)?merged.physics:{}),...(record(user?.physics)?user.physics:{}),...value.physics};
   await request(apiRequest,'PUT','/dsh-pet-7340/config',body);
   // 上游保存会重建桌面Helper，此处只确认已受理，不再追加一次重载或恢复旧表单。
   return{ok:true,reloading:true};

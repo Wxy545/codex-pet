@@ -1,19 +1,21 @@
 # 第三方来源与许可
 
-本文记录 codex-pet 使用的主要第三方来源与许可边界，由项目维护者随依赖和分发方式更新。适用范围为本仓库及其运行时准备流程；核对日期为 2026-11-01。
+本文记录 codex-pet 使用的主要第三方来源与许可边界，由项目维护者随依赖和分发方式更新。适用范围为本仓库及其运行时准备流程；核对日期为 2026-11-02。
 
 根目录 [LICENSE](LICENSE) 只适用于本项目自有代码与文档，不替代第三方软件、角色或素材的许可。安装依赖、公开源代码与分发成品时，都应保留所用第三方内容要求的版权和许可说明。
 
 ## dsh-pet 代码
 
 - 原仓库：[PC2005-cloud/dsh-pet](https://github.com/PC2005-cloud/dsh-pet)
-- 本项目使用版本：npm 包 `dsh-pet@0.3.8`，由 `package-lock.json` 锁定。
+- 本项目使用版本：npm 包 `dsh-pet@0.4.0`，由 `package-lock.json` 锁定。
 - 代码许可：[MIT](https://github.com/PC2005-cloud/dsh-pet/blob/main/LICENSE)。
 - 本项目保留原角色、动画播放、物理互动和菜单实现，增加 Codex 与 WorkBuddy 宿主、事件聚合、Codex 额度和 CLI 聊天、通知及兼容性检查。`scripts/prepare-runtime.mjs` 对已安装的固定版本生成适配入口和局部补丁。
 
 2026-10-30 从上游 [1f191657](https://github.com/PC2005-cloud/dsh-pet/commit/1f1916573b4cca13299aabcff5e748e4f9c6ba2a) 择取隐藏角色的自动碎念门控，未引入同次提交的语音协议。该代码沿用上游 MIT 许可与版权署名；角色、动画及提示词仍按下文各自条款处理。
 
 2026-11-01 从上游 [8ad3d957](https://github.com/PC2005-cloud/dsh-pet/commit/8ad3d957f83052d332f0d0f09e90993e9756d2ec) 适配启动缓存可写性检查与 DPI 异常保护，从 [c58f018](https://github.com/PC2005-cloud/dsh-pet/commit/c58f0187957cd969047239e5433fb30ed999299a) 适配 Harness 网页拖拽松手保护。固定依赖不变，代码沿用上游 MIT 与版权署名；未导入本次上游新增功能或美术素材。
+
+2026-11-02 升级到固定 npm `0.4.0`，按实际模块重新适配；保留原来的默认配置和运行沙箱。已审上游 main 至 [485ee3b8](https://github.com/PC2005-cloud/dsh-pet/commit/485ee3b8f3e34b3623e512b1d2c2899e731a1f9d)，未移植与本项目无关的单进程 EXE 修复及未发布的设置页重构。
 
 上游 MIT 许可全文如下，版权归属保持原样：
 
@@ -40,6 +42,12 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
+
+## Edge TTS 语音依赖
+
+dsh-pet 0.4.0 新增的 `@andresaya/edge-tts` 在本项目锁定为 **1.9.1**，作者为 **Andres Aya**，采用 **GPL-3.0-only**。依赖通过官方 npm 下载，源代码对应 [v1.9.1 提交 93f6dbc](https://github.com/andresayac/edge-tts/tree/93f6dbc5905293402ebf4b6dc162d31f7e61136e)；[原 LICENSE](https://github.com/andresayac/edge-tts/blob/93f6dbc5905293402ebf4b6dc162d31f7e61136e/LICENSE) 全文保留在 [licenses/edge-tts-GPL-3.0.txt](licenses/edge-tts-GPL-3.0.txt)。
+
+该依赖不属于本项目自有代码的 MIT 授权。当前仓库分发源代码、锁文件与安装脚本，不包含该库代码或打包运行时；语音默认关闭。若另行分发含该库的运行时或安装包，须核对 GPL 对组合程序、相应源代码及安装信息的要求，不能仅保留本页链接便按 MIT 发布整包。
 
 ## dsh-pet 动画、提示词与源视频
 

@@ -101,6 +101,7 @@ async function start() {
   const codexHome = isCodex ? process.env.CODEX_HOME || join(homedir(), '.codex') : null;
   const hostPath = join(root, 'node_modules', 'dsh-pet', 'lib', 'codex-host.js');
   if (!existsSync(hostPath)) throw new Error(t('请先运行 setup.ps1 准备运行时。'));
+  const runtimeVersion=JSON.parse(await readFile(join(root,'node_modules','dsh-pet','package.json'),'utf8')).version;
   const host = await import(pathToFileURL(hostPath).href);
   const logger = host.createStandaloneLogger();
   const activityGate = createCodexActivityGate();
@@ -364,6 +365,8 @@ async function start() {
   process.env.CODEX_PET_API_TOKEN = security.token;
   process.env.CODEX_PET_LAUNCHER = join(root, existsSync(join(root, 'Start Codex Pet.vbs')) ? 'Start Codex Pet.vbs' : '启动龙娘桌宠.vbs');
   host.setDesktopActivityGate(activityGate);
+  // 0.4新增的原生语音不能越过应用隔离；移交或切换期间同时关闭HTTP与helper管道入口。
+  host.setUpstreamCapabilityGate?.(()=>({host:companionHost,available:!switchingHost&&!stopping&&!HarnessHandoff.isActive({dataRoot:home,projectRoot:root})}));
   host.apply(context.ctx);
   const controlResume=installControlResume({routes,prefix});
   const quotaProvider = isCodex ? 'standalone' : 'workbuddy';
@@ -489,7 +492,7 @@ async function start() {
     processTimer.unref();
     void checkWorkBuddyProcess();
   }
-  logger.info(t('Codex Pet 已启动，本机端口 {port}，动画与互动基于 dsh-pet 0.3.8。', { port }));
+  logger.info(t('Codex Pet 已启动，本机端口 {port}，动画与互动基于 dsh-pet {version}。', { port,version:runtimeVersion }));
   logger.info(isCodex ? Locale.getLocale()==='zh-CN'?'右键可点播动作、查看额度或对话；自动碎碎念默认十分钟一次，可在控制中心的「碎念」中关闭。':'Use the pet menu for actions, usage, or chat. Automatic chatter runs every ten minutes; turn it off under Chatter in the control center.' : t('桌宠已联动 WorkBuddy，右键可点播动作和切换形象。'));
 }
 

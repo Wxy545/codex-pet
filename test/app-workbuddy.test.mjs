@@ -70,7 +70,7 @@ test('真实WorkBuddy独立宿主不要求Codex且保留旧AI设置，事件/鉴
   const nativeCommand=join(nativeHome,'dsh.cmd'),profile=join(nativeHome,'profiles','web');
   await writeFile(nativeCommand,'synthetic command - never executed');
   await mkdir(join(profile,'node_modules','codex-pet-harness'),{recursive:true});
-  await writeFile(join(profile,'package.json'),JSON.stringify({dependencies:{'dsh-pet':'0.3.8','codex-pet-harness':'link:synthetic'},dsh:{profile:{bundles:['dsh-pet','codex-pet-harness']}}}));
+  await writeFile(join(profile,'package.json'),JSON.stringify({dependencies:{'dsh-pet':'0.4.0','codex-pet-harness':'link:synthetic'},dsh:{profile:{bundles:['dsh-pet','codex-pet-harness']}}}));
   await writeFile(join(profile,'node_modules','codex-pet-harness','package.json'),JSON.stringify({name:'codex-pet-harness'}));
   const setNative=active=>writeFile(join(root,'data/harness-link.json'),JSON.stringify({schemaVersion:1,active,command:nativeCommand,home:nativeHome,profile:'web',version:'0.2.1-rc.5'}));
   const presentation=(mode,options={})=>request('/dsh-pet-7340/pet-host/presentation',{method:'POST',body:{mode},...options});

@@ -32,7 +32,7 @@ function verifiedProfile(record){
   const profile=json(path.join(record.home,'profiles',record.profile,'package.json'));
   const installed=json(path.join(record.home,'profiles',record.profile,'node_modules','codex-pet-harness','package.json'));
   const bundles=profile.dsh?.profile?.bundles;
-  return profile.dependencies?.['dsh-pet']==='0.3.8'&&typeof profile.dependencies?.['codex-pet-harness']==='string'&&Array.isArray(bundles)&&bundles.includes('dsh-pet')&&bundles.includes('codex-pet-harness')&&installed.name==='codex-pet-harness';
+  return profile.dependencies?.['dsh-pet']==='0.4.0'&&typeof profile.dependencies?.['codex-pet-harness']==='string'&&Array.isArray(bundles)&&bundles.includes('dsh-pet')&&bundles.includes('codex-pet-harness')&&installed.name==='codex-pet-harness';
  }catch{return false;}
 }
 function readLink(dataRoot,projectRoot){

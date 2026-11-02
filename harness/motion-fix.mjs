@@ -2,8 +2,8 @@ import { lstatSync, readFileSync, realpathSync, renameSync, unlinkSync, writeFil
 import { createRequire } from 'node:module';
 import { randomUUID } from 'node:crypto';
 import { dirname, isAbsolute, join, relative, sep } from 'node:path';
-import { patchHelperStartup } from './helper-startup-fix.mjs';
-import { patchBrowserMouseRelease } from './browser-drag-fix.mjs';
+import { patchModularMain, patchModularMouseRelease, patchModularSandbox, patchModularUserData, validateModularDpi, validateModularMotion } from './modular-runtime-fix.mjs';
+import { patchPhysicsDefaults040 } from './physics-defaults-fix.mjs';
 
 const staysWithin = (root, file) => { const rel = relative(root, file); return !isAbsolute(rel) && rel !== '..' && !rel.startsWith('..' + sep); };
 
@@ -33,11 +33,15 @@ export function prepareHarnessDependency({ profileDir }) {
   const profileRoot = realpathSync(profileDir), rel = relative(profileRoot, packageRoot);
   if (isAbsolute(rel) || rel === '..' || rel.startsWith('..' + sep)) throw new Error('harness-dsh-pet-outside-selected-profile');
   const meta = JSON.parse(readFileSync(join(packageRoot, 'package.json'), 'utf8'));
-  if (meta.name !== 'dsh-pet' || meta.version !== '0.3.8') throw new Error('harness-dsh-pet-0.3.8-required');
+  if (meta.name !== 'dsh-pet' || meta.version !== '0.4.0') throw new Error('harness-dsh-pet-0.4.0-required');
   const transforms = [
-    ['lib/client.js', source => patchBrowserMouseRelease(patchNativeMotion(source))],
-    ['runtime/electron-helper/sprite.js', patchNativeMotion],
-    ['runtime/electron-helper/main.js', source => patchHelperStartup(source, { appMode: false })],
+    ['lib/client.js', source => patchPhysicsDefaults040(patchModularMouseRelease(validateModularMotion(source, { browser: true })))],
+    ['lib/index.js', patchModularSandbox],
+    ['runtime/electron-helper/shared-core.js', patchPhysicsDefaults040],
+    ['runtime/electron-helper/sprite/motion.js', validateModularMotion],
+    ['runtime/electron-helper/main.js', patchModularMain],
+    ['runtime/electron-helper/main/dpi.js', validateModularDpi],
+    ['runtime/electron-helper/main/user-data.js', patchModularUserData],
   ];
   const planned = transforms.map(([name, transform]) => {
     const file = join(packageRoot, name), stat = lstatSync(file);

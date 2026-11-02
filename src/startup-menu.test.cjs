@@ -9,7 +9,7 @@ function fixture({locale='en',host='codex',deferInitial=false}={}) {
  const window={PetShared:shared,__dshPetDebug:{},codexStartup:bridge,addEventListener:(name,fn)=>events.set(name,fn)};
  const context=vm.createContext({window,S:shared,OPEN_TARGET:'web',navigator:{language:locale},console});
  // 不伪造不存在的原型mount：执行上游实际onContextMenu以及onMenuAction调用链。
- vm.runInContext(readFileSync(join(__dirname,'../node_modules/dsh-pet/runtime/electron-helper/sprite.js'),'utf8'),context);
+ require('../test/support/upstream-sprite.cjs')(context);
  if(host==='workbuddy'){
   window.petHost={initialHost:host,getState:async()=>({host}),selectHost:async()=>{}};window.CodexLocale={getLocale:()=>locale};
   window.codexControl={open(){}};window.CodexPetActions={quickMenu:()=>[{label:'Idle',anim:'idle'}]};
@@ -17,7 +17,7 @@ function fixture({locale='en',host='codex',deferInitial=false}={}) {
  }
  vm.runInContext(readFileSync(join(__dirname,'startup-menu.js'),'utf8'),context);
  const sprite=vm.runInContext('Object.create(PetSprite.prototype)',context);
- Object.assign(sprite,{dragState:{},animations:{},menuItems:[],stopThrow(){},stopMove(){},setInteractive(){},syncInputBusy(){},syncInputRegions(){},visibleClampRect:()=>null,closeMenu(){closed++;this.menuOpen=false;}});
+ Object.assign(sprite,{conf:{},pet:{id:"main"},dragState:{},animations:{},menuItems:[],stopThrow(){},stopMove(){},setInteractive(){},syncInputBusy(){},syncInputRegions(){},visibleClampRect:()=>null,closeMenu(){closed++;this.menuOpen=false;}});
  const flush=async()=>{for(let i=0;i<4;i++)await Promise.resolve();};
  const open=()=>{sprite.menuOpen=false;sprite.onContextMenu({preventDefault(){},clientX:20,clientY:30});return mounted;};
  return{window,shared,sprite,open,flush,calls,events,change:value=>changed(value),initial:value=>initialResolve(value),get mounted(){return mounted;},get unsubscribed(){return unsubscribed;},get closed(){return closed;}};

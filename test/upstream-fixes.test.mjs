@@ -1,89 +1,97 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { readFileSync,createReadStream,fstatSync } from 'node:fs';
 import { mkdtemp, writeFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join,resolve } from 'node:path';
 import { createServer } from 'node:http';
 import { once } from 'node:events';
 import { EventEmitter } from 'node:events';
 import vm from 'node:vm';
 import Range from '../src/runtime-range.cjs';
 import { patchHostAssets, patchBridgeAssets, patchDesktopMotion, patchDesktopBalanceEvents, patchDesktopWorkEvents, patchDesktopWorkResume } from '../scripts/upstream-fixes.mjs';
+import {patchStandalone040,patchPlayback040,patchHelper040} from '../scripts/prepare-runtime-040.mjs';
+import {validateModularMotion} from '../harness/modular-runtime-fix.mjs';
 
-const host = readFileSync(new URL('../node_modules/dsh-pet/lib/standalone.js', import.meta.url), 'utf8');
-const bridge = readFileSync(new URL('../node_modules/dsh-pet/runtime/electron-helper/main.js', import.meta.url), 'utf8');
-const sprite = readFileSync(new URL('../node_modules/dsh-pet/runtime/electron-helper/sprite.js', import.meta.url), 'utf8');
-const events = readFileSync(new URL('../node_modules/dsh-pet/runtime/electron-helper/events.js', import.meta.url), 'utf8');
+const packageRoot=resolve(process.env.CODEX_PET_UPSTREAM_FIXTURE||'node_modules/dsh-pet'),meta=JSON.parse(readFileSync(join(packageRoot,'package.json'),'utf8')),modern=meta.version==='0.4.0';
+const actual=name=>readFileSync(join(packageRoot,name),'utf8').replaceAll('\r\n','\n');
+const host=actual('lib/standalone.js'),bridge=actual('runtime/electron-helper/'+(modern?'main/bridge.js':'main.js')),sprite=actual('runtime/electron-helper/'+(modern?'sprite/motion.js':'sprite.js')),playback=modern?actual('runtime/electron-helper/sprite/playback.js'):sprite,events=actual('runtime/electron-helper/events.js');
+const hostPatch=modern?patchStandalone040:patchHostAssets,motionPatch=modern?validateModularMotion:patchDesktopMotion,resumePatch=modern?patchPlayback040:patchDesktopWorkResume;
+const bridgePatch=modern?source=>{assert.equal(source.split("const decision = parseRange(request.headers.get('range'), data.length);").length,2,'原生Range锚点');return source;}:patchBridgeAssets;
+const modernHelper=modern?patchHelper040(Object.fromEntries(['main.js','main/tray.js','main/bridge.js','main/ipc.js','main/dpi.js','main/user-data.js','sprite.js','sprite/motion.js','sprite/menu.js','sprite/playback.js','sprite/bubble.js','sprite/input.js','events.js','shared-core.js','index.html'].map(name=>[name,actual('runtime/electron-helper/'+name)]))):null;
+const sharedSource=modern?modernHelper['shared-core.js']:actual('runtime/electron-helper/shared-core.js');
 
-test('上游修复在原0.3.8及已准备代码上幂等，锚点缺失或重复时停止', () => {
-  for (const [patch, source] of [[patchHostAssets, host], [patchBridgeAssets, bridge], [patchDesktopMotion, sprite], [patchDesktopBalanceEvents, events], [patchDesktopWorkEvents, events], [patchDesktopWorkResume, sprite]]) {
+test('固定上游运行时修复及新原生锚点严格校验，缺失或重复时停止', () => {
+  for (const [patch, source] of [[bridgePatch, bridge], [motionPatch, sprite], [patchDesktopBalanceEvents, events], [patchDesktopWorkEvents, events], [resumePatch, playback],...(!modern?[[hostPatch,host]]:[])]) {
     const result = patch(source);
     assert.equal(patch(result), result);
-    assert.throws(() => patch(''), /锚点/);
-    assert.throws(() => patch(source + source), /锚点/);
+    assert.throws(() => patch(''), /锚点|anchor/);
+    assert.throws(() => patch(source + source), /锚点|anchor/);
   }
+  if(modern){assert.match(hostPatch(host),/const decision = parseRange/);assert.throws(()=>hostPatch(''),/锚点/);assert.throws(()=>hostPatch(host+host),/锚点/);}
 });
 
-function whisperPoll(config, policy) {
-  const fixed = patchHostAssets(host);
+async function whisperPoll(config, policy) {
+  const fixed = hostPatch(host);
   const end = fixed.indexOf('}, "dsh-pet: whisper poll");');
   const start = fixed.lastIndexOf('ctx.effect(() => {', end);
   assert.ok(start >= 0 && end > start);
-  const helpers = ['flattenPetList', 'findPetInstance', 'automaticWhisperSchedule', 'displayCovers'].map(name => {
+  const helpers = ['flattenPetList', 'findPetInstance', 'automaticWhisperSchedule', 'displayCovers',...(modern?['isDisplayed']:[])].map(name => {
     const declaration = fixed.match(new RegExp('function ' + name + '\\([^)]*\\) \\{[\\s\\S]*?^\\}', 'm'))?.[0];
     assert.ok(declaration, name);
     return declaration;
   }).join('\n');
   const period = fixed.match(/const whisperPeriodSec = \(conf\) => \{[\s\S]*?\n\t\};/)?.[0];
   assert.ok(period);
-  let now = 1_000_000, pending;
+  let now = 1_000_000, pending,drain;
   const generated = [], lastWhisperAt = new Map();
   const scope = {
     ctx: { standaloneAi: policy, effect: callback => callback() },
     configPaths: [], readAllConfig: () => config, lastWhisperAt,
     lock: { locked: () => false }, publishWhisper: async id => { generated.push(id); },
-    Date: { now: () => now }, setTimeout: (callback, ms) => { pending = { callback, ms }; return 1; },
+    standaloneAiPolicy:()=>policy,sleep:{sleeping:()=>false},log:{info(){},warn:message=>assert.fail(message)},WHISPER_STAGGER_MS:10000,WHISPER_QUEUE_MAX:6,
+    Date: { now: () => now }, setTimeout: (callback, ms) => { if(modern&&ms===10000)drain={callback,ms};else pending = { callback, ms }; return 1; },
     clearTimeout() {},
   };
   vm.runInNewContext(helpers + '\n' + period + '\n' + fixed.slice(start, end) + '}, "dsh-pet: whisper poll");', scope);
-  return { generated, lastWhisperAt, delay: () => pending.ms, tick: (advanceMs = 0) => { now += advanceMs; pending.callback(); } };
+  const flush=async()=>{await new Promise(setImmediate);while(drain){const next=drain;drain=null;next.callback();await new Promise(setImmediate);}};await flush();
+  return { generated, lastWhisperAt, delay: () => pending.ms, tick: async(advanceMs = 0) => { now += advanceMs; pending.callback();await flush(); } };
 }
 
-test('隐藏宠物不生成碎碎念或推进周期，恢复显示后仍遵循用户和AI开关', () => {
+test('隐藏宠物不生成碎碎念或推进周期，恢复显示后仍遵循用户和AI开关', async() => {
   const pet = { id: 'synthetic-hidden', display: 'none', whisperEnabled: true };
   let automatic = true;
   const policy = { whisperIntervalSec: () => 600, isReady: () => true, canWhisper: () => automatic };
-  const poll = whisperPoll({ main: { pets: [pet], eventsRefreshSec: { whisper: 600 } } }, policy);
+  const poll = await whisperPoll({ main: { pets: [pet], eventsRefreshSec: { whisper: 600 } } }, policy);
   assert.deepEqual(poll.generated, []);
   assert.equal(poll.lastWhisperAt.has(pet.id), false);
-  pet.display = 'desktop'; poll.tick();
+  pet.display = 'desktop'; await poll.tick();
   assert.deepEqual(poll.generated, ['synthetic-hidden']);
-  pet.whisperEnabled = false; poll.tick(600_000);
+  pet.whisperEnabled = false; await poll.tick(600_000);
   assert.deepEqual(poll.generated, ['synthetic-hidden']);
-  pet.whisperEnabled = true; automatic = false; poll.tick();
+  pet.whisperEnabled = true; automatic = false; await poll.tick();
   assert.deepEqual(poll.generated, ['synthetic-hidden']);
-  automatic = true; poll.tick();
+  automatic = true; await poll.tick();
   assert.deepEqual(poll.generated, ['synthetic-hidden', 'synthetic-hidden']);
 });
 
-test('隐藏宠物不缩短调度周期，web、desktop和both仍可生成', () => {
+test('隐藏宠物不缩短调度周期，web、desktop和both仍可生成', async() => {
   const config = { hidden: { pets: [{ id: 'synthetic-none', display: 'none', whisperEnabled: true }], eventsRefreshSec: { whisper: 60 } } };
   for (const display of ['web', 'desktop', 'both']) config[display] = { pets: [{ id: 'synthetic-' + display, display, whisperEnabled: true }], eventsRefreshSec: { whisper: 600 } };
-  const poll = whisperPoll(config);
+  const poll = await whisperPoll(config);
   assert.deepEqual(poll.generated, ['synthetic-web', 'synthetic-desktop', 'synthetic-both']);
   assert.equal(poll.delay(), 600_000);
   assert.equal(poll.lastWhisperAt.has('synthetic-none'), false);
 });
 
 test('冻结只保留最新工作快照，解冻同步当前档位和文字，终态不补播',()=>{
- const shared={};vm.runInNewContext(readFileSync(new URL('../node_modules/dsh-pet/runtime/electron-helper/shared-core.js',import.meta.url),'utf8'),shared);
+ const shared={};vm.runInNewContext(sharedSource,shared);
  const work=patchDesktopWorkEvents(events).match(/PetSprite\.prototype\.onWorkTick = function onWorkTick\([\s\S]*?\n\};/)?.[0];
- const freeze=patchDesktopWorkResume(sprite).match(/  applyFreeze\(next\) \{[\s\S]*?\n  \}\n\n  \/\*\*/)?.[0].replace(/\n\n  \/\*\*$/,'');
+ const freeze=resumePatch(playback).match(/  applyFreeze\(next\) \{[\s\S]*?\n  \},?\n\n  \/\*\*/)?.[0].replace(/,?\n\n  \/\*\*$/,'');
  const scope={S:shared.PetShared,PetSprite:function(){},window:{clearTimeout(){},setTimeout(){return 1;}},BUBBLE_DURATION_MS:10000,console:{log(){},error(){}}};
  vm.runInNewContext(work,scope);const applyFreeze=vm.runInNewContext('({'+freeze+'}).applyFreeze',scope);
  const make=()=>{
-  const calls=[];const pet={pet:{id:'fixture',workStatusEnabled:true},animations:{idle:['idle'],events:{workStatus:['thinking','working','result','waiting','success','error']}},prevWorkTick:0,prevWorkState:null,frozen:false,front:0,videoA:{pause(){},loop:true},workTimer:null,renderBubble(){calls.push('bubble:'+this.workText);},stopMove(){},playOnce(name){calls.push('once:'+name);this.anim=name;},switchTo(name){calls.push('loop:'+name);this.anim=name;},resumeWorkStatusAnim(){if(!this.workState||['success','error'].includes(this.workState))return false;this.switchTo(this.workState);return true;},onWorkTick:scope.PetSprite.prototype.onWorkTick,applyFreeze};return {pet,calls};
+  const calls=[];const pet={pet:{id:'fixture',workStatusEnabled:true},animations:{idle:['idle'],events:{workStatus:['thinking','working','result','waiting','success','error']}},prevWorkTick:0,prevWorkState:null,frozen:false,front:0,videoA:{pause(){},loop:true},workTimer:null,renderBubble(){calls.push('bubble:'+this.workText);},stopMove(){},playOnce(name){calls.push('once:'+name);this.anim=name;},switchTo(name){calls.push('loop:'+name);this.anim=name;},resumeSleepAnim:()=>false,resumeWorkStatusAnim(){if(!this.workState||['success','error'].includes(this.workState))return false;this.switchTo(this.workState);return true;},onWorkTick:scope.PetSprite.prototype.onWorkTick,applyFreeze};return {pet,calls};
  };
  for(const finalState of ['waiting','working',null,'success','error']){
   const {pet,calls}=make();pet.onWorkTick({state:'working',task:'old task'},1);pet.applyFreeze(true);const before=calls.length;
@@ -99,7 +107,7 @@ test('冻结只保留最新工作快照，解冻同步当前档位和文字，�
 
 test('余额失败恢复后再次同样失败会通知，连续同失败仍去重且手动查询始终答复',()=>{
  const context={};
- vm.runInNewContext(readFileSync(new URL('../node_modules/dsh-pet/runtime/electron-helper/shared-core.js',import.meta.url),'utf8'),context);
+ vm.runInNewContext(sharedSource,context);
  const fixed=patchDesktopBalanceEvents(events);
  const declarations=['applyBalanceNotice','applyBalanceLeaf'].map(name=>fixed.match(new RegExp('function '+name+'\\([^)]*\\) \\{[\\s\\S]*?\\n\\}'))?.[0]).join('\n');
  const trace=[];
@@ -130,10 +138,11 @@ test('真实HTTP素材应答按请求读取206切片、416或整份200，字节�
   const file = join(directory, 'synthetic.webm');
   const bytes = Buffer.from('0123456789abcdefghij');
   await writeFile(file, bytes);
-  const fixed = patchHostAssets(host);
+  const fixed = hostPatch(host);
   const declaration = fixed.match(/function sendFile\(req, res, file, contentType\) \{[\s\S]*?^\}/m)?.[0];
   assert.ok(declaration);
-  const send = vm.runInNewContext(declaration + '\nsendFile', { CodexRuntimeRange: Range });
+  const rangeDeclaration=modern?fixed.match(/function parseRange\(header, totalBytes\) \{[\s\S]*?^\}/m)?.[0]+'\n':'';
+  const send = vm.runInNewContext(rangeDeclaration+declaration + '\nsendFile', { CodexRuntimeRange: Range,createReadStream,fstatSync });
   const server = createServer((req, res) => send(req, res, file, 'video/webm'));
   server.listen(0, '127.0.0.1'); await once(server, 'listening');
   t.after(async () => { server.closeAllConnections(); await new Promise(resolve => server.close(resolve)); await rm(directory, { recursive: true, force: true }); });
@@ -146,7 +155,7 @@ test('真实HTTP素材应答按请求读取206切片、416或整份200，字节�
   ]) {
     const response = await fetch(url, { headers: range ? { Range: range } : {} });
     assert.equal(response.status, status, range);
-    assert.equal(response.headers.get('content-length'), String(content.length), range);
+    assert.equal(response.headers.get('content-length'), modern&&status===416?null:String(content.length), range);
     assert.equal(response.headers.get('content-range'), contentRange, range);
     assert.equal(response.headers.get('accept-ranges'), 'bytes');
     assert.equal(response.headers.get('content-type'), 'video/webm');
@@ -181,12 +190,12 @@ test('HTTP客户端在open或fstat期间断开时关闭已打开fd，不启动�
 });
 
 test('实际Electron bridge闭包传递Range并保留CORS/类型，非文件请求照旧返回', async () => {
-  const fixed = patchBridgeAssets(bridge);
-  const declaration = fixed.match(/async function handleBridgeRequest\(request\) \{[\s\S]*?^\}/m)?.[0];
+  const fixed = bridgePatch(bridge);
+  const declaration = fixed.match(modern?/  async function handleBridgeRequest\(request\) \{[\s\S]*?^  \}/m:/async function handleBridgeRequest\(request\) \{[\s\S]*?^\}/m)?.[0];
   assert.ok(declaration);
   const bytes = Buffer.from('0123456789'); let fileResponse = true;
   const handle = vm.runInNewContext(declaration + '\nhandleBridgeRequest', {
-    URL, Response, Uint8Array, console,
+    URL, Response, Uint8Array, console,parseRange:Range.parseRange,
     fsPromises: { readFile: async file => { assert.equal(file, 'already-authorized-file'); return bytes; } },
     bridgeRequest: async () => fileResponse ? { file: 'already-authorized-file', contentType: 'video/webm', status: 200 } : { body: 'config', status: 200 },
     require: name => { assert.equal(name, './runtime-range.cjs'); return Range; },
@@ -203,8 +212,8 @@ test('实际Electron bridge闭包传递Range并保留CORS/类型，非文件请�
 });
 
 test('实际PetSprite走位按规划落点插值，负距离不反向并在结束时连续落地', () => {
-  const fixed = patchDesktopMotion(sprite);
-  const method = fixed.match(/  startMoveDrive\(el\) \{[\s\S]*?\n  \}\n\n  stopMove/)?.[0].replace(/\n\n  stopMove$/, '');
+  const fixed = motionPatch(sprite);
+  const method = fixed.match(/  startMoveDrive\(el\) \{[\s\S]*?\n  \},?\n\n  stopMove/)?.[0].replace(/,?\n\n  stopMove$/, '');
   assert.ok(method);
   for (const [start, target, dir] of [[.6, .2, 1], [.2, .8, -1]]) {
     let step; const positions = [];
@@ -218,7 +227,8 @@ test('实际PetSprite走位按规划落点插值，负距离不反向并在结�
 });
 
 test('独立模式菜单只改可见文案，open-site动作和desktop分支保留', () => {
-  const fixed = patchDesktopMotion(sprite);
+  if(modern){const source=actual('runtime/electron-helper/sprite/menu.js'),labels=source.match(/const OPEN_LABEL = (\{[^\n]+\});/);assert.ok(labels);const value=vm.runInNewContext('('+labels[1]+')');assert.equal(value.standalone,'打开 AI 设置');assert.equal(value.desktop,'打开软件');assert.match(source,/label: OPEN_LABEL\[OPEN_TARGET\],\n\s*action: 'open-site'/);return;}
+  const fixed = motionPatch(sprite);
   const expression = fixed.match(/label: (OPEN_TARGET === 'desktop' \? '打开软件' : '打开 AI 设置'),/);
   assert.ok(expression);
   assert.equal(vm.runInNewContext(expression[1], { OPEN_TARGET: 'site' }), '打开 AI 设置');

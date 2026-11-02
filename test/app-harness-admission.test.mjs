@@ -16,7 +16,7 @@ test('原生Harness移交在实际HTTP入口阻止新Codex任务，保留既有�
   await cp(join(project,'src'),join(root,'src'),{recursive:true});await mkdir(join(root,'workbuddy','plugin'),{recursive:true});await cp(join(project,'workbuddy','plugin','hook-event.mjs'),join(root,'workbuddy','plugin','hook-event.mjs'));await symlink(join(project,'node_modules'),join(root,'node_modules'),process.platform==='win32'?'junction':'dir');
   await mkdir(join(home,'dsh-pet'),{recursive:true});await mkdir(join(temp,'installed'),{recursive:true});await writeFile(command,'synthetic installed command');
   await mkdir(join(nativeHome,'profiles','web','node_modules','codex-pet-harness'),{recursive:true});
-  await writeFile(join(nativeHome,'profiles','web','package.json'),JSON.stringify({dependencies:{'dsh-pet':'0.3.8','codex-pet-harness':'link:synthetic'},dsh:{profile:{bundles:['dsh-pet','codex-pet-harness']}}}));
+  await writeFile(join(nativeHome,'profiles','web','package.json'),JSON.stringify({dependencies:{'dsh-pet':'0.4.0','codex-pet-harness':'link:synthetic'},dsh:{profile:{bundles:['dsh-pet','codex-pet-harness']}}}));
   await writeFile(join(nativeHome,'profiles','web','node_modules','codex-pet-harness','package.json'),'{"name":"codex-pet-harness"}');
   await writeFile(join(home,'host.json'),'{"schemaVersion":1,"host":"codex"}');
   await writeFile(join(home,'dsh-pet','main-config.jsonc'),JSON.stringify({pets:[{id:'main',name:'Synthetic companion',display:'web',size:160,balanceEnabled:false,whisperEnabled:false,workStatusEnabled:true}]}));

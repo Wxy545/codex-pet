@@ -62,14 +62,15 @@ test('成功、取消或失败均按真实宿主刷新托盘，刷新失败不�
 test('WorkBuddy菜单只留必要互动与少量快捷动作，完整动作分类和第三方菜单分开',async()=>{
  let mounted,selected;
  const foreign={action:'third-party',children:[{action:'chat',label:'custom'}]};
- const shared={mountContextMenu:v=>{mounted=v;return{close(){}};},displayMenuBranch:()=>({action:'display'}),buildMoreBranch:()=>foreign,buildMenuTree:()=>[{label:'Balance levels',children:[{anim:'balance-1',label:'Plenty'}]}]};
+ const native={};vm.runInNewContext(readFileSync(join(__dirname,'../node_modules/dsh-pet/runtime/electron-helper/shared-core.js'),'utf8'),native);
+ const shared={...native.PetShared,mountContextMenu:v=>{mounted=v;return{close(){}};},displayMenuBranch:()=>({action:'display'}),buildMoreBranch:()=>foreign,buildMenuTree:()=>[{label:'Balance levels',children:[{anim:'balance-1',label:'Plenty'}]}]};
  const window={PetShared:shared,__dshPetDebug:{},CodexPetActions:{quickMenu:()=>[{label:'Idle',anim:'idle-ready'}]},qqRemoteSettings:{open(){}},petHost:{initialHost:'workbuddy',getState:async()=>({host:'workbuddy'}),selectHost:async id=>{selected=id;}},addEventListener(){},CodexLocale:{getLocale:()=> 'en'}};
  const context=vm.createContext({window,S:shared,OPEN_TARGET:'web',navigator:{language:'en',platform:'Win32'},console});
  // 执行上游实际onContextMenu；禁止假造不存在的PetSprite.mountContextMenu方法。
- vm.runInContext(readFileSync(join(__dirname,'../node_modules/dsh-pet/runtime/electron-helper/sprite.js'),'utf8'),context);
+ require('../test/support/upstream-sprite.cjs')(context);
  vm.runInContext(readFileSync(join(__dirname,'pet-host-menu.js'),'utf8'),context);
  const sprite=vm.runInContext('Object.create(PetSprite.prototype)',context);
- Object.assign(sprite,{dragState:{},animations:{},menuItems:[],stopThrow(){},stopMove(){},setInteractive(){},syncInputBusy(){},syncInputRegions(){},visibleClampRect:()=>null,closeMenu(){}});
+ Object.assign(sprite,{pet:{id:'main',memes:{},chatImageEnabled:false},dragState:{},animations:{},menuItems:[],stopThrow(){},stopMove(){},setInteractive(){},syncInputBusy(){},syncInputRegions(){},visibleClampRect:()=>null,closeMenu(){}});
  sprite.onContextMenu({preventDefault(){},clientX:0,clientY:0});
  assert.ok(!mounted.tree.some(x=>['chat','codex-task-panel','qq-remote-settings','whisper'].includes(x.action)));assert.ok(mounted.tree.some(x=>x.action==='show-balance'));
  assert.equal(mounted.tree.find(x=>x.action==='open-site').label,'Open WorkBuddy');

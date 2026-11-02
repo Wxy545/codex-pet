@@ -27,7 +27,7 @@ export function resolveHarnessNative({dataRoot,projectRoot}={}){
     if(record.schemaVersion!==1||!isAbsolute(record.command??'')||inside(projectRoot,record.command)||!isAbsolute(record.home??'')||inside(dataRoot,record.home))throw Error();
     const native=validateNative(record),profile=json(join(native.home,'profiles',native.profile,'package.json'));
     const plugin=json(join(native.home,'profiles',native.profile,'node_modules/codex-pet-harness/package.json'));
-    if(profile.dependencies?.['dsh-pet']!=='0.3.8'||!profile.dsh?.profile?.bundles?.includes('codex-pet-harness')||plugin.name!=='codex-pet-harness')throw Error();return native;
+    if(profile.dependencies?.['dsh-pet']!=='0.4.0'||!profile.dsh?.profile?.bundles?.includes('codex-pet-harness')||plugin.name!=='codex-pet-harness')throw Error();return native;
   }catch{throw remoteError('not_installed');}
 }
 

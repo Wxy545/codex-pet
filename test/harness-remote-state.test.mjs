@@ -1,3 +1,4 @@
+import {readUpstream} from './support/harness-upstream.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {mkdtempSync, mkdirSync, readFileSync, writeFileSync, rmSync, linkSync, lstatSync, symlinkSync} from 'node:fs';
@@ -7,15 +8,15 @@ import vm from 'node:vm';
 import {spawnSync} from 'node:child_process';
 import {prepareHarnessRemoteState, patchHarnessRemoteState, installHarnessRemoteState} from '../harness/native-remote-state.mjs';
 
-const ANCHOR = 'const lock = new LockStore({ onChange: (petId, data) => state.writePet(petId, "lock", data) });';
-const actual = readFileSync(new URL('../node_modules/dsh-pet/lib/index.js', import.meta.url), 'utf8');
+const ANCHOR = 'const { publishWorkStatus, stopWorkStatusFlush } = workStatusBridge;';
+const actual = readUpstream('lib/index.js');
 const synthetic = 'function apply(ctx){\n' + ANCHOR + '\n}';
 function fixture(t) {
   const root = mkdtempSync(join(tmpdir(), 'pet-harness-qq-state-')); t.after(() => rmSync(root, {recursive: true, force: true}));
   const profileDir = join(root, 'profile'), pkg = join(profileDir, 'node_modules/dsh-pet'), dataRoot = join(root, 'data'), sourceRoot = join(dataRoot, 'harness-plugin');
   mkdirSync(join(pkg, 'lib'), {recursive: true}); mkdirSync(sourceRoot, {recursive: true});
   writeFileSync(join(profileDir, 'package.json'), '{}');
-  writeFileSync(join(pkg, 'package.json'), JSON.stringify({name: 'dsh-pet', version: '0.3.8', exports: {'./package.json': './package.json'}}));
+  writeFileSync(join(pkg, 'package.json'), JSON.stringify({name: 'dsh-pet', version: '0.4.0', exports: {'./package.json': './package.json'}}));
   writeFileSync(join(pkg, 'lib/index.js'), synthetic);
   const bridge = join(sourceRoot, 'bridge.json'), activity = join(dataRoot, 'qq-activity.json');
   writeFileSync(bridge, JSON.stringify({schemaVersion: 1, dataRoot}));
@@ -38,14 +39,15 @@ test('固定真实源码补丁幂等，只原子替换选中profile，保留pnpm
   const syntax = spawnSync(process.execPath, ['--check', '--input-type=module'], {input: patched, encoding: 'utf8', windowsHide: true}); assert.equal(syntax.status, 0, syntax.stderr);
   assert.equal(prepareHarnessRemoteState({profileDir: f.profileDir}).status, 'current'); assert.equal(readFileSync(file, 'utf8'), patched);
   assert.equal(patchHarnessRemoteState(patched), patched);
+  const apply=patched.indexOf('function apply(ctx) {'),bridge=patched.indexOf(ANCHOR,apply),remote=patched.indexOf('/* codex-pet-native-remote-state-v1 */');assert.ok(apply>=0&&bridge>apply&&remote>bridge&&remote<patched.indexOf('const downloadReport =',bridge),'QQ槽必须在真正宿主apply拿到workStatus之后');
 });
 
 test('锚点不符或包版本变化时停止，内部目录越界链接不写入外部', t => {
   const f = fixture(t), file = join(f.pkg, 'lib/index.js'); writeFileSync(file, 'unknown upstream');
   assert.throws(() => prepareHarnessRemoteState({profileDir: f.profileDir}), /anchor/); assert.equal(readFileSync(file, 'utf8'), 'unknown upstream');
   writeFileSync(join(f.pkg, 'package.json'), JSON.stringify({name: 'dsh-pet', version: '0.3.9', exports: {'./package.json': './package.json'}}));
-  assert.throws(() => prepareHarnessRemoteState({profileDir: f.profileDir}), /0\.3\.8/);
-  writeFileSync(join(f.pkg, 'package.json'), JSON.stringify({name: 'dsh-pet', version: '0.3.8', exports: {'./package.json': './package.json'}}));
+  assert.throws(() => prepareHarnessRemoteState({profileDir: f.profileDir}), /0\.4\.0/);
+  writeFileSync(join(f.pkg, 'package.json'), JSON.stringify({name: 'dsh-pet', version: '0.4.0', exports: {'./package.json': './package.json'}}));
   const external = join(f.root, 'outside'); mkdirSync(external); writeFileSync(join(external, 'index.js'), synthetic); rmSync(join(f.pkg, 'lib'), {recursive: true}); symlinkSync(external, join(f.pkg, 'lib'), 'junction');
   assert.throws(() => prepareHarnessRemoteState({profileDir: f.profileDir}), /outside-profile/); assert.equal(readFileSync(join(external, 'index.js'), 'utf8'), synthetic);
 });
@@ -56,7 +58,7 @@ function serviceFixture() {
   assert.ok(start >= 0 && end > start);
   const context = {Date: class extends Date {static now() {return timers.now();}}, setTimeout: timers.setTimeout, clearTimeout: timers.clearTimeout, ctx: {provide(name, service) {services[name] = service;}, on(name, callback) {if (name === 'dispose') disposers.push(callback);}}, publishes};
   vm.createContext(context); vm.runInContext(actual.slice(start, end) + '\nvar workStatus = new WorkStatusStore(); var publishWorkStatus=()=>publishes.push({...workStatus.snapshot()});', context);
-  const patch = patchHarnessRemoteState(synthetic), from = patch.indexOf('/* codex-pet-native-remote-state-v1 */'), to = patch.indexOf(ANCHOR);
+  const patch = patchHarnessRemoteState(synthetic), from = patch.indexOf('/* codex-pet-native-remote-state-v1 */'), to = patch.indexOf('/* /codex-pet-native-remote-state-v1 */');
   vm.runInContext(patch.slice(from, to), context);
   return {timers, service: services.codexPetQQState, context, disposers, publishes,
     seedNative() {vm.runInContext('workStatus.setState("native-owned", "working", 1); workStatus.setTask("native-owned", "Native task");', context);},

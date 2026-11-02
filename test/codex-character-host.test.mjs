@@ -1,20 +1,23 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
+import {resolve,join} from 'node:path';
 import vm from 'node:vm';
 import Character from '../src/codex-character.cjs';
 
 // 执行prepare实际生成的上游闭包，避免用改变契约的替身绕过请求完成后的身份检查。
-const source=readFileSync(new URL('../node_modules/dsh-pet/lib/codex-host.js',import.meta.url),'utf8');
+const source=readFileSync(join(resolve(process.env.CODEX_PET_UPSTREAM_FIXTURE||'node_modules/dsh-pet'),'lib/codex-host.js'),'utf8');
 function fixture(kind){
  let character={id:'white-dragon',locale:'zh-CN'},disk={},resolveGeneration;
  const writes=[];const inputs=[];
- const context={CodexCharacter:{...Character,readCharacter:()=>({...character})},configPaths:{},readAllConfig:()=>({}),findPetInstance:()=>({entry:'main',pet:{id:'main'},conf:{}}),petSystemPrompt:()=>character.id,configuredModel:()=>null,ctx:{},state:{writePet:(...args)=>writes.push(args)},withMemoryLock:fn=>fn(),memoryRounds:()=>5,sliceMemoryRounds:list=>list,readMemory:async()=>structuredClone(disk),writeMemory:async value=>{disk=structuredClone(value);}};
+ const context={CodexCharacter:{...Character,readCharacter:()=>({...character})},configPaths:{},readAllConfig:()=>({}),findPetInstance:()=>({entry:'main',pet:{id:'main',display:'desktop'},conf:{}}),petSystemPrompt:()=>character.id,configuredModel:()=>null,ctx:{},memeDirsFor:()=>[],log:{info(){},warn(){},error(){}},state:{writePet:(...args)=>writes.push(args)},withMemoryLock:fn=>fn(),memoryRounds:()=>5,sliceMemoryRounds:list=>list,readMemory:async()=>structuredClone(disk),writeMemory:async value=>{disk=structuredClone(value);}};
  const generate=async(...args)=>{inputs.push(args);return new Promise(ok=>{resolveGeneration=ok;});};context.generateWhisper=generate;context.generateChat=generate;
  const expression=source.match(kind==='whisper'?/const publishWhisper = ([\s\S]*?)^\t\};/m:/const chatWithPet = ([\s\S]*?)^\t\}\);/m);
  assert.ok(expression,'prepared host closure not found');
  const code=kind==='whisper'?'('+expression[1]+'\n})':'('+expression[1]+'\n}))';
- const fn=vm.runInNewContext(code,context);
+ // 新版语音落点和配图选池也执行实际辅助函数；这里只提供本fixture无素材的目录，不调用任何语音服务。
+ const helpers=['displayCovers','pickVoiceSurface','voiceTargetFor','readMemePool','pickMeme','matchMeme'].map(name=>source.match(new RegExp('function '+name+'\\([^)]*\\) \\{[\\s\\S]*?^\\}','m'))?.[0]).filter(Boolean).join('\n');
+ const fn=vm.runInNewContext(helpers+'\n'+code,context);
  return{fn,writes,inputs,get disk(){return disk;},set character(next){character=next;},resolve:value=>resolveGeneration(value)};
 }
 test('上游碎念在生成期间切换角色后不写入新角色say槽',async()=>{

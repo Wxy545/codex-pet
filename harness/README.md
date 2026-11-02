@@ -8,13 +8,13 @@ You can ask Codex: **Install White Dragon Girl from https://github.com/Wxy545/co
 
 ## Install
 
-On Windows, use DeepSeek Harness **0.2.1-rc.2 or 0.2.1-rc.5**, `dsh-pet` **0.3.8**, and Node.js **22.12 or newer**. The npm Harness CLI also needs `pnpm` on PATH. From the Codex Pet checkout, run:
+On Windows, use DeepSeek Harness **0.2.1-rc.2 or 0.2.1-rc.5**, `dsh-pet` **0.4.0**, and Node.js **22.12 or newer**. The npm Harness CLI also needs `pnpm` on PATH. From the Codex Pet checkout, run:
 
 ```powershell
 powershell -File scripts/install-harness.ps1 -Profile web
 ```
 
-The script builds a JavaScript bundle in `data/harness-plugin`, then asks the official `dsh plugin` CLI to add `dsh-pet` and `codex-pet-harness` to that profile. It stops if an existing `dsh-pet` version differs from 0.3.8.
+The script builds a JavaScript bundle in `data/harness-plugin`, then asks the official `dsh plugin` CLI to add `dsh-pet` and `codex-pet-harness` to that profile. It stops if an existing `dsh-pet` version differs from 0.4.0.
 
 Keep the checkout in a permanent folder, such as `%LOCALAPPDATA%\codex-pet`. A local install links to its `data/harness-plugin` directory; moving or deleting the checkout breaks that link.
 
@@ -22,7 +22,7 @@ For Harness Desktop, launch it once, then fully quit it. Use `-Profile desktop` 
 
 Restart the selected profile. Dragon Girl appears in the web overlay and desktop pet window; `/pet` lists her as `codex-white-dragon`. Use the original pet's display setting if you want only one character. The installation keeps the whale maid and its saved settings.
 
-Already have a prebuilt bundle? Install `dsh-pet@0.3.8` first, then run `dsh plugin --profile web add <bundle-folder-or-tarball>`. Keep both bundles enabled: the dragon bundle seeds the pack before dsh-pet reads its configuration. The source `harness/` folder is not a built bundle; use the build script or installer first.
+Already have a prebuilt bundle? Install `dsh-pet@0.4.0` first, then run `dsh plugin --profile web add <bundle-folder-or-tarball>`. Keep both bundles enabled: the dragon bundle seeds the pack before dsh-pet reads its configuration. The source `harness/` folder is not a built bundle; use the build script or installer first.
 
 The original dsh-pet host supplies Harness session states, six balance tiers, three chatter slots, chat, click physics, dragging, the action menu, and its notification handling. Balance, chatter, and some work slots reuse the available dragon videos. Model calls and balance queries follow the Harness account and dsh-pet settings.
 
@@ -34,13 +34,13 @@ The dragon's action names and personality default to Chinese on Chinese-language
 
 The bundle is enabled only in the selected profile. Native dsh-pet stores pet packs under `$DSH_HOME/dsh-pet/pet`, shared by profiles in that home. The files use the separate `codex-white-dragon` prefix; updates preserve edited dragon files and leave other pets alone. Removing the bundle keeps these user files. The original dsh-pet settings page manages its own main pet; edit this pack's `codex-white-dragon-config.json` to change the dragon's size, position, switches, or display mode.
 
-At startup, this bundle applies the upstream leftward-walk correction to the selected profile's dsh-pet 0.3.8 web and desktop files. It checks the original code anchors and stops on unfamiliar files. The videos use the original 640 × 360 canvas and hit area.
+The bundle checks dsh-pet 0.4.0's split playback, motion, input and helper modules before adapting the selected profile. Upstream walk interpolation and DPI recovery stay in place. The patch preserves mouse release with multiple buttons, uses an exclusive temporary write probe, and keeps Chromium sandboxing on after a helper crash. The dragon keeps its original 640 × 360 canvas and has no sleep mode without matching clips.
 
 ## 安装
 
 也可以直接对 Codex 说：**把 https://github.com/Wxy545/codex-pet 的白龙娘插件装到我正在用的 DeepSeek Harness，按 harness/README.md 选择对应的官方 CLI，保留现有宠物设置。**
 
-Windows 上需要 DeepSeek Harness **0.2.1-rc.2 或 0.2.1-rc.5**、`dsh-pet` **0.3.8** 和 Node.js **22.12 或更新版**。普通 npm 版 Harness CLI 还需要 PATH 中有 `pnpm`。在 Codex Pet 项目目录运行：
+Windows 上需要 DeepSeek Harness **0.2.1-rc.2 或 0.2.1-rc.5**、`dsh-pet` **0.4.0** 和 Node.js **22.12 或更新版**。普通 npm 版 Harness CLI 还需要 PATH 中有 `pnpm`。在 Codex Pet 项目目录运行：
 
 ```powershell
 powershell -File scripts/install-harness.ps1 -Profile web
@@ -53,6 +53,8 @@ powershell -File scripts/install-harness.ps1 -Profile web
 Harness 桌面版需要先启动一次、再完全退出，用 `-Profile desktop -DshCommand '<安装目录>/resources/runtime/cli/bin/dsh.cmd'` 指定桌面版自带命令。npm 安装的普通 dsh 不能管理 desktop profile；脚本会在构建和安装前检查。当前项目尚未实测 Harness 桌面应用载体。
 
 角色动作、点击、拖拽、随机漫游和菜单由原版 dsh-pet 播放；工作状态、余额、碎碎念、聊天和通知沿用 Harness 接口与账号。龙娘有 23 段 Q 版视频，含抱书阅读、护住小宝石；余额六档、碎念三档及部分工作状态共用现有片段。
+
+适配基于 dsh-pet 0.4.0 拆分后的卡片和 helper 模块，保留上游移动、DPI 恢复和原生账户。补丁只修鼠标组合键松手、临时目录探测和本插件的任务、额度接线；helper 崩溃后不会自动关闭 Chromium 沙箱。龙娘没有配套睡觉三段视频，暂不开放睡觉或梦话。
 
 脚下额度条显示 Harness 当前服务商实际返回的 API 余额：金额、积分，或各个用量窗口；点击窗口摘要可看重置时间。工作和碎念气泡仍在头顶。服务商不支持查询或查询失败时显示未知，不估算余额；原生桌宠不显示独立宿主的系统监控占位读数。
 

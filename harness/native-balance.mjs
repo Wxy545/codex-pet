@@ -54,15 +54,17 @@ export function patchNativeWebBalance(input,{statusScript,statusCss,locale,taskS
   const from=source.indexOf(start),to=source.indexOf(end,from);if(to<0||source.indexOf(start,from+start.length)>=0)throw Error('harness-native-balance-anchor-mismatch');
   source=source.slice(0,from)+block+source.slice(to+end.length);
  }else source=replaceOne(source,'function makePetUI(rt) {',block+'function makePetUI(rt) {');
- // 升级既有余额补丁时仅重置三个已知几何表达式，再统一纳入任务按钮的真实高度。
- source=source.replace('"--dsh-pet-my": margin.y + (cfg.balanceEnabled?nativeFooterSpace:0) + "px"','"--dsh-pet-my": margin.y + "px"').replace('top: (cfg.balanceEnabled?Math.min(ry * window.innerHeight - halfH,window.innerHeight-halfH*2-nativeFooterSpace):ry * window.innerHeight - halfH) + "px"','top: ry * window.innerHeight - halfH + "px"').replace('H: window.innerHeight-(cfg.balanceEnabled?nativeFooterSpace:0),','H: window.innerHeight,');
- source=replaceOne(source,'\tconst { h, useState, useEffect, useRef } = rt;\n\tinjectCss$1();','\tconst { h, useState, useEffect, useRef } = rt;\n\tinjectCss$1();\n\tinjectCodexNativeBalanceCss();\n\tconst CodexNativeBalanceFooter=codexNativeFooter(rt);');
- source=replaceOne(source,'\t\tconst [size, setSize] = useState(cfg.size);','\t\tconst [size, setSize] = useState(cfg.size);\n\t\tconst [nativeFooterSpace,setNativeFooterSpace]=useState(cfg.balanceEnabled?34:0);');
- source=replaceOne(source,'if (bubbleOn && balance && (cfg.balanceEnabled || balanceManual)) return h(BalanceBubble, {','if (!cfg.balanceEnabled && bubbleOn && balance && balanceManual) return h(BalanceBubble, {');
- source=replaceOne(source,'children: [\n\t\t\t\tbubbleNode,','children: [\n\t\t\t\tbubbleNode,\n\t\t\t\th(CodexNativeBalanceFooter,{balance,enabled:cfg.balanceEnabled,size,onMeasure:setNativeFooterSpace}),');
- source=replaceOne(source,'"--dsh-pet-my": margin.y + "px"','"--dsh-pet-my": margin.y + (cfg.balanceEnabled||codexNativeTaskFeature?nativeFooterSpace:0) + "px"');
- source=replaceOne(source,'top: ry * window.innerHeight - halfH + "px"','top: (cfg.balanceEnabled||codexNativeTaskFeature?Math.min(ry * window.innerHeight - halfH,window.innerHeight-halfH*2-nativeFooterSpace):ry * window.innerHeight - halfH) + "px"');
- source=replaceOne(source,'const bounds = throwBounds({\n\t\t\t\tW: window.innerWidth,\n\t\t\t\tH: window.innerHeight,','const bounds = throwBounds({\n\t\t\t\tW: window.innerWidth,\n\t\t\t\tH: window.innerHeight-(cfg.balanceEnabled||codexNativeTaskFeature?nativeFooterSpace:0),');
+ // 0.4.0 将卡片拆成 view/runtime/motion；只在新装配边界挂脚下条。
+ source=replaceOne(source,'function createCardRuntime(rt) {\n\tconst { h, useEffect, useRef, useState } = rt;','function createCardRuntime(rt) {\n\tconst { h, useEffect, useRef, useState } = rt;\n\tinjectCodexNativeBalanceCss();\n\tconst CodexNativeBalanceFooter=codexNativeFooter(rt);');
+ source=replaceOne(source,'\t\tconst { corner, customPos, dragging, facing, margin, size, tipOn } = state;','\t\tconst { corner, customPos, dragging, facing, margin, size, tipOn } = state;\n\t\tconst [nativeFooterSpace,setNativeFooterSpace]=useState(cfg.balanceEnabled||codexNativeTaskFeature?34:0);\n\t\tconst footerSpace=cfg.balanceEnabled||codexNativeTaskFeature?nativeFooterSpace:0;');
+ source=replaceOne(source,'if (input.balanceOn && input.balanceAvailable && (input.balanceEnabled || input.balanceManual)) return "balance";','if (!input.balanceEnabled && input.balanceOn && input.balanceAvailable && input.balanceManual) return "balance";');
+ source=replaceOne(source,'\t\t\t\tprops.bubble,','\t\t\t\tprops.bubble,\n\t\t\t\tprops.nativeFooter,');
+ source=replaceOne(source,'\t\t\tbubble: bubbles.node(),','\t\t\tbubble: bubbles.node(),\n\t\t\tnativeFooter:h(CodexNativeBalanceFooter,{balance,enabled:cfg.balanceEnabled,size,onMeasure:setNativeFooterSpace}),');
+ source=replaceOne(source,'\t\t\tmarginY: margin.y,','\t\t\tmarginY: margin.y+footerSpace,');
+ // 归一化中心仍以完整视口存储，仅夹最终绘制与地面边界，避免松手时跳位。
+ source=replaceOne(source,'\t\t\tw: halfW\n\t\t});\n\t\treturn {\n\t\t\tbubble:','\t\t\tw: halfW\n\t\t});\n\t\tif(customPos&&footerSpace)rootStyle.top=Math.min(customPos.ry*window.innerHeight-halfH,Math.max(0,window.innerHeight-halfH*2-footerSpace))+"px";\n\t\treturn {\n\t\t\tbubble:');
+ source=replaceOne(source,'\t\t\t\tbottomPad,\n\t\t\t\thalfH,','\t\t\t\tbottomPad,\n\t\t\t\tnativeFooterSpace:footerSpace,\n\t\t\t\thalfH,');
+ source=replaceOne(source,'\t\t\tH: viewport.height,\n\t\t\tsize: metrics.size,','\t\t\tH: viewport.height-(metrics.nativeFooterSpace||0),\n\t\t\tsize: metrics.size,');
  return source;
 }
 
@@ -70,7 +72,7 @@ export function prepareHarnessBalance({profileDir,sourceRoot,locale='en',withTas
  if(!isAbsolute(profileDir)||!isAbsolute(sourceRoot))throw Error('absolute-harness-profile-required');
  const require=createRequire(join(profileDir,'package.json')),profile=realpathSync(profileDir),pkg=realpathSync(dirname(require.resolve('dsh-pet/package.json')));
  if(!inside(profile,pkg))throw Error('harness-dsh-pet-outside-selected-profile');
- const meta=JSON.parse(readFileSync(join(pkg,'package.json'),'utf8'));if(meta.name!=='dsh-pet'||meta.version!=='0.3.8')throw Error('harness-dsh-pet-0.3.8-required');
+ const meta=JSON.parse(readFileSync(join(pkg,'package.json'),'utf8'));if(meta.name!=='dsh-pet'||meta.version!=='0.4.0')throw Error('harness-dsh-pet-0.4.0-required');
  const statusScript=readFileSync(join(sourceRoot,'runtime','pet-status-strip.js'),'utf8'),taskScript=withTasks?readFileSync(join(sourceRoot,'native-tasks-ui.js'),'utf8'):null,statusCss=readFileSync(join(sourceRoot,'runtime','pet-status-strip.css'),'utf8')+(withTasks?'\n'+readFileSync(join(sourceRoot,'native-tasks.css'),'utf8'):'');
  const files=[];
  function plan(name,transform,fresh=false){
@@ -82,16 +84,15 @@ export function prepareHarnessBalance({profileDir,sourceRoot,locale='en',withTas
  }
  plan('lib/client.js',input=>{
   const source=patchNativeWebBalance(input,{statusScript,statusCss,locale,taskScript});if(!withTasks)return source;
-  const anchor='ctx.effect(() => initNotify({ openSession: (sessionId) => ctx.get?.("uiWorkspace")?.openSession?.(sessionId) }), "dsh-pet: notifications");';
+  const anchor='}), "dsh-pet: notifications");';
   const extra=anchor+'\n\t\t\tctx.effect(()=>CodexNativeTaskUI.installNavigation({window,document,navigate:sessionId=>{const ui=ctx.get?.("uiWorkspace");if(typeof ui?.openSession!=="function")return false;ui.openSession(sessionId);return true;}}),"codex-pet: native task navigation");';
   return replaceOne(source,anchor,extra);
  });
  plan('runtime/electron-helper/sprite.js',input=>{
-  // 三个额度窗口展开后还要容纳任务入口；同步升级已安装的旧132px补丁。
-  const normalized=input.replaceAll('\r\n','\n').replace('this.margin = { t: Math.max(m, S.bubbleTopMarginPx(fontConf, this.size)), r: m, b: Math.max(m, 132), l: m };','this.margin = { t: Math.max(m, S.bubbleTopMarginPx(fontConf, this.size)), r: m, b: m, l: m };');
-  let sprite=replaceOne(normalized,'this.margin = { t: Math.max(m, S.bubbleTopMarginPx(fontConf, this.size)), r: m, b: m, l: m };','this.margin = { t: Math.max(m, S.bubbleTopMarginPx(fontConf, this.size)), r: m, b: Math.max(m, 184), l: m };');
-  return replaceOne(sprite,'.dsh-pet-menu-column, .dsh-pet-chat, .pet-bubble.is-clickable','.dsh-pet-menu-column, .dsh-pet-chat, .pet-bubble.is-clickable, .pet-status-quota.is-interactive');
+  const source=input.replaceAll('\r\n','\n');
+  return replaceOne(source,'      r: m,\n      b: m,\n      l: m,','      r: m,\n      b: Math.max(m, 184),\n      l: m,');
  });
+ plan('runtime/electron-helper/sprite/input.js',input=>replaceOne(input.replaceAll('\r\n','\n'),'.dsh-pet-menu-column, .dsh-pet-chat, .dsh-pet-todo, .pet-bubble.is-clickable','.dsh-pet-menu-column, .dsh-pet-chat, .dsh-pet-todo, .pet-bubble.is-clickable, .pet-status-quota.is-interactive'));
  plan('runtime/electron-helper/index.html',input=>{
   let html=input.replaceAll('\r\n','\n');html=replaceOne(html,'</head>','<link rel="stylesheet" href="./codex-pet-status-strip.css">\n</head>');
   return replaceOne(html,'<script src="./renderer.js"></script>','<script src="./codex-pet-status-strip.js"></script>\n<script src="./renderer.js"></script>');
@@ -107,5 +108,5 @@ export function prepareHarnessBalance({profileDir,sourceRoot,locale='en',withTas
   else if(realpathSync(item.file)!==item.realFile||lstatSync(item.file).isSymbolicLink()||readFileSync(item.file,'utf8')!==item.before)throw Error('harness-upstream-file-changed');
   const temporary=item.file+'.balance-'+randomUUID();try{writeFileSync(temporary,item.after,{flag:'wx',mode:item.mode});renameSync(temporary,item.file);changed.push(item.name);}finally{if(existsSync(temporary))unlinkSync(temporary);}
  }
- return{status:changed.length?'updated':'current',version:'0.3.8',files:changed};
+ return{status:changed.length?'updated':'current',version:'0.4.0',files:changed};
 }

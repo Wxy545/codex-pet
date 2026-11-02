@@ -97,7 +97,12 @@ const frozenWorkAfter = `  // 冻结只保留最新未应用快照，不切动�
   }
   this.prevWorkTick = tick;`;
 export function patchDesktopWorkEvents(source) {
-  return replaceOne(source, frozenWorkBefore, frozenWorkAfter, '冻结工作快照');
+  const modularBefore=`  this.prevWorkTick = tick;
+  // 占用锁：锁生效时不响应工作状态——它是自动来源（任务事件驱动），没有「用户手动要」这条路。
+  // 判在 tick 消费之后：占用期间的变化当过去了，解冻时由 applyFreeze 重新对齐当前状态。
+  // 宿主侧不挡这个全局段：sections.workStatus 是所有宠物共用一份，跳过写入会连带静音别的宠物。
+  if (this.frozen) return;`;
+  return replaceOne(source, source.includes(frozenWorkBefore)?frozenWorkBefore:modularBefore, frozenWorkAfter, '冻结工作快照');
 }
 export function patchDesktopWorkResume(source) {
   return replaceOne(source,

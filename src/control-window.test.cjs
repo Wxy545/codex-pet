@@ -40,6 +40,12 @@ test('控制中心单实例且隔离Node，宠物只能打开、外窗和iframe�
  installPreload({contextBridge:{exposeInMainWorld:(name,value)=>exposed.push({name,value})},ipcRenderer:{send:(...args)=>sent.push(args)}});
  assert.deepEqual(Object.keys(exposed[0].value),['open']);exposed[0].value.open('ignored');assert.deepEqual(sent,[[CHANNELS.open]]);
 });
+test('编辑既有物理项保留新版未展示的体感开关和未知用户项',async t=>{
+ const f=fixture();t.after(()=>f.controller.dispose());await f.controller.open();Object.assign(f.config().main.physics,{hapticEnabled:false,tiltGravity:true,shakeThrow:false,futureOption:'preserved'});
+ const physics={gravity:900,restitution:.7,groundFriction:2,ceilingBounce:true,throwPower:1,petCollision:false};
+ assert.equal((await f.invoke(CHANNELS.interaction,{petId:'main',physics})).ok,true);const saved=f.calls.find(x=>x.method==='PUT').body.physics;
+ assert.deepEqual(saved,{...physics,hapticEnabled:false,tiltGravity:true,shakeThrow:false,futureOption:'preserved'});
+});
 test('按当前分区读取，角色卡只返回展示所需媒体，不透传人设、清单或本机配置路径',async t=>{
  const f=fixture();t.after(()=>f.controller.dispose());await f.controller.open();
  const result=await f.invoke(CHANNELS.state,'character');assert.equal(result.ok,true);assert.equal(result.state.section,'character');assert.equal(result.state.characters[0].preview.url,'file:///dragon.webm');assert.equal(result.state.characters[0].name,'White Dragon Girl');assert.equal(result.state.characters[0].persona,undefined);assert.equal(result.state.characters[0].manifest,undefined);assert.deepEqual(f.calls.map(call=>call.via),['skin-read']);

@@ -12,3 +12,10 @@ test('同一原生打开入口在WorkBuddy只激活固定目标，Codex保留原
  }
  assert.throws(()=>patchHostOpenTarget('missing'),/锚点/);
 });
+
+test('拆分IPC使用正确相对模块，已补丁但模块错位或标记重复时停止',()=>{
+ const raw="const openSite = (url) => { calls.push(url); };",fixed=patchHostOpenTarget(raw,{startupModule:'../codex-startup.cjs'});
+ assert.match(fixed,/require\('\.\.\/codex-startup.cjs'\)/);assert.equal(patchHostOpenTarget(fixed,{startupModule:'../codex-startup.cjs'}),fixed);
+ assert.throws(()=>patchHostOpenTarget(fixed),/锚点/);assert.throws(()=>patchHostOpenTarget(fixed+'\n// codex-pet-workbuddy-open-target-v1',{startupModule:'../codex-startup.cjs'}),/锚点/);
+ assert.throws(()=>patchHostOpenTarget(raw,{startupModule:'../other.cjs'}),/不匹配/);
+});

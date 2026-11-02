@@ -7,7 +7,7 @@ const Registry = require('./creative-registry.cjs');
 
 const IDS = ['white-dragon', 'bluefish', 'curly-sheep'];
 const DEFAULT_NAMES = new Set(['蓝色大肥鱼', '蓝毛小女仆', 'Q版蓝发小女仆', '大肥鱼', '白龙娘', 'Dragon Girl', 'Blue', '卷卷', 'Curly']);
-// 只识别已发布app和上游0.3.8的完整默认正文；相似或追加了条款的人设仍视作用户自定义。
+// 只识别已发布app和上游的完整默认正文；相似或追加了条款的人设仍视作用户自定义。
 const DEFAULT_PERSONAS = new Set([
   '你是桌面上的蓝色大肥鱼，爱吃饭也爱摸鱼。说话俏皮自然，偶尔傲娇，不装腔。每次碎碎念20字以内。',
   '你是主人桌面上的Q版蓝发小女仆，会时不时碎碎念一句。说话要自然随意、短短一句（20字以内），温柔乖巧带点俏皮，说人话不啰嗦，不要解释你自己，不要提你是AI。',
@@ -199,11 +199,18 @@ function projectConfig(config, { dataRoot = process.env.DSH_HOME } = {}) {
     return { ...pet, ...(workbuddy ? { balanceEnabled: false, whisperEnabled: false } : {}), name: copy.name, whisperPrompt: composePersona({ ...character, persona: copy.persona }, pet.whisperPrompt || main.whisperPrompt) };
   }) };
   next.whisperPrompt = composePersona({ ...character, persona: namedCopy(character.id, character.locale, character.name, own).persona }, main.whisperPrompt);
+  // 新版原鱼的睡眠三段没有对应角色素材，不能让自有角色继承鱼动画及额外梦话调度。
+  if (character.id !== 'bluefish') {
+    if (Array.isArray(main.animations?.sleep) && main.animations.sleep.length) next.animations = { ...main.animations, sleep: [] };
+    // 角色切换需清理旧鱼睡眠；唤醒只清状态，不给新角色补发原鱼台词。
+    for (const key of ['sleepRefuseTexts', 'sleepStartTexts', 'sleepEndTexts']) next[key] = [];
+  }
   if (character.id !== 'bluefish' || character.locale === 'en') {
     next.memes = {}; next.whisperImageEnabled = false; next.chatImageEnabled = false;
   }
   if (character.locale === 'en') {
     if (Array.isArray(main.workStatusTexts)) next.workStatusTexts = main.workStatusTexts.map(group => Array.isArray(group) ? group.map(text => L.t(text, {}, 'en')) : group);
+    if (character.id === 'bluefish') for (const key of ['sleepRefuseTexts', 'sleepStartTexts', 'sleepEndTexts']) if (Array.isArray(main[key])) next[key] = main[key].map(text => L.t(text, {}, 'en'));
     // 动作清单保留完整；含中文字幕的原鱼视频在渲染器按当前角色过滤，切到无字龙娘时仍可使用同一槽位。
   }
   return { ...config, main: next };

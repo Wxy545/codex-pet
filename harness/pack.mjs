@@ -57,6 +57,8 @@ export function buildHarnessConfig({ manifest, locale = 'zh-CN', copy }) {
       fixedEnabled: false, display: 'both', position: { corner: 'bottom-right', marginX: 300, marginY: 20 } }],
     animations: {
       idle: [names.idle], turn: [names.turn], drag: [names.drag],
+      // 本包没有睡觉三段视频；显式清空，不能合并到原鱼睡姿或额外触发梦话模型。
+      sleep: [],
       clicks: ['click', 'shy', 'proud', 'tickle', 'greeting'].map(key => names[key]),
       moves: { default: { minDist: 60, maxDist: 240, margin: 20, leadSec: .12, tailSec: .12 },
         actions: [{ name: names.walk }, { name: names['wing-hover'], params: { minDist: 40, maxDist: 120 } }] },

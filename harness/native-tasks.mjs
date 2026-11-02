@@ -41,10 +41,13 @@ export function installHarnessTasks(ctx,{locale='en'}={}){
 
 const MARK='/* codex-pet-native-tasks-v1 */',END='/* /codex-pet-native-tasks-v1 */';
 export function patchNativeTaskHost(input){
- let source=input.replaceAll('\r\n','\n');const anchor='const pose = new PoseStore();',block=MARK+'\nconst codexPetNativeTasks = ctx.get?.("codexPetHarnessTasks");\n'+END+'\n';
- if(!source.includes(MARK)){if(source.split(anchor).length!==2)fail('harness-native-tasks-anchor');source=source.replace(anchor,block+anchor);}else if(source.split(block).length!==2)fail('harness-native-tasks-anchor');
- const reduce='const next = reduceWorkStatus(event, turnFlags.get(sessionId));',reduced=reduce+'\n\t\t\tcodexPetNativeTasks?.transition(session,event,next);';if(source.includes(reduced)){}else if(source.split(reduce).length===2)source=source.replace(reduce,reduced);else fail('harness-native-tasks-anchor');
- const route='\t\tif (rest === "config") {';
+ let source=input.replaceAll('\r\n','\n');const anchor='function registerSessionWatch(deps) {',block=MARK+'\nconst codexPetNativeTasks = deps.ctx.get?.("codexPetHarnessTasks");\n'+END+'\n';
+ if(!source.includes(MARK)){if(source.split(anchor).length!==2)fail('harness-native-tasks-anchor');source=source.replace(anchor,anchor+'\n'+block);}else if(source.split(block).length!==2)fail('harness-native-tasks-anchor');
+ // 上游会在并行工具尚未结束时把终态改回 working，必须等它决策后再投影。
+ if(source.split('let next = reduceWorkStatus(event, turnFlags.get(sessionId));').length!==2)fail('harness-native-tasks-anchor');
+ const reduce='if (outcome?.keepWorking) next = "working";',reduced=reduce+'\n\t\t\tcodexPetNativeTasks?.transition(session,event,next);';if(source.includes(reduced)){}else if(source.split(reduce).length===2)source=source.replace(reduce,reduced);else fail('harness-native-tasks-anchor');
+ const empty='if (!next) {\n\t\t\t\tif (type === "turn/end") {',emptyPatched='if (!next) {\n\t\t\t\tif (type === "turn/end") {\n\t\t\t\t\tcodexPetNativeTasks?.transition(session,event,null);';if(source.includes(emptyPatched)){}else if(source.split(empty).length===2)source=source.replace(empty,emptyPatched);else fail('harness-native-tasks-anchor');
+ const route='function createPetRouter(deps) {\n\treturn async (url, rest, method, body, signal) => {';
  const routes=`\t\t/* codex-pet-native-tasks-routes-v1 */
 \t\tif(rest === "native-tasks" || rest.startsWith("native-tasks/")) {
 \t\t if(!codexPetNativeTasks)return{kind:"json",status:503,obj:{error:"native-tasks-unavailable"}};
@@ -52,9 +55,10 @@ export function patchNativeTaskHost(input){
 \t\t}
 \t\t/* /codex-pet-native-tasks-routes-v1 */
 `;
- if(source.includes('/* codex-pet-native-tasks-routes-v1 */')){if(!source.includes(routes))fail('harness-native-tasks-anchor');}else{if(source.split(route).length!==2)fail('harness-native-tasks-anchor');source=source.replace(route,routes+route);}return source;
+ const routerStart=route+'\n\t\tconst codexPetNativeTasks = deps.ctx.get?.("codexPetHarnessTasks");\n';
+ if(source.includes('/* codex-pet-native-tasks-routes-v1 */')){if(!source.includes(routerStart+routes))fail('harness-native-tasks-anchor');}else{if(source.split(route).length!==2)fail('harness-native-tasks-anchor');source=source.replace(route,routerStart+routes);}return source;
 }
 
 export function prepareHarnessTasks({profileDir}){
- if(!isAbsolute(profileDir||'')||lstatSync(profileDir).isSymbolicLink())fail('native-task-profile');const profile=realpathSync(profileDir),require=createRequire(join(profile,'package.json')),pkg=realpathSync(dirname(require.resolve('dsh-pet/package.json')));if(!inside(profile,pkg))fail('native-task-outside-profile');const meta=JSON.parse(readFileSync(join(pkg,'package.json'),'utf8'));if(meta.name!=='dsh-pet'||meta.version!=='0.3.8')fail('harness-dsh-pet-0.3.8-required');const file=join(pkg,'lib/index.js'),stat=lstatSync(file),real=realpathSync(file);if(!stat.isFile()||stat.isSymbolicLink()||stat.size>8*1024*1024||!inside(profile,real)||!inside(pkg,real))fail('native-task-file');const before=readFileSync(file,'utf8'),after=patchNativeTaskHost(before);if(before===after)return{status:'current',files:[]};if(readFileSync(file,'utf8')!==before||realpathSync(file)!==real)fail('harness-upstream-file-changed');const tmp=join(dirname(file),basename(file)+'.tasks-'+randomUUID());try{writeFileSync(tmp,after,{flag:'wx',mode:stat.mode});renameSync(tmp,file);}finally{if(existsSync(tmp))unlinkSync(tmp);}return{status:'updated',files:['lib/index.js']};
+ if(!isAbsolute(profileDir||'')||lstatSync(profileDir).isSymbolicLink())fail('native-task-profile');const profile=realpathSync(profileDir),require=createRequire(join(profile,'package.json')),pkg=realpathSync(dirname(require.resolve('dsh-pet/package.json')));if(!inside(profile,pkg))fail('native-task-outside-profile');const meta=JSON.parse(readFileSync(join(pkg,'package.json'),'utf8'));if(meta.name!=='dsh-pet'||meta.version!=='0.4.0')fail('harness-dsh-pet-0.4.0-required');const file=join(pkg,'lib/index.js'),stat=lstatSync(file),real=realpathSync(file);if(!stat.isFile()||stat.isSymbolicLink()||stat.size>8*1024*1024||!inside(profile,real)||!inside(pkg,real))fail('native-task-file');const before=readFileSync(file,'utf8'),after=patchNativeTaskHost(before);if(before===after)return{status:'current',files:[]};if(readFileSync(file,'utf8')!==before||realpathSync(file)!==real)fail('harness-upstream-file-changed');const tmp=join(dirname(file),basename(file)+'.tasks-'+randomUUID());try{writeFileSync(tmp,after,{flag:'wx',mode:stat.mode});renameSync(tmp,file);}finally{if(existsSync(tmp))unlinkSync(tmp);}return{status:'updated',files:['lib/index.js']};
 }

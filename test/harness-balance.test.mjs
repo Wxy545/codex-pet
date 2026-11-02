@@ -1,3 +1,4 @@
+import {readUpstream} from './support/harness-upstream.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync,mkdtempSync,mkdirSync,writeFileSync,rmSync,linkSync,statSync,symlinkSync} from 'node:fs';
@@ -7,7 +8,7 @@ import vm from 'node:vm';
 import {createNativeFooter,localizeBalanceShared,patchNativeWebBalance,prepareHarnessBalance} from '../harness/native-balance.mjs';
 const sourceRoot=new URL('../',import.meta.url),read=name=>readFileSync(new URL(name,sourceRoot),'utf8');
 const statusContext={module:{exports:{}}};vm.runInNewContext(read('src/pet-status-strip.js'),statusContext);const status=statusContext.module.exports;
-const sharedContext={};vm.runInNewContext(read('node_modules/dsh-pet/runtime/electron-helper/shared-core.js'),sharedContext);const shared=sharedContext.PetShared;
+const sharedContext={};vm.runInNewContext(readUpstream('runtime/electron-helper/shared-core.js'),sharedContext);const shared=sharedContext.PetShared;
 const text=node=>node==null||node===false?'':typeof node==='string'||typeof node==='number'?String(node):Array.isArray(node)?node.map(text).join(''):text(node.props?.children);
 const rt={h:(tag,props)=>({tag,props}),useState:()=>[true,()=>{}],useRef:()=>({current:null}),useEffect:()=>{}};
 
@@ -23,20 +24,19 @@ test('Harness脚下条直接显示原生金额、积分和全部额度窗口，�
  }
 });
 
-const webFixture='function makePetUI(rt) {\n\tconst { h, useState, useEffect, useRef } = rt;\n\tinjectCss$1();\nfunction PetCard() {\n\t\tconst [size, setSize] = useState(cfg.size);\nconst rootStyle={top: ry * window.innerHeight - halfH + "px"};\nconst anchor={"--dsh-pet-my": margin.y + "px"};\nconst bounds = throwBounds({\n\t\t\t\tW: window.innerWidth,\n\t\t\t\tH: window.innerHeight,\n});\nif (bubbleOn && balance && (cfg.balanceEnabled || balanceManual)) return h(BalanceBubble, {});\nreturn h("div", {children: [\n\t\t\t\tbubbleNode,\n]});}}';
+const webFixture=readUpstream('lib/client.js');
 test('原生web补丁保留工作与碎念气泡及原余额档位事件，只移走头顶余额，幂等且锚点异常停止',()=>{
  const options={statusScript:read('src/pet-status-strip.js'),statusCss:read('src/pet-status-strip.css'),locale:'en'};
- const source=patchNativeWebBalance(webFixture,options);assert.match(source,/h\(CodexNativeBalanceFooter/);assert.match(source,/!cfg\.balanceEnabled && bubbleOn/);assert.match(source,/nativeFooterSpace/);assert.doesNotMatch(source,/fetch\(|credentials|CODEX_HOME/);
- assert.equal(patchNativeWebBalance(source,options),source);assert.throws(()=>patchNativeWebBalance(webFixture.replace('bubbleNode,','differentNode,'),options),/anchor/);new vm.Script(source);
+ const source=patchNativeWebBalance(webFixture,options);assert.match(source,/h\(CodexNativeBalanceFooter/);assert.match(source,/!input\.balanceEnabled && input\.balanceOn/);assert.match(source,/nativeFooterSpace/);assert.doesNotMatch(source.slice(source.indexOf('/* codex-pet-native-balance-v1 */'),source.indexOf('/* /codex-pet-native-balance-v1 */')),/fetch\(|credentials|CODEX_HOME/);
+ assert.equal(patchNativeWebBalance(source,options),source);assert.throws(()=>patchNativeWebBalance(webFixture.replace('props.bubble,','props.changedBubble,'),options),/anchor/);new vm.Script(source.replace(/^export\s*\{[^}]*\};?\s*$/m,''));
 });
 
 function profileFixture(t){
  const dir=mkdtempSync(join(tmpdir(),'native-balance-'));t.after(()=>rmSync(dir,{recursive:true,force:true}));
  const profileDir=join(dir,'profile'),pkg=join(profileDir,'node_modules','dsh-pet'),bundle=join(dir,'bundle');
  mkdirSync(join(pkg,'runtime','electron-helper'),{recursive:true});mkdirSync(join(pkg,'lib'));mkdirSync(join(bundle,'runtime'),{recursive:true});
- writeFileSync(join(profileDir,'package.json'),'{"private":true}');writeFileSync(join(pkg,'package.json'),'{"name":"dsh-pet","version":"0.3.8","exports":{"./package.json":"./package.json"}}');
- writeFileSync(join(pkg,'lib','client.js'),webFixture);writeFileSync(join(pkg,'runtime','electron-helper','sprite.js'),'this.margin = { t: Math.max(m, S.bubbleTopMarginPx(fontConf, this.size)), r: m, b: m, l: m };\nconst controls=".dsh-pet-menu-column, .dsh-pet-chat, .pet-bubble.is-clickable";');
- writeFileSync(join(pkg,'runtime','electron-helper','index.html'),'<head></head><body><script src="./renderer.js"></script></body>');
+ writeFileSync(join(profileDir,'package.json'),'{"private":true}');writeFileSync(join(pkg,'package.json'),'{"name":"dsh-pet","version":"0.4.0","exports":{"./package.json":"./package.json"}}');
+ writeFileSync(join(pkg,'lib','client.js'),webFixture);mkdirSync(join(pkg,'runtime','electron-helper','sprite'),{recursive:true});for(const name of ['sprite.js','sprite/input.js','index.html'])writeFileSync(join(pkg,'runtime','electron-helper',name),readUpstream('runtime/electron-helper/'+name));
  for(const name of ['pet-status-strip.js','pet-status-strip.css'])writeFileSync(join(bundle,'runtime',name),read('src/'+name));
  return{dir,profileDir,pkg,bundle};
 }

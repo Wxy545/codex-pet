@@ -11,11 +11,14 @@ import { patchStartupMain } from './startup-runtime-patch.mjs';
 import { patchHostOpenTarget } from './runtime-host-patch.mjs';
 import { patchHelperStartup } from '../harness/helper-startup-fix.mjs';
 import {patchModelPurpose} from './model-purpose-patch.mjs';
+import {prepareRuntime040} from './prepare-runtime-040.mjs';
 
 const root=resolve(dirname(fileURLToPath(import.meta.url)),'..');
 const pkg=resolve(root,'node_modules/dsh-pet');
 const meta=JSON.parse(await readFile(resolve(pkg,'package.json'),'utf8'));
-if(meta.version!=='0.3.8') throw new Error('运行时版本必须是 dsh-pet 0.3.8，请按锁文件安装。');
+if(!['0.3.8','0.4.0'].includes(meta.version)) throw new Error('运行时版本必须是已验证的 dsh-pet 0.3.8 或 0.4.0，请按锁文件安装。');
+if(meta.version==='0.4.0')await prepareRuntime040({root,pkg});
+else {
 
 const oldGate='if (monthly === void 0 || monthly === null) return null;';
 const newGate='if (monthly === null || (monthly === void 0 && rolling === void 0 && weekly === void 0)) return null;';
@@ -196,3 +199,4 @@ await seedBundledWhiteDragon({projectRoot:root});
 await seedBundledSheep({projectRoot:root});
 await seedBundledStartup({projectRoot:root});
 console.log('dsh-pet 0.3.8 runtime prepared: Codex Pet.');
+}

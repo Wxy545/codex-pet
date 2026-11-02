@@ -438,5 +438,14 @@
     '两者': 'Both',
     '都不': 'Neither',
     '更多': 'More',
+    '睡觉': 'Sleep',
+    '起来': 'Wake up',
+    '我在睡觉，别烦我……': 'I’m sleeping. Let me rest…',
+    '唔……让我再睡一会儿。': 'Mm… five more minutes.',
+    '呼……呼……（装作没听见）': 'Zzz… (didn’t hear a thing)',
+    '好困……我先睡一会儿。': 'So sleepy… time for a nap.',
+    '那我去睡啦，晚安。': 'Off to sleep. Good night!',
+    '唔……我醒了。': 'Mm… I’m awake.',
+    '睡饱啦，主人！': 'All rested!',
   };
 });

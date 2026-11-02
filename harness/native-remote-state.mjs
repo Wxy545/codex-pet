@@ -3,7 +3,8 @@ import {createRequire} from 'node:module';
 import {randomUUID} from 'node:crypto';
 import {basename, dirname, isAbsolute, join, relative, sep} from 'node:path';
 
-const ANCHOR = 'const lock = new LockStore({ onChange: (petId, data) => state.writePet(petId, "lock", data) });';
+// 0.4.0 的 lookup 已不持有 ctx/workStatus；挂在真正的宿主装配根，避免解析通过但运行时未定义。
+const ANCHOR = 'const { publishWorkStatus, stopWorkStatusFlush } = workStatusBridge;';
 const MARKER = '/* codex-pet-native-remote-state-v1 */';
 const END = '/* /codex-pet-native-remote-state-v1 */';
 const inside = (root, file) => {const path = relative(root, file); return !isAbsolute(path) && path !== '..' && !path.startsWith('..' + sep);};
@@ -51,7 +52,7 @@ function remoteStateBlock() {
 }
 
 export function patchHarnessRemoteState(input) {
-  const source = input.replaceAll('\r\n', '\n'), block = remoteStateBlock(), patched = block + ANCHOR;
+  const source = input.replaceAll('\r\n', '\n'), block = remoteStateBlock(), patched = ANCHOR + '\n' + block;
   if (source.includes(MARKER)) {
     if (source.split(MARKER).length !== 2 || source.split(patched).length !== 2) throw Error('harness-native-remote-state-anchor-mismatch');
     return source;
@@ -70,17 +71,17 @@ export function prepareHarnessRemoteState({profileDir}) {
   const metaFile = join(pkg, 'package.json'), metaStat = lstatSync(metaFile);
   if (!metaStat.isFile() || metaStat.isSymbolicLink() || metaStat.size > 65536) throw Error('unsafe-harness-remote-state-package');
   const meta = JSON.parse(readFileSync(metaFile, 'utf8'));
-  if (meta.name !== 'dsh-pet' || meta.version !== '0.3.8') throw Error('harness-dsh-pet-0.3.8-required');
+  if (meta.name !== 'dsh-pet' || meta.version !== '0.4.0') throw Error('harness-dsh-pet-0.4.0-required');
   const file = join(pkg, 'lib/index.js'), parent = realpathSync(dirname(file)), physical = realpathSync(file), beforeStat = lstatSync(file);
   if (!inside(pkg, parent) || !inside(profile, parent) || !inside(pkg, physical) || !inside(profile, physical)) throw Error('unsafe-harness-remote-state-file-outside-profile');
   if (!beforeStat.isFile() || beforeStat.isSymbolicLink() || beforeStat.size > 8 * 1024 * 1024) throw Error('unsafe-harness-remote-state-file');
   const before = readFileSync(file, 'utf8'), after = patchHarnessRemoteState(before);
-  if (before === after) return {status: 'current', version: '0.3.8', files: []};
+  if (before === after) return {status: 'current', version: '0.4.0', files: []};
   const current = lstatSync(file);
   if (!current.isFile() || current.isSymbolicLink() || current.ino !== beforeStat.ino || current.dev !== beforeStat.dev || current.size !== beforeStat.size || current.mtimeMs !== beforeStat.mtimeMs || realpathSync(file) !== physical || realpathSync(dirname(file)) !== parent || readFileSync(file, 'utf8') !== before) throw Error('harness-upstream-file-changed');
   const temporary = join(parent, basename(file) + '.qq-state-' + randomUUID());
   try {writeFileSync(temporary, after, {flag: 'wx', mode: beforeStat.mode}); renameSync(temporary, file);} finally {if (existsSync(temporary)) unlinkSync(temporary);}
-  return {status: 'updated', version: '0.3.8', files: ['lib/index.js']};
+  return {status: 'updated', version: '0.4.0', files: ['lib/index.js']};
 }
 
 // 用已验证的文件句柄读取小型元数据，拒绝软/硬链接；不遍历任何账户和会话目录。

@@ -573,6 +573,24 @@
   };
   const freeze = proto.applyFreeze;
   proto.applyFreeze = function () { const result = freeze.apply(this, arguments); if (this.__codexSkinController) reconcile(this.__codexSkinController); return result; };
+  function clearUnsupportedSleep(sprite) {
+    const character = currentCharacter();
+    if (!character || character.originalVideo || (!sprite.sleeping && !sprite.sleepSet && !sprite.sleepPhase)) return false;
+    // 鱼睡姿的end也属于原鱼素材：切角色后直接清本地睡态，不进入它的醒来播放链。
+    sprite.sleeping = false; sprite.sleepSet = null; sprite.sleepPhase = null;
+    sprite.stopMove();
+    // 占用、拖拽和第三方点播仍由原状态机接管，清睡态不能抢走正在执行的互动。
+    if (!sprite.frozen && !sprite.dragState?.active && !sprite.playback) {
+      if (!sprite.resumeWorkStatusAnim()) sprite.playIdle();
+    }
+    return true;
+  }
+  const setSleep = proto.setSleep;
+  if (typeof setSleep === 'function') proto.setSleep = function () {
+    const character = currentCharacter();
+    if (!character || character.originalVideo) return setSleep.apply(this, arguments);
+    clearUnsupportedSleep(this);
+  };
   const renderTip = proto.renderTip;
   if (renderTip) proto.renderTip = function () {
     const name = this.__codexSkinController?.displayName;
@@ -614,6 +632,7 @@
       const registeredChildren = preserveRegistered || (copy.label === shared.MORE_MENU_LABEL && hasRegisteredMenu(copy.children));
       if (copy.children) copy.children = decorateTree(copy.children, registeredChildren);
       if (preserveRegistered || copy.action === 'third-party') return [copy];
+        if (selected && !selected.originalVideo && copy.action === 'sleep') return [];
       if (selected?.originalVideo && model.locale === 'en' && (copy.anim ? actionEntry(copy.anim).group === 'category:文字' : copy.label === '文字' && hasAnimationMenu(node.children))) return [];
       if (limited && copy.anim && !readyNativeAction(limited, copy.anim) && !readyEventAction(limited, copy.anim)) return [];
       if (limited && copy.children?.length === 0 && hasAnimationMenu(node.children)) return [];
@@ -645,6 +664,8 @@
     try { void Promise.resolve(open()).catch(failed); } catch { failed(); }
   }
   proto.onMenuAction = function (leaf) {
+    const selected = currentCharacter();
+    if (leaf?.action === 'sleep' && selected && !selected.originalVideo) { this.closeMenu(); return; }
     if (leaf?.action === 'codex-select-skin') {
       this.closeMenu();
       void bridge.select({ character: leaf.character, mode: 'q' }).then(applyModel).catch(() => console.warn('[龙娘桌宠] 形象未能切换，请确认本地素材已就绪。'));
@@ -668,6 +689,7 @@
     model = value; L?.setLocale(value.locale || 'zh-CN');
     for (const controller of controllers) {
       controller.voice?.setRole(value.characters.find(c => c.id === value.selection.character));
+      if (clearUnsupportedSleep(controller.sprite)) { refresh(controller); continue; }
       if (previousCharacter !== value.selection.character && (controller.activeRequest?.nativeMove || controller.pendingRequest?.nativeMove)) {
         controller.sprite.stopMove();
         if (!controller.sprite.resumeWorkStatusAnim()) controller.sprite.playIdle();

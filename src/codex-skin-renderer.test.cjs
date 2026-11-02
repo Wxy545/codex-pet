@@ -1,8 +1,41 @@
 'use strict';
 const test=require('node:test'),assert=require('node:assert/strict'),{readFileSync}=require('node:fs'),{join}=require('node:path'),vm=require('node:vm'),A=require('./skin-actions.cjs');
+const upstreamRoot=process.env.CODEX_PET_UPSTREAM_FIXTURE||join(__dirname,'../node_modules/dsh-pet');
+const supportsSleep=JSON.parse(readFileSync(join(upstreamRoot,'package.json'),'utf8')).version==='0.4.0';
 test('当前角色点击与真实工作状态触发录音，换角色立即清理旧音轨',async()=>{
  const h=harness({videoProfile:true});const role=h.model.characters[0];role.voices={click:{file:'click.wav',volume:.3,cooldownSec:0,interrupt:true},working:{file:'work.wav',volume:.2,cooldownSec:5,interrupt:true}};role.assets['click.wav']={available:true,type:'audio',url:'file:///click.wav'};role.assets['work.wav']={available:true,type:'audio',url:'file:///work.wav'};
  await h.flush();const p=h.sprite();p.playOnce('点击跳跃');await h.ready(p);assert.equal(h.audios.length,1);assert.equal(h.audios[0].src,'file:///click.wav');p.workState={};p.switchTo('工作',false);await h.ready(p);assert.equal(h.audios.length,2);assert.equal(h.audios[0].src,'');assert.equal(h.audios[1].src,'file:///work.wav');h.change({...h.model,selection:{character:'bluefish',mode:'q'}});await h.flush();assert.equal(h.audios[1].src,'');p.dispose();
+});
+test('原鱼睡眠只在原鱼菜单可见，切自有角色后仍可安全唤醒旧状态',async()=>{
+ const h=harness();await h.flush();const tree=[{label:'对话',action:'chat'},{label:'睡觉',action:'sleep'},{label:'起来',action:'wake'}];
+ h.win.PetShared.mountContextMenu({tree});assert.equal(h.menu().tree.some(x=>x.action==='sleep'),false);assert.equal(h.menu().tree.some(x=>x.action==='wake'),true);
+ const fish=structuredClone(h.model);fish.selection.character='bluefish';h.change(fish);await h.flush();h.win.PetShared.mountContextMenu({tree});assert.equal(h.menu().tree.some(x=>x.action==='sleep'),true);
+});
+
+test('非原片角色拒绝旧菜单睡觉指令，原鱼仍走真实原生sleep请求',{skip:!supportsSleep},async()=>{
+ const h=harness();await h.flush();const p=h.sprite(),requests=[];h.win.PetShared.postAction=async url=>{requests.push(url);return true;};
+ p.onMenuAction({action:'sleep'});await h.flush();assert.deepEqual(requests,[]);
+ const fish=structuredClone(h.model);fish.selection.character='bluefish';h.change(fish);await h.flush();p.onMenuAction({action:'sleep'});await h.flush();assert.deepEqual(requests,['/dsh-pet-7340/sleep?pet=main']);p.dispose();
+});
+
+test('新上游原鱼睡着后切龙娘清旧睡态，恢复真实工作档位且不播放鱼醒来段',{skip:!supportsSleep},async()=>{
+ const h=harness();h.model.selection.character='bluefish';await h.flush();const p=h.sprite();p.playOnce('呼吸');await h.ready(p);
+ p.setSleep({sleeping:true,start:'fish-sleep-start',loop:'fish-sleep-loop',end:'fish-sleep-end'});await h.ready(p);p.videoA.onended();await h.ready(p);assert.equal(p.sleepPhase,'loop');
+ p.onWorkTick({state:'working',task:'synthetic task'},1);const dragon=structuredClone(h.model);dragon.selection.character='white-dragon';h.change(dragon);await h.flush();
+ assert.equal(p.sleeping,false);assert.equal(p.sleepSet,null);assert.equal(p.sleepPhase,null);assert.equal(p.pending.anim,'工作');assert.notEqual(p.anim,'fish-sleep-end');await h.ready(p);
+ p.setSleep({sleeping:false});assert.equal(p.pending,null);assert.equal(p.anim,'工作');p.setSleep({sleeping:true,start:'fish-sleep-start',loop:'fish-sleep-loop',end:'fish-sleep-end'});assert.equal(p.sleeping,false);assert.equal(p.pending,null);p.dispose();
+});
+
+test('自有角色收到遗留醒来或冻结中换形象不播鱼end，冻结解除才恢复',{skip:!supportsSleep},async()=>{
+ for(const frozen of [false,true]){
+  const h=harness();await h.flush();const p=h.sprite();p.weights={idle:100,turn:0,move:0};p.playOnce('呼吸');await h.ready(p);p.sleeping=true;p.sleepPhase='loop';p.sleepSet={start:'fish-in',loop:'fish-loop',end:'fish-out'};
+  if(frozen)p.applyFreeze(true);p.setSleep({sleeping:false});assert.equal(p.sleeping,false);assert.equal(p.sleepSet,null);assert.equal(p.sleepPhase,null);assert.notEqual(p.anim,'fish-out');
+  if(frozen){assert.equal(p.pending,null);assert.equal(p.videoB.paused,true);p.applyFreeze(false);assert.equal(p.pending.anim,'呼吸');}
+  else assert.equal(p.pending.anim,'呼吸');p.dispose();
+ }
+ const switched=harness();switched.model.selection.character='bluefish';await switched.flush();const locked=switched.sprite();locked.weights={idle:100,turn:0,move:0};locked.playOnce('呼吸');await switched.ready(locked);locked.sleeping=true;locked.sleepPhase='loop';locked.sleepSet={start:'fish-in',loop:'fish-loop',end:'fish-out'};locked.applyFreeze(true);
+ const dragon=structuredClone(switched.model);dragon.selection.character='white-dragon';switched.change(dragon);await switched.flush();assert.equal(locked.sleeping,false);assert.equal(locked.pending,null);assert.equal(locked.videoB.paused,true);locked.applyFreeze(false);assert.equal(locked.pending.anim,'呼吸');locked.dispose();
+ const fish=harness();fish.model.selection.character='bluefish';await fish.flush();const p=fish.sprite();p.playOnce('呼吸');await fish.ready(p);p.sleeping=true;p.sleepPhase='loop';p.sleepSet={start:'fish-in',loop:'fish-loop',end:'fish-out'};p.setSleep({sleeping:false});assert.equal(p.sleeping,true);assert.equal(p.sleepPhase,'end');assert.equal(p.pending.anim,'fish-out');p.dispose();
 });
 test('自定义PNG单次动作按真实帧数与fps结束，原版试作仍保留原播放器规则',async()=>{const h=harness();h.model.characters[0].custom=true;h.model.characters[0].manifest.profiles.jump.loop=false;await h.flush();const p=h.sprite();p.playOnce('点击跳跃');await h.ready(p);await h.frame(p,1.01);assert.equal(p.pending.anim,'呼吸');p.dispose();});
 test('自定义视频裁剪按片段循环，落脚锚点和缩放实际应用到画面',async()=>{
@@ -42,11 +75,15 @@ function harness({deferredImages=false,deferredState=false,failImages=false,defe
  const model={locale,selection:{character:'white-dragon',mode},characters:[character,{...character,id:'bluefish',label:'大肥鱼',originalVideo:true}],catalog:[]};
  const words={'图文对话':'Chat with images','操作任务':'Tasks','形象':'Appearance','逐帧试作':'Frame prototype','素材未就绪':'Assets not ready','基础动画代用':'Base animation substitute','专属帧待制作':'Dedicated frames pending'};
  const L={setLocale(value){this.locale=value;},t(key){return this.locale==='en'?words[key]||key:key;}};
- const pure={};vm.runInNewContext(readFileSync(join(__dirname,'../node_modules/dsh-pet/runtime/electron-helper/shared-core.js'),'utf8'),pure);
+ const pure={};vm.runInNewContext(readFileSync(join(upstreamRoot,'runtime/electron-helper/shared-core.js'),'utf8'),pure);
  const shared={...pure.PetShared,mountContextMenu:options=>{menu=options;return options;}};
  const win={CodexSkinActions:A,CodexLocale:L,PetShared:shared,__dshPetDebug:{},codexSkins:{getState:()=>deferredState?new Promise(resolve=>{initialState=resolve;}):Promise.resolve(model),select:async value=>({...model,selection:value}),onChanged:fn=>{changed=fn;return()=>{};}},setTimeout:(fn,delay)=>schedule(fn,'timeout',delay),clearTimeout:id=>timers.delete(id),setInterval:(fn,delay)=>schedule(fn,'interval',delay),clearInterval:id=>timers.delete(id),requestAnimationFrame:fn=>schedule(fn,'raf'),cancelAnimationFrame:id=>timers.delete(id),queueMicrotask,addEventListener(){},matchMedia:()=>({matches:false}),codexChatPanel:{open(){}}};
- const context={window:win,document:{head:new Element(),createElement:tag=>{if(tag==='audio'){const v=new Video();audios.push(v);return v;}if(tag==='video'){const v=new Video();v.skinMedia=true;media.push(v);return v;}return new Element(tag);}},navigator:{language:'zh-CN',platform:'Win32'},VIEW:{w:1000,h:800},AREAS:[{x:0,y:0,width:1000,height:800}],toLocal:value=>value,isOpenShortcut:()=>false,MutationObserver:Observer,Image,console:{warn(){},log(){},error(){}},S:shared,BASE:'/dsh-pet-7340',Date:class extends Date{static now(){return clock;}},Math:Object.assign(Object.create(Math),{random}),queueMicrotask,performance:{now:()=>clock},setTimeout:win.setTimeout,clearTimeout:win.clearTimeout,requestAnimationFrame:win.requestAnimationFrame,cancelAnimationFrame:win.cancelAnimationFrame};
- vm.createContext(context);vm.runInContext(readFileSync(join(__dirname,'../node_modules/dsh-pet/runtime/electron-helper/sprite.js'),'utf8')+'\nthis.PetSprite=PetSprite;',context);vm.runInContext(readFileSync(join(__dirname,'../node_modules/dsh-pet/runtime/electron-helper/events.js'),'utf8'),context);
+ const context={config:{clickSoundEnabled:false},window:win,document:{head:new Element(),createElement:tag=>{if(tag==='audio'){const v=new Video();audios.push(v);return v;}if(tag==='video'){const v=new Video();v.skinMedia=true;media.push(v);return v;}return new Element(tag);}},navigator:{language:'zh-CN',platform:'Win32'},VIEW:{w:1000,h:800},AREAS:[{x:0,y:0,width:1000,height:800}],toLocal:value=>value,isOpenShortcut:()=>false,MutationObserver:Observer,Image,console:{warn(){},log(){},error(){}},S:shared,BASE:'/dsh-pet-7340',Date:class extends Date{static now(){return clock;}},Math:Object.assign(Object.create(Math),{random}),queueMicrotask,performance:{now:()=>clock},setTimeout:win.setTimeout,clearTimeout:win.clearTimeout,requestAnimationFrame:win.requestAnimationFrame,cancelAnimationFrame:win.cancelAnimationFrame};
+ vm.createContext(context);vm.runInContext(readFileSync(join(upstreamRoot,'runtime/electron-helper/sprite.js'),'utf8')+'\nthis.PetSprite=PetSprite;',context);
+ // 新上游按HTML真实顺序装入原型模块，不能只执行空类再把fixture当播放器。
+ const upstreamHtml=readFileSync(join(upstreamRoot,'runtime/electron-helper/index.html'),'utf8');
+ for(const match of upstreamHtml.matchAll(/src="(?:\.\/)?(sprite\/[a-z-]+\.js)"/g))vm.runInContext(readFileSync(join(upstreamRoot,'runtime/electron-helper',match[1]),'utf8'),context);
+ vm.runInContext(readFileSync(join(upstreamRoot,'runtime/electron-helper/events.js'),'utf8'),context);
  const P=context.PetSprite;P.prototype.dispose=function(){this.nativeDisposed=true;};vm.runInContext(readFileSync(join(__dirname,'codex-skin-renderer.js'),'utf8'),context);
  function sprite(){const p=Object.create(P.prototype);Object.assign(p,{stage:new Element(),hit:new Element(),tip:new Element(),videoA:new Video(),videoB:new Video(),front:0,pending:null,gen:0,anim:'呼吸',once:true,pet:{id:'main',name:'旧名字',workStatusEnabled:true},assetBase:'file:///original/',_facing:'left',playback:null,pendingSquash:false,pendingMove:null,frozen:false,moveRef:null,moveToken:0,halfW:20,halfH:40,throwRef:null,dragState:{active:false},animations:{idle:['呼吸'],clicks:['点击跳跃'],drag:['拖拽'],turn:[],categories:[],moves:{default:{leadSec:2,tailSec:2},actions:[{name:'移动'}]},events:{workStatus:[[],'工作']}},stopPosFollow(){},stopThrow(){this.throwRef=null;},sendBounds(x,y){positions.push([x,y]);},reportPlayback(id,state){this.report={id,state};},renderBubble(){},startSquash(){this.squashed=true;},closeMenu(){this.menuOpen=false;}});p.videoA.classList.add('is-front');return p;}
  const flush=async()=>{for(let i=0;i<5;i++)await Promise.resolve();};

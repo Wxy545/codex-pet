@@ -1,8 +1,9 @@
+import {readUpstream} from './support/harness-upstream.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, readdirSync, rmSync, symlinkSync, statSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join, resolve } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 import { createHash } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
@@ -37,6 +38,7 @@ test('Harness native pack uses twenty-two actual clips and preserves event slot 
   assert.equal(Object.keys(built.media).length,22);
   assert.equal(built.config.pets[0].id,'codex-white-dragon');
   assert.equal(built.config.animations.clicks.length,5);
+  assert.deepEqual(built.config.animations.sleep,[],'没有独立睡觉视频，不能继承原鱼睡姿/梦话');
   assert.equal(built.config.animations.categories.length,5);
   assert.deepEqual(built.config.animations.categories[0].actions,['整理龙翼','抱尾小憩','抱书阅读','坐垫歇息']);
   assert.equal(built.config.animations.moves.actions.length,2);
@@ -190,15 +192,15 @@ test('native upstream repair stays in selected profile and leaves caller files a
   const profile=join(root,'profile'),pkg=join(profile,'node_modules','dsh-pet');
   mkdirSync(join(pkg,'lib'),{recursive:true});mkdirSync(join(pkg,'runtime','electron-helper'),{recursive:true});
   writeFileSync(join(profile,'package.json'),'{"private":true}');
-  writeFileSync(join(pkg,'package.json'),'{"name":"dsh-pet","version":"0.3.8","exports":{"./package.json":"./package.json"}}');
-  for(const file of ['lib/client.js','runtime/electron-helper/sprite.js','runtime/electron-helper/main.js']) {
-    let source=readFileSync(new URL('../node_modules/dsh-pet/'+file,import.meta.url),'utf8');
+  writeFileSync(join(pkg,'package.json'),'{"name":"dsh-pet","version":"0.4.0","exports":{"./package.json":"./package.json"}}');
+  for(const file of ['lib/client.js','lib/index.js','runtime/electron-helper/shared-core.js','runtime/electron-helper/sprite/motion.js','runtime/electron-helper/main.js','runtime/electron-helper/main/dpi.js','runtime/electron-helper/main/user-data.js']) {
+    let source=readUpstream(file);
     if(file.endsWith('/main.js'))source=source.replace(/\/\/ codex-pet-helper-profile-v1:(?:true|false)\n[\s\S]*?(?=\/\/ ② 宿主探测)/,'');
-    writeFileSync(join(pkg,file),source);
+    mkdirSync(dirname(join(pkg,file)),{recursive:true});writeFileSync(join(pkg,file),source);
   }
   assert.equal(Motion.prepareHarnessDependency({profileDir:profile}).status,'updated');
   assert.equal(Motion.prepareHarnessDependency({profileDir:profile}).status,'current');
-  const outside=join(root,'outside');mkdirSync(outside,{recursive:true});writeFileSync(join(outside,'package.json'),'{"name":"dsh-pet","version":"0.3.8","exports":{"./package.json":"./package.json"}}');
+  const outside=join(root,'outside');mkdirSync(outside,{recursive:true});writeFileSync(join(outside,'package.json'),'{"name":"dsh-pet","version":"0.4.0","exports":{"./package.json":"./package.json"}}');
   rmSync(pkg,{recursive:true});symlinkSync(outside,pkg,process.platform==='win32'?'junction':'dir');
   assert.throws(()=>Motion.prepareHarnessDependency({profileDir:profile}),/outside|profile/);
 });
@@ -208,7 +210,7 @@ test('native repair rejects a package internal junction before modifying externa
   const profile=join(root,'profile'),pkg=join(profile,'node_modules','dsh-pet'),outside=join(root,'outside');
   mkdirSync(outside,{recursive:true});mkdirSync(join(pkg,'runtime','electron-helper'),{recursive:true});
   writeFileSync(join(profile,'package.json'),'{"private":true}');
-  writeFileSync(join(pkg,'package.json'),'{"name":"dsh-pet","version":"0.3.8","exports":{"./package.json":"./package.json"}}');
+  writeFileSync(join(pkg,'package.json'),'{"name":"dsh-pet","version":"0.4.0","exports":{"./package.json":"./package.json"}}');
   writeFileSync(join(outside,'client.js'),oldMotion);writeFileSync(join(pkg,'runtime','electron-helper','sprite.js'),oldMotion);
   symlinkSync(outside,join(pkg,'lib'),process.platform==='win32'?'junction':'dir');
   assert.throws(()=>Motion.prepareHarnessDependency({profileDir:profile}),/outside|unsafe/);
@@ -233,7 +235,7 @@ test('Windows installer accepts verified releases in Chinese spaced paths and re
     const run=spawnSync('powershell.exe',args,{encoding:'utf8',env,windowsHide:true,timeout:15000});
     assert.equal(run.status,0,run.stderr||run.stdout);
     const calls=readFileSync(log,'utf8').trim().split('\n').map(line=>JSON.parse(line));
-    assert.deepEqual(calls[0],['plugin','--profile','web','add','dsh-pet@0.3.8']);
+    assert.deepEqual(calls[0],['plugin','--profile','web','add','dsh-pet@0.4.0']);
     assert.deepEqual(calls[1].slice(0,4),['plugin','--profile','web','add']);assert.equal(calls[1].length,5);
     // Windows可能保留8.3短名拼写，用卷号和文件ID确认仍是同一中文空格目录。
     const actualTarget=statSync(calls[1][4],{bigint:true}),expectedTarget=statSync(join(root,'data/harness-plugin'),{bigint:true});
