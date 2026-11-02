@@ -41,6 +41,10 @@ The default folder is `%LOCALAPPDATA%\codex-pet`; Git is optional. The interface
 
 The pet starts with your selected app after installation. Use **Companion app** in the control center or tray menu to switch between Codex and WorkBuddy, or connect the [native DeepSeek Harness pet](#deepseek-harness). You can also double-click `Start Codex Pet.vbs` or `Stop Codex Pet.vbs` in the installation folder. After a manual stop, it stays stopped until the next launch of the selected app. See [INSTALL.md](INSTALL.md) for WorkBuddy setup, custom paths, and manual installation.
 
+## Chat and tasks
+
+In Codex mode, **double-click the pet** for a compact chat window. Switch to **Task**, choose a folder and permissions, then follow progress, cancel, or read the result in that window. Model options stay collapsed until needed, and switching between the two keeps your current content. In WorkBuddy mode, double-clicking opens WorkBuddy.
+
 ## Control center
 
 Right-click the pet and open **Control center** to preview characters and adjust size, wandering, drag and bounce, and startup scenes. Light and dark colors follow your system. The sidebar shows the features available for your selected app.

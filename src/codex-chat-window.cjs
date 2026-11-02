@@ -4,6 +4,7 @@ const fs = require('node:fs/promises');
 const { randomUUID } = require('node:crypto');
 const { pathToFileURL } = require('node:url');
 const L = require('./codex-locale.cjs');
+const {compactInputBounds}=require('./pet-input-placement.cjs');
 
 const CHAT_PATH = '/dsh-pet-7340/codex-chat';
 const MAX_IMAGE = 5 * 1024 * 1024;
@@ -166,7 +167,7 @@ function createController({ hostRequest, electron, fileRoot = __dirname, fsImpl 
         windowRef.show(); windowRef.focus(); return;
       }
       const win = new BrowserWindow({
-        width: 980, height: 800, minWidth: 520, minHeight: 560,
+        ...compactInputBounds(electron,{width:440,height:480,minWidth:360,minHeight:360}),
         title: `Codex Pet · ${identity.name} · ${L.t('对话')}`, backgroundColor: '#15171c', show: false, autoHideMenuBar: true,
         webPreferences: {
           preload: path.join(fileRoot, 'chat-preload.cjs'), nodeIntegration: false, contextIsolation: true,
@@ -293,7 +294,7 @@ function createController({ hostRequest, electron, fileRoot = __dirname, fsImpl 
     [CHANNELS.task]: async event => {
       if (!owned(event)) return failure('unauthorized');
       if (typeof openTaskPanel !== 'function') return withState(failure('task_menu'));
-      try { await openTaskPanel(); return withState({ ok: true }); } catch { return withState(failure('host_unavailable')); }
+      try { const source=windowRef; await openTaskPanel(); if(source&&!source.isDestroyed())source.hide(); return withState({ ok: true }); } catch { return withState(failure('host_unavailable')); }
     },
   };
   const openListener = event => { if (petSender(event)) void open().catch(() => {}); };

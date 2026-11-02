@@ -10,32 +10,31 @@
   <script defer src="locale-en.cjs"></script>
   <script defer src="codex-locale.cjs"></script>
   <script defer src="panel-locale.js"></script>
-  <script defer src="panel-navigation.js"></script>
   <script defer src="execution-picker.js"></script>
   <script defer src="task-window.js"></script>
 </head>
 <body data-panel="tasks">
   <main>
+    <nav class="input-modes" aria-label="Input mode"><button id="open-chat" type="button" data-i18n="对话">Chat</button><button type="button" aria-pressed="true" data-i18n="任务">Task</button></nav>
     <form id="task-form">
-      <div class="field directory-field">
-        <label for="directory" data-i18n="工作目录">Working folder</label>
-        <div class="directory-row"><input id="directory" readonly aria-describedby="directory-note"><button id="choose-directory" type="button" data-i18n="选择文件夹">Choose folder</button></div>
-        <span id="directory-note" class="field-note" data-i18n="任务从此工作目录开始执行。">The task starts in this folder.</span>
-      </div>
       <div class="field task-field">
         <div class="field-label"><label for="task" data-i18n="任务">Task</label><span id="character-count" class="field-note">0 / 12000</span></div>
-        <textarea id="task" rows="4" maxlength="12000" required></textarea>
+        <textarea id="task" rows="4" maxlength="12000" required autofocus></textarea>
       </div>
-      <div data-execution-picker></div>
+      <div class="field directory-field">
+        <label for="directory" class="sr-only" data-i18n="工作目录">Working folder</label>
+        <div class="directory-row"><input id="directory" readonly><button id="choose-directory" type="button" data-i18n="选择文件夹">Choose folder</button></div>
+      </div>
       <fieldset id="permissions">
-        <legend data-i18n="本次权限">Permissions for this task</legend>
-        <label class="permission-option"><input type="radio" name="permission" value="read-only" checked><span><span data-i18n="只读查看">Read only</span><small data-i18n="分析、检查和回答问题，禁止写入文件。">Inspect and answer questions without writing files.</small></span></label>
-        <label class="permission-option"><input type="radio" name="permission" value="workspace-write"><span><span data-i18n="允许修改所选目录">Allow edits in this folder</span><small data-i18n="按 Codex 的工作目录写入权限执行。">Run with Codex workspace write permissions.</small></span></label>
+        <legend class="sr-only" data-i18n="本次权限">Permissions for this task</legend>
+        <label class="permission-option"><input type="radio" name="permission" value="read-only" checked><span data-i18n="只读查看">Read only</span></label>
+        <label class="permission-option"><input type="radio" name="permission" value="workspace-write"><span data-i18n="允许修改所选目录">Allow edits in this folder</span></label>
       </fieldset>
-      <div class="confirmation" id="confirmation" aria-live="polite" data-i18n="选择目录并填写任务后，可确认执行。">Choose a folder and enter a task to continue.</div>
+      <details id="model-settings"><summary id="model-summary">Model and reasoning</summary><fieldset id="execution-options"><div data-execution-picker></div></fieldset></details>
+      <div class="confirmation" id="confirmation" aria-live="polite" hidden></div>
       <div class="actions"><button id="submit-task" class="primary" type="submit" disabled data-i18n="确认执行">Run task</button><button id="cancel-task" class="danger" type="button" hidden data-i18n="取消本次任务">Cancel task</button><button id="retry-state" type="button" hidden data-i18n="重新连接">Reconnect</button></div>
     </form>
-    <section id="task-result" class="result" aria-label="Task result" data-i18n-aria="执行结果">
+    <section id="task-result" class="result" aria-label="Task result" data-i18n-aria="执行结果" hidden>
       <div class="result-bar"><span id="execution-state" role="status" data-i18n="尚未开始">Not started</span><button id="copy-result" type="button" disabled data-i18n="复制结果">Copy result</button></div>
       <div id="active-scope" class="active-scope" hidden></div>
       <div id="result-content" class="result-content" tabindex="0" aria-label="Task result" data-i18n-aria="执行结果">

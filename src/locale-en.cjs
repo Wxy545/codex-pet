@@ -8,6 +8,8 @@
     '所选模型已不可用，请重新选择。':'This model is no longer available. Choose another model.',
     '所选模型未确认支持图片，请换一个模型。':'Image support is not confirmed for this model. Choose another model.',
     '所选模型不支持这个思考强度。':'This model does not support that reasoning effort.',
+    '输入方式':'Input mode',
+    '模型与用途':'Model & purpose',
     '模型设置无效，请重新选择。':'The model settings are invalid. Choose them again.',
     '联动应用': 'Companion app',
     '请先安装 Codex CLI，再选择 Codex 联动。': 'Install Codex CLI before choosing Codex as the companion app.',

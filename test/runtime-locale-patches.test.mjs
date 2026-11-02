@@ -4,7 +4,7 @@ import {readFileSync} from 'node:fs';
 import {localizeIndexHtml} from '../scripts/runtime-locale-patches.mjs';
 const clean=readFileSync(new URL('./fixtures/upstream-desktop-scripts.html',import.meta.url),'utf8');
 const scripts=source=>[...source.matchAll(/<script src="(?:\.\/)?([^"]+)"/g)].map(match=>match[1]);
-const expected=['shared-core.js','constants.js','sprite.js','locale-en.cjs','codex-locale.cjs','skin-actions.cjs','pet-host-menu.js','codex-skin-renderer.js','startup-menu.js','events.js','renderer.js'];
+const expected=['shared-core.js','constants.js','sprite.js','locale-en.cjs','codex-locale.cjs','skin-actions.cjs','pet-host-menu.js','codex-skin-renderer.js','startup-menu.js','pet-quick-input.js','events.js','renderer.js'];
 test('干净上游HTML的locale先于renderer，且自有脚本只加载一次',()=>{
  const fixed=localizeIndexHtml(clean);assert.deepEqual(scripts(fixed),expected);assert.match(fixed,/<title>Codex Pet<\/title>/);
  assert.equal(localizeIndexHtml(fixed),fixed);

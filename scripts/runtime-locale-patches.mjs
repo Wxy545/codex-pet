@@ -7,7 +7,7 @@ const literals=code=>code.replace(quotePattern,token=>chinese(token)?`codexFixed
 
 export function localizeIndexHtml(source){
   // 装饰器后安装者先执行：启动菜单→角色菜单→宿主能力过滤→原生菜单，避免加回不可用入口。
-  const scripts=['locale-en.cjs','codex-locale.cjs','skin-actions.cjs','pet-host-menu.js','codex-skin-renderer.js','startup-menu.js'];
+  const scripts=['locale-en.cjs','codex-locale.cjs','skin-actions.cjs','pet-host-menu.js','codex-skin-renderer.js','startup-menu.js','pet-quick-input.js'];
   // 先移除自己管理的标签，再一次插入；干净安装与旧helper必须有相同的依赖顺序。
   for(const file of scripts){const escaped=file.replaceAll('.','\\.');source=source.replace(new RegExp('[\\t ]*<script\\s+src=["\\\'](?:\\./)?'+escaped+'["\\\']><\\/script>[\\t ]*\\r?\\n?','g'),'');}
   const anchor=source.includes('<script src="./sprite/menu.js"></script>')?'<script src="./sprite/menu.js"></script>':'<script src="./sprite.js"></script>';

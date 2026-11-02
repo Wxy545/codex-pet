@@ -2,7 +2,7 @@ main {
   height: 100dvh;
   max-width: 1040px;
   margin-inline: auto;
-  padding: var(--ui-space-6);
+  padding: var(--ui-space-4);
   display: flex;
   flex-direction: column;
   gap: var(--ui-space-5);
@@ -47,7 +47,7 @@ main {
 .attachment span { font-size: var(--ui-text-xs); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .attachment button { min-height: var(--ui-space-7); padding: var(--ui-space-1) var(--ui-space-2); font-size: var(--ui-text-xs); background: transparent; border: 0; color: var(--ui-muted); }
 .toast { position: fixed; inset: auto var(--ui-space-6) var(--ui-space-6) auto; z-index: 10; max-width: min(440px, calc(100vw - var(--ui-space-7))); background: var(--ui-raised); border: 1px solid var(--ui-line); border-radius: var(--ui-radius-md); box-shadow: var(--ui-shadow); padding: var(--ui-space-3) var(--ui-space-4); overflow-wrap: anywhere; }
-@media (max-width: 680px) { main { height: calc(100dvh - 64px); padding: var(--ui-space-4); gap: var(--ui-space-4); } }
+@media (max-width: 680px) { main { height: 100dvh; padding: var(--ui-space-4); gap: var(--ui-space-4); } }
 @media (max-width: 440px) {
   main { padding: var(--ui-space-3); gap: var(--ui-space-3); }
   .toolbar { gap: var(--ui-space-2); align-items: flex-start; }
@@ -62,3 +62,12 @@ main {
   #image-limit { flex-basis: 100%; padding-inline-start: var(--ui-space-2); }
   #send { min-width: calc(var(--ui-space-8) * 1.5); align-self: flex-end; }
 }
+
+/* 日常输入独立于设置侧栏，选项只在需要时展开。 */
+.input-modes { display:flex; align-items:center; gap:var(--ui-space-1); }
+.input-modes > span { color:var(--ui-accent); background:var(--ui-raised); border-radius:var(--ui-radius-sm); padding:var(--ui-space-1) var(--ui-space-2); font-size:var(--ui-text-sm); white-space:nowrap; }
+.input-modes button { min-height:var(--ui-space-7); }
+.input-options { color:var(--ui-muted); font-size:var(--ui-text-xs); }
+.input-options summary { cursor:pointer; width:fit-content; padding:var(--ui-space-1); border-radius:var(--ui-radius-sm); }
+.input-options summary:focus-visible { outline:2px solid var(--ui-focus); outline-offset:2px; }
+.input-options[open] { max-height:calc(var(--ui-control)*4); overflow-y:auto; }

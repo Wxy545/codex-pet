@@ -31,7 +31,7 @@ function fixture(options = {}) {
       windows.push(this);
     }
     setMenu() {} setTitle(value) { this.title = value; } isDestroyed() { return this.destroyed; } isMinimized() { return false; }
-    show() {} focus() {}
+    show() {} focus() {} hide() { this.hidden=true; }
     async loadFile(file) { this.url = pathToFileURL(file).href; }
     destroy() { this.destroyed = true; this.emit('closed'); }
   }
@@ -267,4 +267,16 @@ test('关闭重开后旧轮次完成，不恢复关闭前已有的完整历史',
   assert.equal(result.state.busy, false);
   assert.deepEqual(result.state.messages, []);
   assert.deepEqual((await f.invoke(CHANNELS.state)).state.messages, []);
+});
+
+test('日常对话是无侧栏小窗，切任务后隐藏来源且保留对话，再开继续',async t=>{
+ const f=fixture({openTaskPanel:async()=>{}});t.after(()=>f.controller.dispose());await f.controller.open();const win=f.windows[0];let hidden=0;win.hide=()=>{hidden++;};
+ assert.ok(win.settings.width<=480);assert.ok(win.settings.height<=560);
+ await f.invoke(CHANNELS.send,{text:'保留当前对话',imageIds:[]});const before=(await f.invoke(CHANNELS.state)).state.messages;
+ assert.equal((await f.invoke(CHANNELS.task)).ok,true);assert.equal(hidden,1);assert.equal(win.destroyed,false);
+ await f.controller.open();assert.equal(f.windows.length,1);assert.deepEqual((await f.invoke(CHANNELS.state)).state.messages,before);
+});
+test('打开任务失败时对话小窗仍在，不丢失输入上下文',async t=>{
+ const f=fixture({openTaskPanel:async()=>{throw Error('unavailable');}});t.after(()=>f.controller.dispose());await f.controller.open();let hidden=0;f.windows[0].hide=()=>{hidden++;};
+ assert.equal((await f.invoke(CHANNELS.task)).ok,false);assert.equal(hidden,0);
 });

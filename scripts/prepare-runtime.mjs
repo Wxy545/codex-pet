@@ -187,8 +187,8 @@ for(const file of ['codex-notifications.cjs','foreground-codex.ps1','codex-api.c
   'qq-window.cjs','qq-preload.cjs','qq-window.html','qq-window.js','qq-window.css',
   'workbuddy-notifications.cjs','foreground-workbuddy.ps1','workbuddy-target.ps1',
   'codex-task-window.cjs','task-preload.cjs','task-window.html','task-window.js','task-window.css',
-  'codex-chat-window.cjs','chat-preload.cjs','chat-window.html','chat-window.js','chat-window.css',
-  'codex-skins.cjs','codex-skin-renderer.js','skin-actions.cjs','codex-character.cjs','codex-locale.cjs','locale-en.cjs','codex-runtime-locale.cjs','panel-locale.js','runtime-range.cjs']){
+  'codex-chat-window.cjs','pet-input-placement.cjs','chat-preload.cjs','chat-window.html','chat-window.js','chat-window.css',
+  'codex-skins.cjs','codex-skin-renderer.js','pet-quick-input.js','skin-actions.cjs','codex-character.cjs','codex-locale.cjs','locale-en.cjs','codex-runtime-locale.cjs','panel-locale.js','runtime-range.cjs']){
   await copyFile(resolve(root,'src',file),resolve(pkg,'runtime/electron-helper',file));
 }
 for(const file of ['codex-startup.cjs','startup-target.ps1','startup-preload.cjs','startup-menu.js','startup-window.html','startup-window.js','startup-window.css','startup-cinema.js','startup-cinema.css','startup-sheep.js','startup-sheep.css','startup-media.cjs','startup-media-probe.html','startup-media-probe.js','startup-media-probe-preload.cjs','startup-custom.js','startup-custom.css','startup-deepseek.js','startup-deepseek.css']){

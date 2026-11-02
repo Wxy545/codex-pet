@@ -4,6 +4,7 @@ const path = require('node:path');
 const { pathToFileURL } = require('node:url');
 const fs = require('node:fs/promises');
 const L = require('./codex-locale.cjs');
+const {compactInputBounds}=require('./pet-input-placement.cjs');
 
 const TASK_PATH = '/dsh-pet-7340/codex-tasks';
 const CHANNELS = Object.freeze({
@@ -110,7 +111,7 @@ function createController({ hostRequest, electron, fileRoot = __dirname, fsImpl 
     // 首次加载期间的重复入口共同等待，不提前隐藏发起导航的旧面板。
     opening = (async () => {
       const win = new BrowserWindow({
-        width: 1040, height: 800, minWidth: 560, minHeight: 580,
+        ...compactInputBounds(electron,{width:480,height:620,minWidth:380,minHeight:460}),
         title: `Codex Pet · ${L.t('操作任务')}`, backgroundColor: '#15171c', show: false, autoHideMenuBar: true,
         webPreferences: {
           preload: path.join(fileRoot, 'task-preload.cjs'), nodeIntegration: false,

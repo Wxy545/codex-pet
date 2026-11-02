@@ -76,6 +76,8 @@ test('面板单实例并隔离Node权限，阻止任意导航与新窗口', asyn
   await f.controller.open(); await f.controller.open();
   assert.equal(f.windows.length, 1);
   const win = f.windows[0];
+  assert.equal(win.settings.width,480);assert.equal(win.settings.height,620);
+  assert.equal(win.settings.minWidth,380);assert.equal(win.settings.minHeight,460);
   assert.equal(win.settings.webPreferences.nodeIntegration, false);
   assert.equal(win.settings.webPreferences.contextIsolation, true);
   assert.equal(win.settings.webPreferences.sandbox, true);

@@ -10,7 +10,6 @@
   <script defer src="locale-en.cjs"></script>
   <script defer src="codex-locale.cjs"></script>
   <script defer src="panel-locale.js"></script>
-  <script defer src="panel-navigation.js"></script>
   <script defer src="execution-picker.js"></script>
   <script defer src="chat-window.js"></script>
 </head>
@@ -18,18 +17,18 @@
   <main>
     <div class="toolbar">
       <div class="chat-identity">
-        <span class="character-mark" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M7 4 5 2v6a7 7 0 1 0 14 0V2l-2 2M8 10h.01M16 10h.01M10 15h4"/></svg></span>
+
         <div class="identity-copy"><span id="character-name" data-i18n="桌宠">Companion</span><span id="status" role="status" data-i18n="就绪">Ready</span></div>
       </div>
-      <div class="toolbar-actions"><button id="new-conversation" type="button" data-i18n="新对话">New chat</button><button id="open-tasks" type="button" data-i18n="操作任务">Tasks</button></div>
+      <div class="toolbar-actions"><button id="new-conversation" type="button" data-i18n="新对话">New chat</button><nav class="input-modes" aria-label="Input mode" data-i18n-aria="输入方式"><span aria-current="page" data-i18n="对话">Chat</span><button id="open-tasks" type="button" data-i18n="任务">Task</button></nav></div>
     </div>
     <section id="messages" class="messages" role="log" aria-label="Chat messages" data-i18n-aria="对话消息" aria-live="polite"></section>
     <form id="chat-form" class="composer">
-      <div data-execution-picker></div>
+      <details class="input-options"><summary data-i18n="模型与用途">Model &amp; purpose</summary><div data-execution-picker></div></details>
       <div id="attachments" class="attachments" aria-label="Images to send" data-i18n-aria="待发送图片" hidden></div>
       <label class="sr-only" for="message-input" data-i18n="消息">Message</label>
-      <textarea id="message-input" rows="3" maxlength="8192" placeholder="Say something…" data-i18n-placeholder="说点什么…" aria-describedby="image-limit"></textarea>
-      <div class="composer-actions"><div class="attachment-tools"><button id="choose-images" type="button" data-i18n="添加图片">Add images</button><span id="image-limit" data-i18n="PNG / JPEG / WebP · 最多4张">PNG / JPEG / WebP · Up to 4</span></div><button id="send" class="primary" type="submit" disabled data-i18n="发送">Send</button></div>
+      <textarea id="message-input" rows="2" maxlength="8192" placeholder="Say something…" data-i18n-placeholder="说点什么…" aria-describedby="image-limit"></textarea>
+      <div class="composer-actions"><div class="attachment-tools"><button id="choose-images" type="button" data-i18n="添加图片">Add images</button><span class="sr-only" id="image-limit" data-i18n="PNG / JPEG / WebP · 最多4张">PNG / JPEG / WebP · Up to 4</span></div><button id="send" class="primary" type="submit" disabled data-i18n="发送">Send</button></div>
     </form>
     <div id="message" class="toast" role="alert" hidden></div>
   </main>

@@ -11,6 +11,8 @@
     submit: element('submit-task'), cancel: element('cancel-task'), retry: element('retry-state'),
     state: element('execution-state'), scope: element('active-scope'), progress: element('progress'), output: element('result-content'), resultRegion: element('task-result'),
     result: element('result-text'), copy: element('copy-result'), message: element('message'), count: element('character-count'),
+    modelSummary: element('model-summary'), modelOptions: element('execution-options'),
+    chat: element('open-chat'),
   };
   const STATE_TEXT = { idle: '尚未开始', running: '正在执行', cancelling: '正在取消', completed: '已返回结果', failed: '未完成', cancelled: '已取消', timed_out: '已超时' };
   let snapshot = { state: 'idle', progress: [], summary: '' };
@@ -64,6 +66,8 @@
     fields.choose.disabled = busy;
     fields.task.disabled = busy;
     fields.permissions.disabled = busy;
+    fields.modelOptions.disabled = busy;
+    fields.modelSummary.textContent = document.documentElement.lang === 'zh-CN' ? '模型与思考' : 'Model and reasoning';
     fields.count.textContent = fields.task.value.length + ' / 12000';
     fields.submit.disabled = busy || !connected || !fields.directory.value || !fields.task.value.trim();
     fields.submit.textContent = T(permission() === 'workspace-write' ? '确认并允许修改' : '确认执行');
@@ -71,14 +75,16 @@
     fields.cancel.disabled = pending || snapshot.state === 'cancelling';
     fields.retry.hidden = connected;
     fields.copy.disabled = pending || !snapshot.summary;
-    fields.confirmation.textContent = fields.directory.value && fields.task.value.trim()
+    fields.confirmation.hidden = !fields.directory.value;
+    fields.confirmation.textContent = fields.directory.value
       ? T(permission() === 'workspace-write' ? '确认后，按工作目录写入权限执行：' : '本次禁止写入，工作目录：') + fields.directory.value
-      : T('选择目录并填写任务后，可确认执行。');
+      : '';
     fields.state.textContent = T(connected ? STATE_TEXT[snapshot.state] || '状态未知' : '暂时无法读取任务状态');
     fields.state.dataset.state = connected ? snapshot.state : 'unavailable';
     fields.directory.title = fields.directory.value;
     fields.scope.hidden = !snapshot.cwd;
     fields.scope.textContent = snapshot.cwd ? T(snapshot.permission === 'workspace-write' ? '工作目录读写 · ' : '只读，禁止写入 · ') + snapshot.cwd : '';
+    fields.resultRegion.hidden = snapshot.state === 'idle' && !snapshot.summary && !snapshot.error && !(snapshot.progress || []).length;
     renderOutput();
   }
   function receive(response, announce = false) {
@@ -125,7 +131,17 @@
   fields.cancel.addEventListener('click', () => operate(async () => { receive(await api.cancelTask(snapshot.id), true); }));
   fields.copy.addEventListener('click', () => operate(async () => { if (receive(await api.copyResult(), true)) notify('结果已复制。'); }));
   fields.retry.addEventListener('click', () => { void poll(); });
+  fields.chat.addEventListener('click', async () => {
+    fields.chat.disabled = true;
+    try { if (!window.petPanels?.navigate || (await window.petPanels.navigate('chat'))?.ok === false) throw Error('unavailable'); }
+    catch { notify('操作未完成，请稍后重试。'); }
+    finally { fields.chat.disabled = false; }
+  });
   fields.task.addEventListener('input', render);
+  // 快捷提交仍走同一个表单及原生目录/权限校验，输入法组字期间不触发。
+  fields.task.addEventListener('keydown', event => {
+    if ((event.ctrlKey || event.metaKey) && event.key === 'Enter' && !event.isComposing && !fields.submit.disabled) { event.preventDefault(); fields.form.requestSubmit(); }
+  });
   fields.permissions.addEventListener('change', render);
   fields.output.addEventListener('scroll', () => { followingResult = fields.output.scrollHeight - fields.output.clientHeight - fields.output.scrollTop <= 48; });
   window.addEventListener('beforeunload', () => { stopped = true; clearInterval(timer); clearTimeout(messageTimer); });
