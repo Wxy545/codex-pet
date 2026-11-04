@@ -27,12 +27,13 @@ test('正常头像换格式保持原生命名、读取和mtime选择，写后不
 test('Windows真实目录大小写及8.3别名可正常读写，仍以规范目录保存',{skip:process.platform!=='win32'},t=>{
  const f=fixture(t),api=guard();
  assert.deepEqual(api.save(f.dir.toUpperCase(),'dragon',Buffer.from('case-safe'),'.png',extensions),{ok:true});
- assert.equal(api.read(f.dir.toUpperCase(),'dragon',extensions,mime).file.toLowerCase(),fs.realpathSync(path.join(f.dir,'dragon-avatar.png')).toLowerCase());
+ // Windows非native实现可能保留临时目录祖先的8.3拼写，期望值应使用系统规范长路径。
+ assert.equal(api.read(f.dir.toUpperCase(),'dragon',extensions,mime).file.toLowerCase(),fs.realpathSync.native(path.join(f.dir,'dragon-avatar.png')).toLowerCase());
  // 只读取本次临时目录的系统短名；不经其它shell删除、移动或修改文件。
  assert.doesNotMatch(f.dir,/["%!^&|<>]/);
  const command=path.join(process.env.SystemRoot||'C:\\Windows','System32','cmd.exe');
  const result=spawnSync(command,['/u','/d','/s','/c','for %I in ("'+f.dir+'") do @echo %~sI'],{encoding:'utf16le',windowsHide:true,windowsVerbatimArguments:true,timeout:3000});
- assert.equal(result.status,0,'读取测试目录短名失败');const short=result.stdout.trim(),canonical=fs.realpathSync(f.dir);
+ assert.equal(result.status,0,'读取测试目录短名失败');const short=result.stdout.trim(),canonical=fs.realpathSync.native(f.dir);
  if(short.toLowerCase()===canonical.toLowerCase()){t.diagnostic('此卷没有不同的8.3目录别名；大小写路径已核对');return;}
  assert.equal(fs.statSync(short).ino,fs.statSync(canonical).ino);
  assert.deepEqual(api.save(short,'dragon',Buffer.from('short-safe'),'.jpg',extensions),{ok:true});
