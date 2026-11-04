@@ -261,7 +261,7 @@ Want to see more dragon-girl animations? You can help fund the video work throug
 
 ## Credits and license
 
-Thanks to [PC2005-cloud/dsh-pet](https://github.com/PC2005-cloud/dsh-pet) for the desktop pet, animations, and interactions. This adaptation uses `dsh-pet@0.4.0`.
+Thanks to [PC2005-cloud/dsh-pet](https://github.com/PC2005-cloud/dsh-pet) for the desktop pet, animations, and interactions. This adaptation uses `dsh-pet@0.4.1`.
 
 Startup scenes draw on ideas from [884048454/codex-startup-animation](https://github.com/884048454/codex-startup-animation), [yushua0808-cpu/dragon-codex-boot](https://github.com/yushua0808-cpu/dragon-codex-boot), and [linke-e/dsh-opening-animation](https://github.com/linke-e/dsh-opening-animation). Thanks also to [jingh12312-rgb/bailong-desktop-pet](https://github.com/jingh12312-rgb/bailong-desktop-pet) for desktop interaction ideas. This project uses its own dragon clips and startup visuals.
 
@@ -271,7 +271,7 @@ The white dragon girl is used with the creator's permission, credited as Xiaohon
 
 Curly's AI-created character reference was supplied by **Wxy545**, who authorized its use and distribution with Codex Pet. Her clips have their own [asset notice](assets/curly-sheep/NOTICE.md).
 
-dsh-pet 0.4.0 also depends on Edge TTS 1.9.1 (GPL-3.0-only). Its [source and license](THIRD_PARTY_NOTICES.md#edge-tts-语音依赖) are separate from this project’s MIT code.
+dsh-pet 0.4.1 also depends on Edge TTS 1.9.1 (GPL-3.0-only). Its [source and license](THIRD_PARTY_NOTICES.md#edge-tts-语音依赖) are separate from this project’s MIT code.
 
 This project’s code and documentation use the [MIT license](LICENSE). The original animations retain dsh-pet’s noncommercial terms, and the whale character uses [CC BY-NC-SA 4.0](https://creativecommons.org/licenses/by-nc-sa/4.0/). Full credits and terms are in [third-party notices](THIRD_PARTY_NOTICES.md).
 

@@ -1,7 +1,7 @@
 'use strict';
 const test=require('node:test'),assert=require('node:assert/strict'),{readFileSync}=require('node:fs'),{join}=require('node:path'),vm=require('node:vm'),A=require('./skin-actions.cjs');
 const upstreamRoot=process.env.CODEX_PET_UPSTREAM_FIXTURE||join(__dirname,'../node_modules/dsh-pet');
-const supportsSleep=JSON.parse(readFileSync(join(upstreamRoot,'package.json'),'utf8')).version==='0.4.0';
+const supportsSleep=['0.4.0','0.4.1'].includes(JSON.parse(readFileSync(join(upstreamRoot,'package.json'),'utf8')).version);
 test('当前角色点击与真实工作状态触发录音，换角色立即清理旧音轨',async()=>{
  const h=harness({videoProfile:true});const role=h.model.characters[0];role.voices={click:{file:'click.wav',volume:.3,cooldownSec:0,interrupt:true},working:{file:'work.wav',volume:.2,cooldownSec:5,interrupt:true}};role.assets['click.wav']={available:true,type:'audio',url:'file:///click.wav'};role.assets['work.wav']={available:true,type:'audio',url:'file:///work.wav'};
  await h.flush();const p=h.sprite();p.playOnce('点击跳跃');await h.ready(p);assert.equal(h.audios.length,1);assert.equal(h.audios[0].src,'file:///click.wav');p.workState={};p.switchTo('工作',false);await h.ready(p);assert.equal(h.audios.length,2);assert.equal(h.audios[0].src,'');assert.equal(h.audios[1].src,'file:///work.wav');h.change({...h.model,selection:{character:'bluefish',mode:'q'}});await h.flush();assert.equal(h.audios[1].src,'');p.dispose();

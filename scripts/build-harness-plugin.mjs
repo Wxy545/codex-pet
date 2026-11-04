@@ -38,7 +38,7 @@ for (const locale of ['zh-CN', 'en']) {
 }
 await mkdir(join(output, 'assets'), { recursive: true });
 await mkdir(join(output, 'runtime'), { recursive: true });
-for (const file of ['index.mjs', 'pack.mjs', 'motion-fix.mjs', 'modular-runtime-fix.mjs', 'physics-defaults-fix.mjs', 'helper-startup-fix.mjs', 'browser-drag-fix.mjs', 'native-balance.mjs', 'native-remote-state.mjs', 'native-tasks.mjs', 'native-tasks-ui.js', 'native-tasks.css', 'cordis.patch.yml', 'README.md']) await copyFile(join(root, 'harness', file), join(output, file));
+for (const file of ['index.mjs', 'pack.mjs', 'motion-fix.mjs', 'modular-runtime-fix.mjs', 'physics-defaults-fix.mjs', 'avatar-fix.mjs', 'main-fixes-041.mjs', 'helper-startup-fix.mjs', 'browser-drag-fix.mjs', 'native-balance.mjs', 'native-remote-state.mjs', 'native-tasks.mjs', 'native-tasks-ui.js', 'native-tasks.css', 'cordis.patch.yml', 'README.md']) await copyFile(join(root, 'harness', file), join(output, file));
 for (const file of ['pet-status-strip.js', 'pet-status-strip.css']) await copyFile(join(root, 'src', file), join(output, 'runtime', file));
 await copyFile(join(root, 'LICENSE'), join(output, 'LICENSE'));
 await copyFile(join(source, 'NOTICE.md'), join(output, 'NOTICE.md'));

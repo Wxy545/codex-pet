@@ -139,8 +139,16 @@
   });
   fields.task.addEventListener('input', render);
   // 快捷提交仍走同一个表单及原生目录/权限校验，输入法组字期间不触发。
+  let inputComposing = false, compositionEndedAt = -Infinity;
+  fields.task.addEventListener('compositionstart', () => { inputComposing = true; });
+  fields.task.addEventListener('compositionend', () => { inputComposing = false; compositionEndedAt = performance.now(); });
   fields.task.addEventListener('keydown', event => {
-    if ((event.ctrlKey || event.metaKey) && event.key === 'Enter' && !event.isComposing && !fields.submit.disabled) { event.preventDefault(); fields.form.requestSubmit(); }
+    if ((event.ctrlKey || event.metaKey) && event.key === 'Enter' && !fields.submit.disabled) {
+      if (inputComposing || event.isComposing || event.keyCode === 229) return;
+      event.preventDefault();
+      if (event.repeat || performance.now() - compositionEndedAt < 80) return;
+      fields.form.requestSubmit();
+    }
   });
   fields.permissions.addEventListener('change', render);
   fields.output.addEventListener('scroll', () => { followingResult = fields.output.scrollHeight - fields.output.clientHeight - fields.output.scrollTop <= 48; });

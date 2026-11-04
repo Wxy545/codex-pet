@@ -72,7 +72,7 @@ export function prepareHarnessBalance({profileDir,sourceRoot,locale='en',withTas
  if(!isAbsolute(profileDir)||!isAbsolute(sourceRoot))throw Error('absolute-harness-profile-required');
  const require=createRequire(join(profileDir,'package.json')),profile=realpathSync(profileDir),pkg=realpathSync(dirname(require.resolve('dsh-pet/package.json')));
  if(!inside(profile,pkg))throw Error('harness-dsh-pet-outside-selected-profile');
- const meta=JSON.parse(readFileSync(join(pkg,'package.json'),'utf8'));if(meta.name!=='dsh-pet'||meta.version!=='0.4.0')throw Error('harness-dsh-pet-0.4.0-required');
+ const meta=JSON.parse(readFileSync(join(pkg,'package.json'),'utf8'));if(meta.name!=='dsh-pet'||!['0.4.0','0.4.1'].includes(meta.version))throw Error('harness-dsh-pet-0.4.0-or-0.4.1-required');
  const statusScript=readFileSync(join(sourceRoot,'runtime','pet-status-strip.js'),'utf8'),taskScript=withTasks?readFileSync(join(sourceRoot,'native-tasks-ui.js'),'utf8'):null,statusCss=readFileSync(join(sourceRoot,'runtime','pet-status-strip.css'),'utf8')+(withTasks?'\n'+readFileSync(join(sourceRoot,'native-tasks.css'),'utf8'):'');
  const files=[];
  function plan(name,transform,fresh=false){

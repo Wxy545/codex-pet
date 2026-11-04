@@ -12,12 +12,14 @@ import { patchHostOpenTarget } from './runtime-host-patch.mjs';
 import { patchHelperStartup } from '../harness/helper-startup-fix.mjs';
 import {patchModelPurpose} from './model-purpose-patch.mjs';
 import {prepareRuntime040} from './prepare-runtime-040.mjs';
+import {prepareRuntime041} from './prepare-runtime-041.mjs';
 
 const root=resolve(dirname(fileURLToPath(import.meta.url)),'..');
 const pkg=resolve(root,'node_modules/dsh-pet');
 const meta=JSON.parse(await readFile(resolve(pkg,'package.json'),'utf8'));
-if(!['0.3.8','0.4.0'].includes(meta.version)) throw new Error('运行时版本必须是已验证的 dsh-pet 0.3.8 或 0.4.0，请按锁文件安装。');
-if(meta.version==='0.4.0')await prepareRuntime040({root,pkg});
+if(!['0.3.8','0.4.0','0.4.1'].includes(meta.version)) throw new Error('运行时版本必须是已验证的 dsh-pet 0.3.8、0.4.0 或 0.4.1，请按锁文件安装。');
+if(meta.version==='0.4.1')await prepareRuntime041({root,pkg});
+else if(meta.version==='0.4.0')await prepareRuntime040({root,pkg});
 else {
 
 const oldGate='if (monthly === void 0 || monthly === null) return null;';

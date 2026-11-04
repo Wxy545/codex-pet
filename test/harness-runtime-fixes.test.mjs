@@ -6,12 +6,13 @@ import {tmpdir} from 'node:os';
 import vm from 'node:vm';
 import {createRequire} from 'node:module';
 const require=createRequire(import.meta.url);
-import {readUpstream} from './support/harness-upstream.mjs';
+import {readUpstream,upstreamVersion} from './support/harness-upstream.mjs';
 import {prepareHarnessDependency} from '../harness/motion-fix.mjs';
 import {patchModularMain,patchModularMouseRelease,patchModularSandbox,patchModularUserData,validateModularDpi,validateModularMain,validateModularMotion} from '../harness/modular-runtime-fix.mjs';
 const files=['lib/client.js','lib/index.js','runtime/electron-helper/shared-core.js','runtime/electron-helper/sprite/motion.js','runtime/electron-helper/main.js','runtime/electron-helper/main/dpi.js','runtime/electron-helper/main/user-data.js'];
+if(upstreamVersion==='0.4.1')files.push('runtime/electron-helper/sprite/input.js','runtime/electron-helper/index.html');
 function fixture(t){
- const root=fs.mkdtempSync(join(tmpdir(),'harness-runtime-fixes-'));t.after(()=>fs.rmSync(root,{recursive:true,force:true}));const profile=join(root,'profile'),pkg=join(profile,'node_modules/dsh-pet');fs.mkdirSync(pkg,{recursive:true});fs.writeFileSync(join(profile,'package.json'),'{}');fs.writeFileSync(join(pkg,'package.json'),JSON.stringify({name:'dsh-pet',version:'0.4.0',exports:{'./package.json':'./package.json'}}));const original={};for(const name of files){fs.mkdirSync(dirname(join(pkg,name)),{recursive:true});original[name]=readUpstream(name);fs.writeFileSync(join(pkg,name),original[name]);}return{root,profile,pkg,original};
+ const root=fs.mkdtempSync(join(tmpdir(),'harness-runtime-fixes-'));t.after(()=>fs.rmSync(root,{recursive:true,force:true}));const profile=join(root,'profile'),pkg=join(profile,'node_modules/dsh-pet');fs.mkdirSync(pkg,{recursive:true});fs.writeFileSync(join(profile,'package.json'),'{}');fs.writeFileSync(join(pkg,'package.json'),JSON.stringify({name:'dsh-pet',version:upstreamVersion,exports:{'./package.json':'./package.json'}}));const original={};for(const name of files){fs.mkdirSync(dirname(join(pkg,name)),{recursive:true});original[name]=readUpstream(name);fs.writeFileSync(join(pkg,name),original[name]);}return{root,profile,pkg,original};
 }
 test('0.4真实新模块的目标插值和DPI保护均显式核验，不替换旧整份runtime',()=>{
  for(const [name,fn,options]of[['lib/client.js',validateModularMotion,{browser:true}],['runtime/electron-helper/sprite/motion.js',validateModularMotion],['runtime/electron-helper/main/dpi.js',validateModularDpi],['runtime/electron-helper/main.js',validateModularMain]]){const s=readUpstream(name);assert.equal(fn(s,options),s);assert.throws(()=>fn(s+s,options),/anchor/);assert.throws(()=>fn('unknown',options),/anchor/);}

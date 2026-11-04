@@ -30,7 +30,8 @@ function upstreamCapabilityResult040(rest, method) {
 `;
 
 /** 只适配0.4.0实际宿主；Range和调度使用新包原生实现，核验失败即停止。 */
-export function patchStandalone040(input){
+export function patchStandalone040(input,{version='0.4.0'}={}){
+ if(!['0.4.0','0.4.1'].includes(version))throw Error('未知独立运行时版本。');
  let source=input.replaceAll('\r\n','\n');
  verify(source,['const decision = parseRange(req.headers.range, totalBytes);','if (!isDisplayed(display)) {','else sendFile(req, res, result.file, result.contentType);'],'原生Range及隐藏碎念');
  source=patchModularSandbox(source);
@@ -56,7 +57,14 @@ export function patchStandalone040(input){
  source=once(source,'if (["/standalone-ai/settings", "/shutdown"].includes(path)) return false;','let preferencePath; try { preferencePath=decodeURIComponent(path); } catch { return false; }\n\tif (/^\\/dsh-pet-\\d+\\/(?:config\\/editable|codex-tasks|codex-status|codex-notices|todos)(?:\\/|$)/.test(preferencePath)) return false;\n\tif (["/standalone-ai/settings", "/shutdown"].includes(path)) return false;','私有偏好鉴权');
  source=once(source,'(?:whisper|chat)(?:\\/|$)/.test(path)) return false;','(?:whisper|chat)(?:\\/|$)/.test(preferencePath)) return false;','私有读取规范化');
  source=once(source,'prompt: petPersona(found.conf, found.pet),','prompt: CodexCharacter.hostPersona(found.conf, found.pet),','角色人设');
- const system='const system = petSystemPrompt(found);';if(source.split(system).length!==4)throw Error('0.4.0 三路角色快照锚点不匹配。');source=source.replaceAll(system,'const characterAtStart = CodexCharacter.readCharacter();\n\t\t'+system);
+ const system='const system = petSystemPrompt(found);',expected=version==='0.4.1'?2:3;
+ if(source.split(system).length-1!==expected)throw Error(version+' 三路角色快照锚点不匹配。');
+ source=source.replaceAll(system,'const characterAtStart = CodexCharacter.readCharacter();\n\t\t'+system);
+ if(version==='0.4.1'){
+  verify(source,['const system = petSystemPrompt(found, { historyTimes: list.length > 0 });'],'聊天历史人设');
+  // 新版先读取记忆再组装人设；角色快照必须位于首次异步读取和分桶之前。
+  source=region(source,'const chatWithPet = async','const deleteHistory = async',block=>once(block,'const rounds = memoryRounds(found.conf);','const characterAtStart = CodexCharacter.readCharacter();\n\t\tconst rounds = memoryRounds(found.conf);','聊天异步前角色快照'),'聊天区域');
+ }
  const guard='CodexCharacter.characterKey(CodexCharacter.readCharacter()) !== CodexCharacter.characterKey(characterAtStart)';
  source=region(source,'const publishWhisper = async','const publishSleepTalk = async',block=>once(block,'\t\tstate.writePet(petId, "say", {','\t\tif ('+guard+') return CodexCharacter.changedResult();\n\t\tstate.writePet(petId, "say", {','碎念过期回复'),'碎念区域');
  source=region(source,'const publishSleepTalk = async','const chatWithPet = async',block=>once(block,'\t\tstate.writePet(petId, "say", {','\t\tif ('+guard+') return false;\n\t\tstate.writePet(petId, "say", {','梦话过期回复'),'梦话区域');
@@ -141,7 +149,8 @@ export function patchPlayback040(input){
   },`,'解冻最新状态');
 }
 
-export function patchHelper040(input){
+export function patchHelper040(input,{version='0.4.0'}={}){
+ if(!['0.4.0','0.4.1'].includes(version))throw Error('未知Helper运行时版本。');
  const files=Object.fromEntries(Object.entries(input).map(([name,text])=>[name,text.replaceAll('\r\n','\n')]));
  verify(files['main/bridge.js'],["const decision = parseRange(request.headers.get('range'), data.length);"],'原生bridge Range');
  validateModularMotion(files['sprite/motion.js']);
@@ -149,10 +158,16 @@ export function patchHelper040(input){
  validateModularDpi(files['main/dpi.js']);
  let main=patchModularMain(files['main.js'].replace('dshHome: dshHomeDir(),\n  appMode: true,','dshHome: dshHomeDir(),\n  appMode: APP_MODE,'));verify(main,['const petWindows = createWindows({','const tray = createTray({','void tray.start();'],'模块入口');
  main=once(main,'dshHome: dshHomeDir(),\n  appMode: APP_MODE,','dshHome: dshHomeDir(),\n  appMode: true,','独立宿主既有profile类型');
- main=once(main,'  petWindows.create();','  if(codexStartup.petEnabled())petWindows.create();','启动门控');
+ if(version==='0.4.1'){
+  const before='  petWindows.create();',after='  if(codexStartup.petEnabled())petWindows.create();',old=main.split(before).length-1,current=main.split(after).length-1;
+  // 新版另有同进程重建钩子，两条创建路径都须保留本项目的启动模式门控。
+  if(old===2&&current===0)main=main.replaceAll(before,after);else if(old!==0||current!==2)throw Error('0.4.1 两条桌面创建锚点不匹配。');
+ }else main=once(main,'  petWindows.create();','  if(codexStartup.petEnabled())petWindows.create();','启动门控');
  main=once(main,'  if (tray.exists()) return;','  if (tray.exists() || !codexStartup.petEnabled()) return;','仅演出空窗');
  main=once(main,'  hostRequest: bridge.hostRequest,','  hostRequest: bridge.hostRequest,\n  extraItems:()=>[...(nativeHarness.state().active?[]:codexStartup.trayItems()),...codexPetHost.trayItems(),...codexControl.trayItems(),...(nativeHarness.state().active?[]:codexVisibility.trayItems()),...codexQQSettings.trayItems()],','托盘扩展');if(main.includes('// codex-pet-extensions-v040'))verify(main,[extensions],'既有扩展块');else main+=extensions;files['main.js']=main;
- let tray=files['main/tray.js'];tray=once(tray,'  helperDir,\n}) {','  helperDir,\n  extraItems=()=>[],\n}) {','托盘依赖');tray=once(tray,"tray.setToolTip('dsh-pet 桌面宠物');","tray.setToolTip('Codex Pet');",'托盘名称');tray=once(tray,"          ...(canQuit ? [{ type: 'separator' }, { label: '退出', click: quitApp }] : []),","          {type:'separator'},...extraItems(),\n          ...(canQuit ? [{ type: 'separator' }, { label: '退出', click: quitApp }] : []),",'托盘菜单');files['main/tray.js']=tray;
+ let tray=files['main/tray.js'];tray=once(tray,'  helperDir,\n}) {','  helperDir,\n  extraItems=()=>[],\n}) {','托盘依赖');tray=once(tray,"tray.setToolTip('dsh-pet 桌面宠物');","tray.setToolTip('Codex Pet');",'托盘名称');
+ const indent=version==='0.4.1'?'      ':'          ',quit="...(canQuit ? [{ type: 'separator' }, { label: '退出', click: quitApp }] : []),";
+ tray=once(tray,indent+quit,indent+"{type:'separator'},...extraItems(),\n"+indent+quit,'托盘菜单');files['main/tray.js']=tray;
  files['main/ipc.js']=patchHostOpenTarget(files['main/ipc.js'],{startupModule:'../codex-startup.cjs'});
  files['main/user-data.js']=patchModularUserData(files['main/user-data.js']);
  files['sprite.js']=once(files['sprite.js'],'      b: m,','      b: Math.max(m,184),','脚下状态余量');
@@ -165,12 +180,13 @@ export function patchHelper040(input){
  return files;
 }
 
-export async function prepareRuntime040({root,pkg}){
- await captureUpstreamSnapshot040({pkg});
+export async function prepareRuntime040({root,pkg,version='0.4.0',capture=captureUpstreamSnapshot040,patchHost=patchStandalone040,patchHelper=patchHelper040}={}){
+ if(!['0.4.0','0.4.1'].includes(version)||JSON.parse(await readFile(join(pkg,'package.json'),'utf8')).version!==version)throw Error('独立运行时版本不匹配。');
+ await capture({pkg});
  const helper=join(pkg,'runtime/electron-helper'),names=['main.js','main/tray.js','main/bridge.js','main/ipc.js','main/dpi.js','main/user-data.js','sprite.js','sprite/motion.js','sprite/menu.js','sprite/playback.js','sprite/bubble.js','sprite/input.js','events.js','shared-core.js','index.html'];
  // 直接核验当前已安装文件；未知改动不使用旧快照掩盖，也不覆盖成旧整份runtime。
  const originals=Object.fromEntries(await Promise.all(names.map(async name=>[name,await readFile(join(helper,name),'utf8')])));originals['standalone.js']=await readFile(join(pkg,'lib/standalone.js'),'utf8');originals['preload.js']=await readFile(join(helper,'preload.js'),'utf8');
- const fixed=patchHelper040(Object.fromEntries(names.map(name=>[name,originals[name]]))),host=patchStandalone040(originals['standalone.js']);
+ const fixed=patchHelper(Object.fromEntries(names.map(name=>[name,originals[name]]))),host=patchHost(originals['standalone.js'],{version});
  const configFile=join(pkg,'assets/config.jsonc'),defaults=preserveRuntimeDefaults040(await readFile(configFile,'utf8'));
  // 模板全部锚点通过后才写依赖文件；不改变用户data中的覆盖值。
  await writeFile(configFile,defaults);
@@ -180,5 +196,5 @@ export async function prepareRuntime040({root,pkg}){
  // 只复制公开src的桌面脚本、样式与页面；后端mjs、测试、配置和运行数据不进Electron目录。
  for(const entry of await readdir(join(root,'src'),{withFileTypes:true}))if(entry.isFile()&&/\.(?:cjs|js|css|html|ps1)$/.test(entry.name)&&!/\.test\.(?:cjs|js)$/.test(entry.name))await copyFile(join(root,'src',entry.name),join(helper,entry.name));
  await mkdir(join(root,'data'),{recursive:true});await seedBundledWhiteDragon({projectRoot:root});await seedBundledSheep({projectRoot:root});await seedBundledStartup({projectRoot:root});
- console.log('dsh-pet 0.4.0 runtime prepared: Codex Pet.');
+ console.log('dsh-pet '+version+' runtime prepared: Codex Pet.');
 }

@@ -57,7 +57,7 @@ function fixture({actualBubble=false,telemetry=true}={}){
  const window={CodexLocale:{getLocale:()=>locale},PetShared:{balanceDetailView:state=>state.rows||[]},petTelemetry:{getState:()=>new Promise(resolve=>{initialResolve=resolve;}),onState:fn=>{push=fn;return()=>{unsubscribed++;};}},addEventListener:(name,fn)=>events.set(name,fn)};
  if(!telemetry)delete window.petTelemetry;
  const document={createElement:tag=>new Element(tag)};
- if(actualBubble){window.__dshPetDebug={};const actual=require('../test/support/upstream-sprite.cjs')({window,document,navigator:{platform:'Win32'},S:{...window.PetShared,MEME_BUBBLE_CLASS:'has-img'}});Sprite.prototype.renderBubble=actual.renderBubble;Sprite.prototype.balanceClickable=actual.balanceClickable;}
+ if(actualBubble){window.__dshPetDebug={};const actual=require('../test/support/upstream-sprite.cjs')({window,document,navigator:{platform:'Win32'},S:{...window.PetShared,MEME_BUBBLE_CLASS:'has-img'}});Sprite.prototype.renderBubble=actual.renderBubble;Sprite.prototype.balanceClickable=actual.balanceClickable;if(typeof actual.workClickable==='function')Sprite.prototype.workClickable=actual.workClickable;}
  const installed=install({window,document,PetSprite:Sprite});
  return{Sprite,window,push:value=>push(value),initial:value=>initialResolve(value),setLocale:value=>{locale=value;},unsubscribed:()=>unsubscribed,close:()=>{events.get('beforeunload')?.();installed.dispose();}};
 }

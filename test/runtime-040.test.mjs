@@ -9,7 +9,8 @@ import {createDesktopChangeGuard} from '../src/control-config.mjs';
 import {localizeIndexHtml} from '../scripts/runtime-locale-patches.mjs';
 let Module={};try{Module=await import('../scripts/prepare-runtime-040.mjs');}catch(error){if(error.code!=='ERR_MODULE_NOT_FOUND')throw error;}
 const root=resolve(process.env.CODEX_PET_UPSTREAM_FIXTURE||'node_modules/dsh-pet'),meta=JSON.parse(await readFile(join(root,'package.json'),'utf8'));
-const supported=meta.version==='0.4.0',read=name=>readFile(join(root,name),'utf8');
+const supported=['0.4.0','0.4.1'].includes(meta.version),read=name=>readFile(join(root,name),'utf8');
+if(meta.version==='0.4.1'){const current=await import('../scripts/prepare-runtime-041.mjs');Module={...Module,patchStandalone040:current.patchStandalone041,patchHelper040:current.patchHelper041};}
 
 test('0.4宿主保留原生Range与隐藏门控，角色记忆和用途在新生成函数准确接线',{skip:!supported},async()=>{
  assert.equal(typeof Module.patchStandalone040,'function');const source=await read('lib/standalone.js'),fixed=Module.patchStandalone040(source);
@@ -103,7 +104,7 @@ test('0.4原生语音入口按真实宿主门控，缺gate和移交均拒绝，�
 
 test('0.4配置锁等实际拆分Helper重建队列完成再释放，局部队列不越作用域引用',{skip:!supported},async()=>{
  const fixed=Module.patchStandalone040(await read('lib/standalone.js')),declaration=name=>{const value=fixed.match(new RegExp('function '+name+'\\([^)]*\\) \\{[\\s\\S]*?^\\}','m'))?.[0];assert.ok(value,name);return value;};
- let finishStop,started=0,released=0,claimed=0,busy=false;const stopped=new Promise(resolve=>{finishStop=resolve;}),scope={URL,Promise,createDesktopChangeGuard,upstreamCapabilityResult040:()=>undefined,codexDesktopActivity:{acquire:()=>{claimed++;if(busy)return null;busy=true;return()=>{released++;busy=false;};}},ROUTE_SEGMENT:'/dsh-pet-7340',createDesktopPets:()=>({}),createDesktopSpawn:()=>({startHelper:()=>{started++;},stopHelperAndWait:()=>stopped}),createPetRouter:deps=>async()=>{deps.requestRestart();return {kind:'json',status:200};}};
+ let finishStop,started=0,released=0,claimed=0,busy=false;const stopped=new Promise(resolve=>{finishStop=resolve;}),scope={URL,Promise,process:{env:{}},createDesktopChangeGuard,upstreamCapabilityResult040:()=>undefined,codexDesktopActivity:{acquire:()=>{claimed++;if(busy)return null;busy=true;return()=>{released++;busy=false;};}},ROUTE_SEGMENT:'/dsh-pet-7340',createDesktopPets:()=>({}),createDesktopSpawn:()=>({startHelper:()=>{started++;},stopHelperAndWait:()=>stopped}),createPetRouter:deps=>async()=>{deps.requestRestart();return {kind:'json',status:200};}};
  vm.runInNewContext(['createDesktopSync','createDesktopHelper','createHttpRoute'].map(declaration).join('\n')+'\nglobalThis.makeHelper=createDesktopHelper;globalThis.makeRoute=createHttpRoute;',scope);
  const helper=scope.makeHelper({log:{warn:message=>assert.fail(message)},logDesktopDecision(){}});assert.equal(typeof helper.desktopSettled,'function');
  let returned=false;const route=scope.makeRoute(helper).handlePetRoute,pending=route('/dsh-pet-7340/config','PUT','{}').then(result=>{returned=true;return result;});

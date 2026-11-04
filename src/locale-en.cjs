@@ -4,6 +4,7 @@
 })(typeof window === 'object' ? window : globalThis, function () {
   'use strict';
   return {
+    '更换接口地址时请同时填写新密钥。': 'Enter a new API key when changing the endpoint.',
     '模型目录暂不可用，请刷新后重试。':'The model catalog is unavailable. Refresh and try again.',
     '所选模型已不可用，请重新选择。':'This model is no longer available. Choose another model.',
     '所选模型未确认支持图片，请换一个模型。':'Image support is not confirmed for this model. Choose another model.',

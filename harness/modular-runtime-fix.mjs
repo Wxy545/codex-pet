@@ -3,7 +3,7 @@ function requireOnce(source, text) {
   if (count(source, text) !== 1) throw Error('harness-modular-runtime-anchor-mismatch');
 }
 
-/** 0.4.0 已修正目标插值；校验实际新模块，不将旧版整份实现覆盖回来。 */
+/** 0.4.0/0.4.1 已修正目标插值；校验实际新模块，不将旧版整份实现覆盖回来。 */
 export function validateModularMotion(input, { browser = false } = {}) {
   const source = input.replaceAll('\r\n', '\n');
   requireOnce(source, browser

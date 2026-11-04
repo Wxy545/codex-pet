@@ -6,7 +6,7 @@ import vm from 'node:vm';
 const settle=()=>new Promise(resolve=>setImmediate(resolve));
 
 function rendererFixture(page, api) {
-  const elements=new Map(), events=new Map(), intervals=[];
+  const elements=new Map(), events=new Map(), intervals=[];let now=1000;
   function element(id) {
     if(elements.has(id)) return elements.get(id);
     const listeners=new Map(); let scrollTop=0;
@@ -27,8 +27,8 @@ function rendererFixture(page, api) {
   element('task-form').elements={permission:{value:'read-only'}};
   const document={title:'',documentElement:{lang:'en'},getElementById:element,createElement:tag=>element(Symbol(tag))};
   const window={CodexLocale:{t:value=>value},CodexPanelLocale:{apply(){}},addEventListener:(name,fn)=>events.set(name,fn),[page==='chat'?'chatPanel':'taskPanel']:api};
-  vm.runInNewContext(readFileSync(new URL(`../src/${page}-window.js`,import.meta.url),'utf8'),{document,window,setTimeout:()=>1,clearTimeout(){},setInterval:fn=>{intervals.push(fn);return 1;},clearInterval(){}});
-  return{element,intervals,close:()=>events.get('beforeunload')?.()};
+  vm.runInNewContext(readFileSync(new URL(`../src/${page}-window.js`,import.meta.url),'utf8'),{document,window,performance:{now:()=>now},setTimeout:()=>1,clearTimeout(){},setInterval:fn=>{intervals.push(fn);return 1;},clearInterval(){}});
+  return{element,intervals,advance:ms=>{now+=ms;},close:()=>events.get('beforeunload')?.()};
 }
 
 function chatFixture() {
@@ -76,4 +76,19 @@ test('任务轮询不重建相同结果或进度，保留正在阅读的滚动�
   assert.equal(output.scrollTop,150);assert.equal(result.textContent,snapshot.summary);
   snapshot.id='synthetic-task-2';snapshot.summary='A new task result';f.intervals[0]();await settle();
   assert.equal(output.scrollTop,1000);
+});
+
+test('真实聊天和任务keydown让开输入法组合态及229，结束80ms内或长按不误发',async t=>{
+ for(const page of ['chat','task']){
+  const f=page==='chat'?chatFixture():rendererFixture('task',{getState:async()=>({ok:true,snapshot:{state:'idle',progress:[]}})});t.after(f.close);await settle();
+  const input=f.element(page==='chat'?'message-input':'task'),form=f.element(page==='chat'?'chat-form':'task-form'),button=f.element(page==='chat'?'send':'submit-task');button.disabled=false;
+  let submits=0,prevented=0;form.requestSubmit=()=>submits++;
+  const key=extra=>input.fire('keydown',{key:'Enter',ctrlKey:page==='task',preventDefault(){prevented++;},...extra});
+  key({isComposing:true});key({keyCode:229});assert.equal(submits,0);assert.equal(prevented,0);
+  input.fire('compositionstart');key({});assert.equal(submits,0);assert.equal(prevented,0);
+  input.fire('compositionend');key({});assert.equal(submits,0);assert.equal(prevented,1);
+  f.advance(79);key({});assert.equal(submits,0);f.advance(1);key({});assert.equal(submits,1);
+  key({repeat:true});assert.equal(submits,1);assert.equal(prevented,4);
+  key(page==='chat'?{shiftKey:true}:{ctrlKey:false});assert.equal(submits,1);
+ }
 });

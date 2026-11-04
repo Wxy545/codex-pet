@@ -1,4 +1,4 @@
-import {readUpstream} from './support/harness-upstream.mjs';
+import {readUpstream,upstreamVersion} from './support/harness-upstream.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync,mkdtempSync,mkdirSync,writeFileSync,rmSync,linkSync,statSync,symlinkSync} from 'node:fs';
@@ -35,7 +35,7 @@ function profileFixture(t){
  const dir=mkdtempSync(join(tmpdir(),'native-balance-'));t.after(()=>rmSync(dir,{recursive:true,force:true}));
  const profileDir=join(dir,'profile'),pkg=join(profileDir,'node_modules','dsh-pet'),bundle=join(dir,'bundle');
  mkdirSync(join(pkg,'runtime','electron-helper'),{recursive:true});mkdirSync(join(pkg,'lib'));mkdirSync(join(bundle,'runtime'),{recursive:true});
- writeFileSync(join(profileDir,'package.json'),'{"private":true}');writeFileSync(join(pkg,'package.json'),'{"name":"dsh-pet","version":"0.4.0","exports":{"./package.json":"./package.json"}}');
+ writeFileSync(join(profileDir,'package.json'),'{"private":true}');writeFileSync(join(pkg,'package.json'),JSON.stringify({name:'dsh-pet',version:upstreamVersion,exports:{'./package.json':'./package.json'}}));
  writeFileSync(join(pkg,'lib','client.js'),webFixture);mkdirSync(join(pkg,'runtime','electron-helper','sprite'),{recursive:true});for(const name of ['sprite.js','sprite/input.js','index.html'])writeFileSync(join(pkg,'runtime','electron-helper',name),readUpstream('runtime/electron-helper/'+name));
  for(const name of ['pet-status-strip.js','pet-status-strip.css'])writeFileSync(join(bundle,'runtime',name),read('src/'+name));
  return{dir,profileDir,pkg,bundle};

@@ -45,6 +45,8 @@ function unavailableAi() {
   return {
     currentSelection: () => ({provider: 'standalone', model: ''}), listProviders: () => [],
     listModels: async () => [], resolveModelInfo: async () => undefined,
+    // 新版余额桥会先询问此接口；未接入AI时明确无凭据，继续使用独立余额提供方。
+    balanceAuth: () => undefined,
     isReady: () => false, canWhisper: () => false, getSettings: () => ({...settings}),
     async *stream() { throw new Error('host-chat-unavailable'); },
     async saveSettings() { throw new Error('host-chat-unavailable'); },

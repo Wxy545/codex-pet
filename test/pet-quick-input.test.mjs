@@ -5,7 +5,7 @@ import {resolve,join} from 'node:path';
 import {setMaxListeners} from 'node:events';
 import vm from 'node:vm';
 import {localizeIndexHtml} from '../scripts/runtime-locale-patches.mjs';
-const root=resolve(process.env.CODEX_PET_UPSTREAM_FIXTURE||'node_modules/dsh-pet'),meta=JSON.parse(await readFile(join(root,'package.json'),'utf8')),supported=meta.version==='0.4.0';
+const root=resolve(process.env.CODEX_PET_UPSTREAM_FIXTURE||'node_modules/dsh-pet'),meta=JSON.parse(await readFile(join(root,'package.json'),'utf8')),supported=['0.4.0','0.4.1'].includes(meta.version);
 const quick=await readFile(new URL('../src/pet-quick-input.js',import.meta.url),'utf8');
 const flush=()=>new Promise(done=>setImmediate(done));
 async function fixture({host='codex',lookup}={}){

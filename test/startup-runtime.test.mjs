@@ -4,6 +4,7 @@ import vm from 'node:vm';
 import { readFile } from 'node:fs/promises';
 import {join,resolve} from 'node:path';
 import {patchHelper040} from '../scripts/prepare-runtime-040.mjs';
+import {patchHelper041} from '../scripts/prepare-runtime-041.mjs';
 const patcher=await import('../scripts/startup-runtime-patch.mjs').catch(error=>{if(error.code==='ERR_MODULE_NOT_FOUND')return{};throw error;});
 const fixture=`const windows=new Map();let tray=null;const codexPanelRequest=()=>{};const DPI_PROBE=false;
 function createPetWindows() { calls.push('pet'); }
@@ -46,13 +47,14 @@ test('仅演出模式在托盘异步重建期间关闭最后窗口仍常驻，�
 test('固定上游main可安全补丁与编译，锚点升级不能静默漏接',async()=>{
  assert.equal(typeof patcher.patchStartupMain,'function');
  const packageRoot=resolve(process.env.CODEX_PET_UPSTREAM_FIXTURE||'node_modules/dsh-pet'),meta=JSON.parse(await readFile(join(packageRoot,'package.json'),'utf8'));
- if(meta.version==='0.4.0'){
-  const files=Object.fromEntries(await Promise.all(['main.js','main/tray.js','main/bridge.js','main/ipc.js','main/dpi.js','main/user-data.js','sprite.js','sprite/motion.js','sprite/menu.js','sprite/playback.js','sprite/bubble.js','sprite/input.js','events.js','shared-core.js','index.html'].map(async name=>[name,await readFile(join(packageRoot,'runtime/electron-helper',name),'utf8')]))),patched=patchHelper040(files)['main.js'];
+ if(['0.4.0','0.4.1'].includes(meta.version)){
+  const patchHelper=meta.version==='0.4.1'?patchHelper041:patchHelper040;
+  const files=Object.fromEntries(await Promise.all(['main.js','main/tray.js','main/bridge.js','main/ipc.js','main/dpi.js','main/user-data.js','sprite.js','sprite/motion.js','sprite/menu.js','sprite/playback.js','sprite/bubble.js','sprite/input.js','events.js','shared-core.js','index.html'].map(async name=>[name,await readFile(join(packageRoot,'runtime/electron-helper',name),'utf8')]))),patched=patchHelper(files)['main.js'];
   assert.doesNotThrow(()=>new vm.Script(patched));assert.match(patched,/if\(codexStartup.petEnabled\(\)\)petWindows.create\(\)/);assert.match(patched,/if \(tray.exists\(\) \|\| !codexStartup.petEnabled\(\)\) return/);
   const from=patched.indexOf('onPetEnabled:')+'onPetEnabled:'.length,to=patched.indexOf(',onModeChanged:',from),calls=[],windows=new Map();assert.ok(from>0&&to>from);
   const change=vm.runInNewContext('('+patched.slice(from,to)+')',{windows,petWindows:{create:()=>calls.push('create')}});
   change(true);assert.deepEqual(calls,['create']);windows.set('main',{isDestroyed:()=>false,destroy:()=>calls.push('destroy')});change(true);assert.deepEqual(calls,['create']);change(false);assert.deepEqual(calls,['create','destroy']);
-  assert.throws(()=>patchHelper040({...files,'main.js':'function renamed() {}'}),/anchor|锚点|定位/);return;
+  assert.throws(()=>patchHelper({...files,'main.js':'function renamed() {}'}),/anchor|锚点|定位/);return;
  }
  const main=await readFile(join(packageRoot,'runtime/electron-helper/main.js'),'utf8');
  const patched=patcher.patchStartupMain(main);assert.doesNotThrow(()=>new vm.Script(patched));assert.throws(()=>patcher.patchStartupMain('function renamed() {}'),/启动演出.*定位失败/);

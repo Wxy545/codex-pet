@@ -11,14 +11,15 @@ import vm from 'node:vm';
 import Range from '../src/runtime-range.cjs';
 import { patchHostAssets, patchBridgeAssets, patchDesktopMotion, patchDesktopBalanceEvents, patchDesktopWorkEvents, patchDesktopWorkResume } from '../scripts/upstream-fixes.mjs';
 import {patchStandalone040,patchPlayback040,patchHelper040} from '../scripts/prepare-runtime-040.mjs';
+import {patchStandalone041,patchHelper041} from '../scripts/prepare-runtime-041.mjs';
 import {validateModularMotion} from '../harness/modular-runtime-fix.mjs';
 
-const packageRoot=resolve(process.env.CODEX_PET_UPSTREAM_FIXTURE||'node_modules/dsh-pet'),meta=JSON.parse(readFileSync(join(packageRoot,'package.json'),'utf8')),modern=meta.version==='0.4.0';
+const packageRoot=resolve(process.env.CODEX_PET_UPSTREAM_FIXTURE||'node_modules/dsh-pet'),meta=JSON.parse(readFileSync(join(packageRoot,'package.json'),'utf8')),modern=['0.4.0','0.4.1'].includes(meta.version);
 const actual=name=>readFileSync(join(packageRoot,name),'utf8').replaceAll('\r\n','\n');
 const host=actual('lib/standalone.js'),bridge=actual('runtime/electron-helper/'+(modern?'main/bridge.js':'main.js')),sprite=actual('runtime/electron-helper/'+(modern?'sprite/motion.js':'sprite.js')),playback=modern?actual('runtime/electron-helper/sprite/playback.js'):sprite,events=actual('runtime/electron-helper/events.js');
-const hostPatch=modern?patchStandalone040:patchHostAssets,motionPatch=modern?validateModularMotion:patchDesktopMotion,resumePatch=modern?patchPlayback040:patchDesktopWorkResume;
+const hostPatch=modern?(meta.version==='0.4.1'?patchStandalone041:patchStandalone040):patchHostAssets,motionPatch=modern?validateModularMotion:patchDesktopMotion,resumePatch=modern?patchPlayback040:patchDesktopWorkResume;
 const bridgePatch=modern?source=>{assert.equal(source.split("const decision = parseRange(request.headers.get('range'), data.length);").length,2,'原生Range锚点');return source;}:patchBridgeAssets;
-const modernHelper=modern?patchHelper040(Object.fromEntries(['main.js','main/tray.js','main/bridge.js','main/ipc.js','main/dpi.js','main/user-data.js','sprite.js','sprite/motion.js','sprite/menu.js','sprite/playback.js','sprite/bubble.js','sprite/input.js','events.js','shared-core.js','index.html'].map(name=>[name,actual('runtime/electron-helper/'+name)]))):null;
+const modernHelper=modern?(meta.version==='0.4.1'?patchHelper041:patchHelper040)(Object.fromEntries(['main.js','main/tray.js','main/bridge.js','main/ipc.js','main/dpi.js','main/user-data.js','sprite.js','sprite/motion.js','sprite/menu.js','sprite/playback.js','sprite/bubble.js','sprite/input.js','events.js','shared-core.js','index.html'].map(name=>[name,actual('runtime/electron-helper/'+name)]))):null;
 const sharedSource=modern?modernHelper['shared-core.js']:actual('runtime/electron-helper/shared-core.js');
 
 test('固定上游运行时修复及新原生锚点严格校验，缺失或重复时停止', () => {
@@ -28,7 +29,7 @@ test('固定上游运行时修复及新原生锚点严格校验，缺失或重�
     assert.throws(() => patch(''), /锚点|anchor/);
     assert.throws(() => patch(source + source), /锚点|anchor/);
   }
-  if(modern){assert.match(hostPatch(host),/const decision = parseRange/);assert.throws(()=>hostPatch(''),/锚点/);assert.throws(()=>hostPatch(host+host),/锚点/);}
+  if(modern){assert.match(hostPatch(host),/const decision = parseRange/);assert.throws(()=>hostPatch(''),/锚点|定位/);assert.throws(()=>hostPatch(host+host),/锚点|定位/);}
 });
 
 async function whisperPoll(config, policy) {

@@ -15,9 +15,9 @@ const originalProjection='physics: conf.physics,';
 // 只补成品投影的缺省，用户已有对象最后展开，显式 true/false 继续优先且不改用户文件。
 const preservedProjection='physics: conf.physics && { hapticEnabled: false, tiltGravity: false, shakeThrow: false, ...conf.physics },';
 const count=(source,anchor)=>source.split(anchor).length-1;
-const fail=()=>{throw Error('dsh-pet 0.4.0 物理默认锚点不匹配。');};
+const fail=()=>{throw Error('dsh-pet 0.4.0/0.4.1 物理默认锚点不匹配。');};
 
-/** 仅用于官方 0.4.0 shared-core.js/client.js；不接受缺锚点、半补丁或未知构建。 */
+/** 仅用于已核验的官方 0.4.0/0.4.1 shared-core.js/client.js；不接受缺锚点、半补丁或未知构建。 */
 export function patchPhysicsDefaults040(source){
  if(typeof source!=='string')fail();
  const newline=source.includes('\r\n')?'\r\n':'\n';

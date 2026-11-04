@@ -1,4 +1,4 @@
-import {readUpstream} from './support/harness-upstream.mjs';
+import {readUpstream,upstreamVersion} from './support/harness-upstream.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {mkdtempSync, mkdirSync, readFileSync, writeFileSync, rmSync, linkSync, lstatSync, symlinkSync} from 'node:fs';
@@ -16,8 +16,8 @@ function fixture(t) {
   const profileDir = join(root, 'profile'), pkg = join(profileDir, 'node_modules/dsh-pet'), dataRoot = join(root, 'data'), sourceRoot = join(dataRoot, 'harness-plugin');
   mkdirSync(join(pkg, 'lib'), {recursive: true}); mkdirSync(sourceRoot, {recursive: true});
   writeFileSync(join(profileDir, 'package.json'), '{}');
-  writeFileSync(join(pkg, 'package.json'), JSON.stringify({name: 'dsh-pet', version: '0.4.0', exports: {'./package.json': './package.json'}}));
-  writeFileSync(join(pkg, 'lib/index.js'), synthetic);
+  writeFileSync(join(pkg, 'package.json'), JSON.stringify({name: 'dsh-pet', version: upstreamVersion, exports: {'./package.json': './package.json'}}));
+  writeFileSync(join(pkg, 'lib/index.js'), actual);
   const bridge = join(sourceRoot, 'bridge.json'), activity = join(dataRoot, 'qq-activity.json');
   writeFileSync(bridge, JSON.stringify({schemaVersion: 1, dataRoot}));
   return {root, profileDir, pkg, dataRoot, sourceRoot, bridge, activity};
@@ -47,9 +47,25 @@ test('锚点不符或包版本变化时停止，内部目录越界链接不写�
   assert.throws(() => prepareHarnessRemoteState({profileDir: f.profileDir}), /anchor/); assert.equal(readFileSync(file, 'utf8'), 'unknown upstream');
   writeFileSync(join(f.pkg, 'package.json'), JSON.stringify({name: 'dsh-pet', version: '0.3.9', exports: {'./package.json': './package.json'}}));
   assert.throws(() => prepareHarnessRemoteState({profileDir: f.profileDir}), /0\.4\.0/);
-  writeFileSync(join(f.pkg, 'package.json'), JSON.stringify({name: 'dsh-pet', version: '0.4.0', exports: {'./package.json': './package.json'}}));
+  writeFileSync(join(f.pkg, 'package.json'), JSON.stringify({name: 'dsh-pet', version: upstreamVersion, exports: {'./package.json': './package.json'}}));
   const external = join(f.root, 'outside'); mkdirSync(external); writeFileSync(join(external, 'index.js'), synthetic); rmSync(join(f.pkg, 'lib'), {recursive: true}); symlinkSync(external, join(f.pkg, 'lib'), 'junction');
   assert.throws(() => prepareHarnessRemoteState({profileDir: f.profileDir}), /outside-profile/); assert.equal(readFileSync(join(external, 'index.js'), 'utf8'), synthetic);
+});
+
+test('原生会话跳转保留真实归属，QQ独立槽与api槽不能伪装原生会话', () => {
+  const patched=patchHarnessRemoteState(actual),start=patched.indexOf('function createWorkStatusBridge(deps) {'),end=patched.indexOf('\n}',start)+2;
+  assert.ok(start>=0&&end>start);
+  const records=[],snapshot={state:'waiting',task:null,sessionId:'codex-pet-qq'};
+  const createBridge=vm.runInNewContext('('+patched.slice(start,end)+')',{Date,setTimeout,clearTimeout});
+  const bridge=createBridge({state:{writeSection(name,value){records.push({name,value});}},workStatus:{snapshot:()=>({...snapshot})},EXTERNAL_WORK_SESSION:'api'});
+  bridge.publishWorkStatus();
+  // 0.4.0没有会话跳转字段；0.4.1开始必须明确投影null，不能把外部状态槽当作原生会话。
+  assert.equal(records.at(-1).value.sessionId??null,null);
+  snapshot.state='working';snapshot.task='Native task';snapshot.sessionId='native-owned';bridge.publishWorkStatus();
+  assert.equal(records.at(-1).value.task,'Native task');
+  if(Object.hasOwn(records.at(-1).value,'sessionId'))assert.equal(records.at(-1).value.sessionId,'native-owned');
+  snapshot.state='waiting';snapshot.task=null;snapshot.sessionId='api';bridge.publishWorkStatus();
+  assert.equal(records.at(-1).value.sessionId??null,null);bridge.stopWorkStatusFlush();
 });
 
 function serviceFixture() {

@@ -153,7 +153,7 @@ async function start() {
   const firstAi = !existsSync(join(home, 'dsh-pet', 'codex-ai-initialized'));
   const preferences = aiConfig.publicSettings();
   await aiConfig.save({ protocol: 'openai-compatible', baseUrl: `http://127.0.0.1:${chatPort}/v1`, model: 'codex',
-    apiKey: chatToken, enabled: true, automaticWhispers: firstAi ? true : preferences.automaticWhispers,
+    apiKey: chatToken, enabled: firstAi ? true : typeof preferences.enabled==='boolean' ? preferences.enabled : true, automaticWhispers: firstAi ? true : preferences.automaticWhispers,
     whisperIntervalSec: firstAi ? 600 : preferences.whisperIntervalSec, timeoutMs: 60000, maxTokens: 1024 });
   writeFileSync(join(home, 'dsh-pet', 'codex-ai-initialized'), '1');
   }

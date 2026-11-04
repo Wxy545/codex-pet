@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "upstream": "dsh-pet@0.4.0",
+  "upstream": "dsh-pet@0.4.1",
   "total": 106,
   "actions": [
     {

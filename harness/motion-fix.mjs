@@ -4,6 +4,8 @@ import { randomUUID } from 'node:crypto';
 import { dirname, isAbsolute, join, relative, sep } from 'node:path';
 import { patchModularMain, patchModularMouseRelease, patchModularSandbox, patchModularUserData, validateModularDpi, validateModularMotion } from './modular-runtime-fix.mjs';
 import { patchPhysicsDefaults040 } from './physics-defaults-fix.mjs';
+import { patchNativeAvatar041 } from './avatar-fix.mjs';
+import {patchDrag041,patchAlpha041,patchTurn041} from './main-fixes-041.mjs';
 
 const staysWithin = (root, file) => { const rel = relative(root, file); return !isAbsolute(rel) && rel !== '..' && !rel.startsWith('..' + sep); };
 
@@ -33,16 +35,17 @@ export function prepareHarnessDependency({ profileDir }) {
   const profileRoot = realpathSync(profileDir), rel = relative(profileRoot, packageRoot);
   if (isAbsolute(rel) || rel === '..' || rel.startsWith('..' + sep)) throw new Error('harness-dsh-pet-outside-selected-profile');
   const meta = JSON.parse(readFileSync(join(packageRoot, 'package.json'), 'utf8'));
-  if (meta.name !== 'dsh-pet' || meta.version !== '0.4.0') throw new Error('harness-dsh-pet-0.4.0-required');
+  if (meta.name !== 'dsh-pet' || !['0.4.0', '0.4.1'].includes(meta.version)) throw new Error('harness-dsh-pet-0.4.0-or-0.4.1-required');
   const transforms = [
-    ['lib/client.js', source => patchPhysicsDefaults040(patchModularMouseRelease(validateModularMotion(source, { browser: true })))],
-    ['lib/index.js', patchModularSandbox],
+    ['lib/client.js', source => {const base=patchPhysicsDefaults040(patchModularMouseRelease(validateModularMotion(source, { browser: true })));return meta.version==='0.4.1'?patchTurn041(patchAlpha041(patchDrag041(base,{browser:true}),{browser:true})):base;}],
+    ['lib/index.js', source => patchModularSandbox(meta.version === '0.4.1' ? patchNativeAvatar041(source) : source)],
     ['runtime/electron-helper/shared-core.js', patchPhysicsDefaults040],
     ['runtime/electron-helper/sprite/motion.js', validateModularMotion],
     ['runtime/electron-helper/main.js', patchModularMain],
     ['runtime/electron-helper/main/dpi.js', validateModularDpi],
     ['runtime/electron-helper/main/user-data.js', patchModularUserData],
   ];
+  if(meta.version==='0.4.1')transforms.push(['runtime/electron-helper/sprite/input.js',patchDrag041],['runtime/electron-helper/index.html',patchAlpha041]);
   const planned = transforms.map(([name, transform]) => {
     const file = join(packageRoot, name), stat = lstatSync(file);
     if (!stat.isFile() || stat.isSymbolicLink()) throw new Error('unsafe-harness-upstream-file');

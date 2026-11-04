@@ -10,7 +10,7 @@ const expected={chatMemoryRounds:5,chatImageLimit:10,clickSoundEnabled:false,cha
 const flags=['petCollision','hapticEnabled','tiltGravity','shakeThrow'];
 const installed=resolve(process.env.CODEX_PET_UPSTREAM_FIXTURE||'node_modules/dsh-pet');
 const meta=JSON.parse(await readFile(join(installed,'package.json'),'utf8'));
-const real040=meta.version==='0.4.0';
+const real040=['0.4.0','0.4.1'].includes(meta.version);
 const previous=process.env.CODEX_PET_PREVIOUS_UPSTREAM_FIXTURE;
 function declaration(source,name){const value=source.match(new RegExp('function '+name+'\\([^)]*\\) \\{[\\s\\S]*?^\\}','m'))?.[0];assert.ok(value,name);return value;}
 async function actualConfig(){

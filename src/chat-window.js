@@ -134,9 +134,15 @@
     event.preventDefault();
     if (!locked()) void operate(() => api.pasteImage());
   });
+  // 参考上游a762d877：上屏回车、旧Windows组字标志和自动重复不能变成发送。
+  let inputComposing = false, compositionEndedAt = -Infinity;
+  ui.input.addEventListener('compositionstart', () => { inputComposing = true; });
+  ui.input.addEventListener('compositionend', () => { inputComposing = false; compositionEndedAt = performance.now(); });
   ui.input.addEventListener('keydown', event => {
-    if (event.key === 'Enter' && !event.shiftKey && !event.isComposing) {
+    if (event.key === 'Enter' && !event.shiftKey) {
+      if (inputComposing || event.isComposing || event.keyCode === 229) return;
       event.preventDefault();
+      if (event.repeat || performance.now() - compositionEndedAt < 80) return;
       if (!ui.send.disabled) ui.form.requestSubmit();
     }
   });

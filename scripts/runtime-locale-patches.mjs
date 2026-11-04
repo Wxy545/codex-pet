@@ -17,17 +17,37 @@ export function localizeIndexHtml(source){
 
 export function localizeHost(source){
   const modularSettings=source.includes('//#region src/standalone/server/handlers.ts');
+  const settings041=source.includes('//#region src/standalone/settings-page/script/core.ts');
   source=source.replace(/^(#![^\n]*\n)?/,'$1import CodexRuntimeLocale from "../runtime/electron-helper/codex-runtime-locale.cjs";\nimport CodexLocale from "../runtime/electron-helper/codex-locale.cjs";\nconst codexFixedText=(value,values)=>CodexLocale.t(value,values);\n');
   source=region(source,'//#region src/standalone/settings.ts',modularSettings?'//#endregion\n//#region src/standalone/request-security.ts':'//#region src/standalone/settings-page.ts',literals,'AI设置校验');
   if(modularSettings)source=region(source,'//#region src/standalone/request-security.ts','//#endregion\n//#region src/standalone/server/respond.ts',literals,'本机请求鉴权');
-  source=one(source,'const settingsPage = `','const settingsPage = CodexRuntimeLocale.settingsHtml(`','AI设置HTML');
-  source=one(source,'</noscript></main></body></html>`;','</noscript></main></body></html>`);','AI设置HTML结束');
-  source=one(source,'const settingsScript = `','const settingsScript = CodexRuntimeLocale.settingsScript(`','AI设置脚本');
-  const nextRegion=source.includes('//#region src/standalone/request-body.ts')?'request-body.ts':'server.ts';
-  source=one(source,"})();\n`;\n\n//#endregion\n//#region src/standalone/"+nextRegion,"})();\n`);\n\n//#endregion\n//#region src/standalone/"+nextRegion,'AI设置脚本结束');
+  if(settings041){
+    // 0.4.1的builder先产出客户端代码，再翻译固定字面量；绝不把宿主中的HTML模板当普通字符串改写。
+    source=region(source,'//#region src/standalone/settings-page/chrome.ts','//#endregion',block=>{
+      block=one(block,'const settingsPage = `','const settingsPage = CodexRuntimeLocale.settingsHtml(`','0.4.1设置HTML');
+      block=one(block,'</body></html>`;','</body></html>`);','0.4.1设置HTML结束');
+      block=one(block,'<script src="/standalone-ai/chat-panel.js" defer></script>','','0.4.1原生聊天脚本隔离');
+      block=one(block,'<div class="field"><span class="fieldLabel" id="balance-provider-label">','<div class="field" hidden><span class="fieldLabel" id="balance-provider-label">','0.4.1外部余额控件隐藏');
+      block=one(block,'<button id="model-toggle" class="comboToggle"','<button id="model-toggle" hidden class="comboToggle"','0.4.1新模型查询控件隐藏');
+      block=one(block,'可以直接手填；点右侧箭头向端点拉取可用列表后选择。拉取只用本次填写的地址与密钥，不会保存。','请填写实际可用的模型 ID。','0.4.1模型提示');
+      const chat=block.match(/^<button[^\n]*id="tab-chat"[^\n]*\n/gm);if(chat?.length!==1)throw Error('0.4.1聊天页定位失败。');
+      block=one(block,chat[0],'','0.4.1原生聊天页隔离');
+      const panel='<section class="panel" id="panel-chat" role="tabpanel" aria-labelledby="tab-chat">\n<div class="pet-chat-host" id="pet-chat-root"></div>\n</section>';
+      return one(block,panel,'','0.4.1原生聊天容器隔离');
+    },'0.4.1设置框架');
+    source=region(source,'//#region src/standalone/settings-page.ts','//#endregion',block=>one(one(block,'const settingsScript = [','const settingsScript = CodexRuntimeLocale.settingsScript([','0.4.1设置模块组装'),'].join("\\n");','].join("\\n"));','0.4.1设置模块结束'),'0.4.1设置模块');
+    source=region(source,'//#region src/standalone/settings-page/script/boot.ts','//#endregion',block=>one(block,"  selectTab('chat');","  selectTab('config');",'0.4.1配置首页'),'0.4.1设置启动');
+    source=one(source,'if (pathname === "/standalone-ai/chat-panel.js") {','if (pathname === "/standalone-ai/chat-panel.js") {\n\t\t\trejectRequest(res,403,"feature-unavailable");return;','0.4.1聊天静态资源拒绝');
+  }else{
+    source=one(source,'const settingsPage = `','const settingsPage = CodexRuntimeLocale.settingsHtml(`','AI设置HTML');
+    source=one(source,'</noscript></main></body></html>`;','</noscript></main></body></html>`);','AI设置HTML结束');
+    source=one(source,'const settingsScript = `','const settingsScript = CodexRuntimeLocale.settingsScript(`','AI设置脚本');
+    const nextRegion=source.includes('//#region src/standalone/request-body.ts')?'request-body.ts':'server.ts';
+    source=one(source,"})();\n`;\n\n//#endregion\n//#region src/standalone/"+nextRegion,"})();\n`);\n\n//#endregion\n//#region src/standalone/"+nextRegion,'AI设置脚本结束');
+  }
   // 只翻译设置HTTP接口/连接测试的固定错误，不翻译reply或任何配置字符串。
   // 0.4将HTTP处理器移到静态页面之前；范围必须止于模块边界，不能把HTML属性和客户端JS当宿主字符串包裹。
-  source=region(source,'function settingsHandler(ai)',modularSettings?'//#endregion\n//#region src/standalone/settings-page.ts':'function dispatch(options, shutdownSecurity)',literals,'AI设置请求');
+  source=region(source,'function settingsHandler(ai)',settings041?'//#endregion':modularSettings?'//#endregion\n//#region src/standalone/settings-page.ts':'function dispatch(options, shutdownSecurity)',literals,'AI设置请求');
   if(modularSettings)source=region(source,'//#region src/standalone/request-body.ts','//#endregion\n//#region src/standalone/server/listener.ts',literals,'AI请求正文');
   if(source.includes('async function testAiConnection(fetcher, current$2, input) {')){
     source=region(source,'function missingField(baseUrl, model, apiKey)', '\n//#endregion\n//#region src/standalone/ai-provider/create.ts',code=>{

@@ -26,3 +26,7 @@ test('WorkBuddy未接账号时AI服务不就绪且全部入口无法调用模型
   await assert.rejects(ai.saveSettings({enabled:true}),/unavailable/);
   await assert.rejects(async()=>{for await(const chunk of ai.stream({}))void chunk;},/unavailable/);
 });
+
+test('新版余额桥读取未接入AI宿主时返回无凭据，不能阻断独立余额提供方',()=>{
+ const ai=Host.unavailableAi();assert.equal(typeof ai.balanceAuth,'function');assert.equal(ai.balanceAuth(),undefined);assert.equal(ai.isReady(),false);assert.equal(ai.canWhisper(),false);
+});
