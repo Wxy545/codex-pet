@@ -335,7 +335,8 @@ export async function checkCodexCompatibility({ root = ROOT, force = false, plat
     checks.disabledFeatures = { status: features.code !== 0 ? 'failed' : !knownFeatures.size ? 'unknown' : missingFeatures.length ? 'failed' : 'passed', reason: 'read-only-feature-recognition', requestedCount: requirements.disabledFeatures.length, missingFeatures };
   } else checks.disabledFeatures = { status: 'unknown', reason: 'cli-or-feature-contract-unavailable' };
   checks.permissionProfiles = await inspectPermissionProfiles(run, current.cli.path, taskRequirements, platform, env);
-  const tests = await run(process.execPath, ['--test', '--test-concurrency=1', 'test/*.test.mjs', 'src/*.test.cjs'], { timeoutMs: 60000 });
+  // 完整回归已观测超过60秒；预留执行余量，仍以三分钟为上限并明确报告超时失败。
+  const tests = await run(process.execPath, ['--test', '--test-concurrency=1', 'test/*.test.mjs', 'src/*.test.cjs'], { timeoutMs: 180000 });
   report.testsRun = true;
   checks.regressionTests = { status: tests.code === 0 ? 'passed' : 'failed', exitCode: tests.code, timedOut: Boolean(tests.timedOut), reason: 'local-mocked-regression-suite' };
   try { checks.eventContract = await (deps.collectEventContract ?? collectEventContract)(env.CODEX_HOME || join(homedir(), '.codex')); }

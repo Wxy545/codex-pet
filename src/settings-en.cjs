@@ -1,6 +1,8 @@
 'use strict';
-// 0.4.1原生配置页的固定文案；不处理输入值、接口返回值或模型回复。
+// 0.4.1与0.4.3原生配置页的固定文案；不处理输入值、接口返回值或模型回复。
 module.exports={
+ '动作频率':'Action frequency','四个框：待机 / 转向 / 移动可改，随机动作自动算（= 100 − 其余三项）。所有宠物共用；pet pack 可在自己种类文件里覆盖。':'Adjust idle, turn, and walk chances. Other actions use the remaining percentage. Applies to all pets unless their pack overrides it.',
+ '待机（%）':'Idle (%)','转向（%）':'Turn (%)','移动（%）':'Walk (%)','随机动作（%，自动）':'Other actions (%, calculated)',
  '有未保存的改动':'Unsaved changes','独立模式自己连服务商，不经过 DSH；所有配置只保存在当前机器。':'Standalone connections use the selected provider. Settings are stored on this computer.',
  '服务商提供的基础接口地址，支持 HTTP 与 HTTPS，通常以 /v1 结尾。不要把密钥放进地址。':'Use the provider’s HTTP or HTTPS base URL, usually ending in /v1. Keep the key out of the URL.',
  '填写或拉取服务商的模型 ID，例如 deepseek-chat':'Enter a model ID, such as deepseek-chat','请填写实际可用的模型 ID。':'Enter an available model ID.','拉取并选择模型':'Fetch and select a model',

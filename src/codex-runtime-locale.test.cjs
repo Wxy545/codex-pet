@@ -18,10 +18,10 @@ test('prepare实际生成的AI设置页与脚本显示英文，GET回填中文�
  L.setLocale('en');
  const source=fs.readFileSync(path.join(upstreamRoot,'lib/codex-host.js'),'utf8');
  const helper={settingsHtml,settingsScript};
- if(JSON.parse(fs.readFileSync(path.join(upstreamRoot,'package.json'),'utf8')).version==='0.4.1'){
+ if(['0.4.1','0.4.3'].includes(JSON.parse(fs.readFileSync(path.join(upstreamRoot,'package.json'),'utf8')).version)){
   let builders='';for(const row of source.matchAll(/\/\/#region src\/standalone\/settings-page\/script\/[^\n]+\n([\s\S]*?)\/\/#endregion/g))builders+=row[1]+'\n';
   for(const name of ['settings-page/chrome.ts','settings-page.ts']){const start=source.indexOf('//#region src/standalone/'+name),end=source.indexOf('//#endregion',start);assert.ok(start>=0&&end>start);builders+=source.slice(start,end)+'\n';}
-  const context={CodexRuntimeLocale:helper,ROUTE_SEGMENT:'/dsh-pet-7340',VOICES:[],FONT_PRESETS:[],PET_DISPLAYS:[],CORNER_SET:[],DEFAULT_PHYSICS:{},DEFAULT_FONT:{},LOGO_URL:''};
+  const context={CodexRuntimeLocale:helper,ROUTE_SEGMENT:'/dsh-pet-7340',VOICES:[],FONT_PRESETS:[],PET_DISPLAYS:[],CORNER_SET:[],DEFAULT_PHYSICS:{},DEFAULT_FONT:{},DEFAULT_WEIGHTS:{idle:10,turn:5,move:5},LOGO_URL:''};
   vm.runInNewContext(builders+'\nglobalThis.result={html:settingsPage,script:settingsScript};',context);assert.doesNotMatch(context.result.html,/[\u3400-\u9fff]/u);assert.doesNotThrow(()=>new vm.Script(context.result.script));
   const prefix=context.result.script.slice(0,context.result.script.indexOf('(function () {')),populate=context.result.script.match(/function populateAi\([^)]*\) \{[\s\S]*?^\}/m)?.[0],nodes=new Map(),byId=id=>{if(!nodes.has(id))nodes.set(id,{});return nodes.get(id);};assert.ok(populate);
   vm.runInNewContext(prefix+'\n'+populate+'\npopulateAi(input);',{byId,protocolSelect:null,balanceSelect:null,input:{model:'用户自己的模型名',hasKey:true}});

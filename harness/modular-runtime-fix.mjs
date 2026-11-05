@@ -3,7 +3,7 @@ function requireOnce(source, text) {
   if (count(source, text) !== 1) throw Error('harness-modular-runtime-anchor-mismatch');
 }
 
-/** 0.4.0/0.4.1 已修正目标插值；校验实际新模块，不将旧版整份实现覆盖回来。 */
+/** 已核验的0.4.0/0.4.1/0.4.3保留原生目标插值，不覆盖成旧版整份实现。 */
 export function validateModularMotion(input, { browser = false } = {}) {
   const source = input.replaceAll('\r\n', '\n');
   requireOnce(source, browser
@@ -104,4 +104,44 @@ export function patchModularSandbox(input) {
     source = source.replace(before, after);
   }
   return source;
+}
+
+/** 0.4.3把元数据统一收口到switchTo；once仍表示单次，不能与el.loop同向。 */
+export function patchModularPlayback043(input) {
+  const source=input.replaceAll('\r\n','\n');
+  for(const anchor of ['  switchTo(next, nextOnce, playbackId, url) {','    this.anim = next;','    el.onended = nextOnce ? () => this.handleEnded() : () => this.restartLoop(el);','  restartLoop(el) {\n    el.currentTime = 0;\n    void el.play().catch(() => {});'])requireOnce(source,anchor);
+  const before='    this.once = !nextOnce;',after='    this.once = nextOnce; // codex-pet-once-contract-043';
+  if(count(source,after)===1&&count(source,before)===0)return source;
+  requireOnce(source,before);if(count(source,after)!==0)throw Error('harness-modular-runtime-anchor-mismatch');
+  return source.replace(before,after);
+}
+
+/** 0.4.3已原生包含三项main修复，必须核对实际代码，不能再叠041替换。 */
+export function validateModularClient043(input) {
+  const source=input.replaceAll('\r\n','\n');
+  for(const anchor of [
+    'function petStageStyle(bottomPad) {\n\treturn { transform: "translateY(" + bottomPad + "px)" };\n}',
+    'const ALPHA_FIX_ID = "dsh-pet-alpha-fix";',
+    'func.setAttribute("intercept", "-0.0039215686");',
+    'card.facingRef.current = next;\n\t\t\t\tpickNext();',
+    'workStatus: workOn ? workStatus : null,','workStatusTick: workOn ? workStatusTick : 0,',
+  ])requireOnce(source,anchor);
+  if(source.includes('stageEl.style.transform = "none"'))throw Error('harness-modular-runtime-anchor-mismatch');
+  return input;
+}
+
+/** 新窗口落位模块是所有平台共用装配，Windows也须完整加载并保留winOffset。 */
+export function validateModularHelper043(files) {
+  const read=name=>{if(typeof files?.[name]!=='string')throw Error('harness-modular-runtime-anchor-mismatch');return files[name].replaceAll('\r\n','\n');};
+  const html=read('index.html'),sprite=read('sprite.js'),input=read('sprite/input.js'),fit=read('sprite/window-fit.js');
+  const scripts=['<script src="./sprite.js"></script>','<script src="./sprite/window-fit.js"></script>','<script src="./sprite/init.js"></script>'];
+  scripts.forEach(anchor=>requireOnce(html,anchor));
+  if(!(html.indexOf(scripts[0])<html.indexOf(scripts[1])&&html.indexOf(scripts[1])<html.indexOf(scripts[2])))throw Error('harness-modular-runtime-anchor-mismatch');
+  for(const anchor of ['filter: url(#dsh-pet-alpha-fix);','<filter id="dsh-pet-alpha-fix">','<feFuncA type="linear" slope="1" intercept="-0.0039215686" />'])requireOnce(html,anchor);
+  for(const anchor of ['this.winOffset = { x: this.margin.l, y: this.margin.t };','const fit = this.fitWindow();','this.reportWindow(fit);'])requireOnce(sprite,anchor);
+  for(const anchor of ['const px = e.clientX - this.winOffset.x;','const py = e.clientY - this.winOffset.y;'])requireOnce(input,anchor);
+  if(input.includes("this.stage.style.transform = 'none'"))throw Error('harness-modular-runtime-anchor-mismatch');
+  for(const anchor of ['  fitWindow() {','  reportWindow(fit) {','const area = CONFIG.isWindowClampedToWorkArea','const fit = S.fitWindowInArea({','this.applyWinOffset(fit.offsetX, fit.offsetY);'])requireOnce(fit,anchor);
+  patchModularPlayback043(read('sprite/playback.js'));
+  return files;
 }

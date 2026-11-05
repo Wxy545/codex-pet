@@ -89,7 +89,7 @@ function declaration(source,name) {
   return source.slice(start,end);
 }
 
-/** 仅用于官方0.4.1的两个头像函数；锚点和完整函数摘要都须匹配。 */
+/** 仅用于官方0.4.1/0.4.3的两个相同头像函数；锚点和完整函数摘要都须匹配。 */
 export function patchNativeAvatar041(input) {
   const source=input.replaceAll('\r\n','\n');
   const block=MARK+'\nimport * as codexPetAvatarFs from "node:fs";\nimport * as codexPetAvatarPath from "node:path";\nimport { randomUUID as codexPetAvatarUuid } from "node:crypto";\nconst codexPetNativeAvatarGuard = ('+createAvatarGuard.toString()+')({fs:codexPetAvatarFs,path:codexPetAvatarPath,randomUUID:codexPetAvatarUuid,validId:isValidPetId});\n'+END+'\n';

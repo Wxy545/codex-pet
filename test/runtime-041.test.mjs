@@ -8,10 +8,12 @@ import {randomBytes,timingSafeEqual} from 'node:crypto';
 import {createServer} from 'node:http';
 import vm from 'node:vm';
 import {z} from 'zod';
-import {patchStandalone041,patchHelper041} from '../scripts/prepare-runtime-041.mjs';
+import {patchStandalone041 as legacyStandalone,patchHelper041 as legacyHelper} from '../scripts/prepare-runtime-041.mjs';
+import {patchStandalone043,patchHelper043} from '../scripts/prepare-runtime-043.mjs';
 import {preserveStandalonePolicy041} from '../scripts/standalone-policy-041.mjs';
 const require=createRequire(import.meta.url),Locale=require('../src/codex-runtime-locale.cjs');
-const root=resolve(process.env.CODEX_PET_UPSTREAM_FIXTURE||'node_modules/dsh-pet'),meta=JSON.parse(await readFile(join(root,'package.json'),'utf8')),supported=meta.version==='0.4.1';
+const root=resolve(process.env.CODEX_PET_UPSTREAM_FIXTURE||'node_modules/dsh-pet'),meta=JSON.parse(await readFile(join(root,'package.json'),'utf8')),supported=['0.4.1','0.4.3'].includes(meta.version);
+const patchStandalone041=meta.version==='0.4.3'?patchStandalone043:legacyStandalone,patchHelper041=meta.version==='0.4.3'?patchHelper043:legacyHelper;
 const raw=supported?await readFile(join(root,'lib/standalone.js'),'utf8'):null,fixed=supported?patchStandalone041(raw):null;
 const options={skip:!supported};
 function region(source,name){const a=source.indexOf('//#region src/'+name),b=source.indexOf('//#endregion',a);assert.ok(a>=0&&b>a,name);return source.slice(a,b);}
@@ -27,7 +29,7 @@ test('041实际新模块生成可编译宿主，未知或半补丁锚点明确�
 function settings(locale){
  let code='';for(const row of fixed.matchAll(/\/\/#region src\/standalone\/settings-page\/script\/[^\n]+\n([\s\S]*?)\/\/#endregion/g))code+=row[1]+'\n';
  code+=region(fixed,'standalone/settings-page/chrome.ts')+'\n'+region(fixed,'standalone/settings-page.ts')+'\nglobalThis.result={html:settingsPage,script:settingsScript};';
- const scope={CodexRuntimeLocale:{settingsHtml:value=>Locale.settingsHtml(value,locale),settingsScript:value=>Locale.settingsScript(value,locale)},ROUTE_SEGMENT:'/dsh-pet-7340',VOICES:[],FONT_PRESETS:[],PET_DISPLAYS:[],CORNER_SET:[],DEFAULT_PHYSICS:{},DEFAULT_FONT:{},LOGO_URL:''};vm.runInNewContext(code,scope);return scope.result;
+ const scope={CodexRuntimeLocale:{settingsHtml:value=>Locale.settingsHtml(value,locale),settingsScript:value=>Locale.settingsScript(value,locale)},ROUTE_SEGMENT:'/dsh-pet-7340',VOICES:[],FONT_PRESETS:[],PET_DISPLAYS:[],CORNER_SET:[],DEFAULT_PHYSICS:{},DEFAULT_FONT:{},DEFAULT_WEIGHTS:{},LOGO_URL:''};vm.runInNewContext(code,scope);return scope.result;
 }
 test('041十个设置builder先组装再本地化，英文配置页不混中文且不启用新聊天/上传/云额度',options,()=>{
  const en=settings('en'),zh=settings('zh-CN');assert.doesNotThrow(()=>new vm.Script(en.script));assert.doesNotThrow(()=>new vm.Script(zh.script));
@@ -96,6 +98,7 @@ test('041未接入头像/会话写和原生余额模型聊天入口在分发前�
 
 test('041原生菜单键盘/拖图只经自有主进程gate开小窗，截图和原生录音不绕过',options,async()=>{
  const names=['main.js','main/tray.js','main/bridge.js','main/ipc.js','main/dpi.js','main/user-data.js','sprite.js','sprite/motion.js','sprite/menu.js','sprite/playback.js','sprite/bubble.js','sprite/input.js','events.js','shared-core.js','index.html'];
+ if(meta.version==='0.4.3')names.push('sprite/init.js','sprite/window-fit.js');
  const files=Object.fromEntries(await Promise.all(names.map(async name=>[name,await readFile(join(root,'runtime/electron-helper',name),'utf8')]))),patched=patchHelper041(files);
  assert.deepEqual(patchHelper041(patched),patched);for(const[name,source]of Object.entries(patched))if(name.endsWith('.js'))assert.doesNotThrow(()=>new vm.Script(source,{filename:name}));
  let opened=0;const scope={PetSprite:function(){},window:{codexChatPanel:{open:()=>{opened++;}}},Promise};vm.runInNewContext(patched['sprite/menu.js'].slice(patched['sprite/menu.js'].indexOf('// codex-pet-controlled-chat-041')),scope);

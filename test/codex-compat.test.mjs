@@ -63,7 +63,7 @@ async function fixture(t) {
   return root;
 }
 
-function mocks({ version = '1.0.0', testCode = 0, desktopKnown = true, execHelp = help, features = ['shell_tool', 'apps'], eventContract = supportedEvents(), wrongPermission = false, configCode = 0 } = {}) {
+function mocks({ version = '1.0.0', testCode = 0, testTimedOut = false, desktopKnown = true, execHelp = help, features = ['shell_tool', 'apps'], eventContract = supportedEvents(), wrongPermission = false, configCode = 0 } = {}) {
   const calls = [];
   const runCommand = async (file, args, options) => {
     calls.push({ file, args, options });
@@ -73,7 +73,7 @@ function mocks({ version = '1.0.0', testCode = 0, desktopKnown = true, execHelp 
     if (args[0] === 'features') return { code: 0, stdout: features.map(feature => `${feature} stable false`).join('\n') };
     if (args[0] === 'app-server') return { code: configCode, stdout: configCode === 0 ? JSON.stringify({ appServerVersion: version, configRequirements: { requirements: null } }) : 'PRIVATE_CONFIG_ERROR' };
     if (args[0] === 'debug' && args[1] === 'prompt-input') return { code: 0, stdout: permissionPrompt(wrongPermission ? 'read-only' : args.includes('default_permissions=":workspace"') ? 'workspace-write' : 'read-only') };
-    if (args[0] === '--test') return { code: testCode, stdout: testCode ? 'PRIVATE_TEST_FAILURE' : 'tests passed' };
+    if (args[0] === '--test') return { code: testCode, timedOut: testTimedOut, stdout: testCode ? 'PRIVATE_TEST_FAILURE' : 'tests passed' };
     if (String(file).endsWith('powershell.exe')) return { code: 0, stdout: JSON.stringify(desktopKnown ? desktop() : { status: 'unknown', reason: 'package-unavailable' }) };
     throw new Error('unexpected command in mock');
   };
@@ -190,4 +190,20 @@ test('桌面版本unknown单独报告；CLI和事件合同通过后保存组件�
   assert.equal(second.changed, false);
   assert.equal(second.testsRun, false);
   assert.equal(nextMock.calls.some(call => call.args[0] === '--test'), false);
+});
+
+test('完整回归容纳已观测75秒耗时并有界，真正超时仍失败且保留成功基线', async t => {
+  const root = await fixture(t), completed = mocks();
+  const first = await checkCodexCompatibility({ root, platform: 'win32', env: {}, deps: completed.deps });
+  const regression = completed.calls.find(call => call.args[0] === '--test');
+  assert.ok(regression.options.timeoutMs > 75000 && regression.options.timeoutMs <= 180000);
+  assert.equal(first.baselineUpdated, true);
+  const timedOut = await checkCodexCompatibility({ root, platform: 'win32', env: {}, deps: mocks({ version: '2.0.0', testCode: 1, testTimedOut: true }).deps });
+  assert.equal(timedOut.checks.regressionTests.status, 'failed');
+  assert.equal(timedOut.checks.regressionTests.timedOut, true);
+  assert.equal(timedOut.baselineUpdated, false);
+  const saved = JSON.parse(await readFile(join(root, 'data', 'codex-compatibility.json'), 'utf8'));
+  assert.equal(saved.lastSuccessfulVersion.cli.version, '1.0.0');
+  assert.equal(saved.pendingVersion.cli.version, '2.0.0');
+  assert.equal(JSON.stringify(timedOut).includes('PRIVATE_TEST_FAILURE'), false);
 });

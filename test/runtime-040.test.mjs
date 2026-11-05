@@ -9,8 +9,9 @@ import {createDesktopChangeGuard} from '../src/control-config.mjs';
 import {localizeIndexHtml} from '../scripts/runtime-locale-patches.mjs';
 let Module={};try{Module=await import('../scripts/prepare-runtime-040.mjs');}catch(error){if(error.code!=='ERR_MODULE_NOT_FOUND')throw error;}
 const root=resolve(process.env.CODEX_PET_UPSTREAM_FIXTURE||'node_modules/dsh-pet'),meta=JSON.parse(await readFile(join(root,'package.json'),'utf8'));
-const supported=['0.4.0','0.4.1'].includes(meta.version),read=name=>readFile(join(root,name),'utf8');
+const supported=['0.4.0','0.4.1','0.4.3'].includes(meta.version),read=name=>readFile(join(root,name),'utf8');
 if(meta.version==='0.4.1'){const current=await import('../scripts/prepare-runtime-041.mjs');Module={...Module,patchStandalone040:current.patchStandalone041,patchHelper040:current.patchHelper041};}
+if(meta.version==='0.4.3'){const current=await import('../scripts/prepare-runtime-043.mjs');Module={...Module,patchStandalone040:current.patchStandalone043,patchHelper040:current.patchHelper043,patchPlayback040:current.patchPlayback043};}
 
 test('0.4宿主保留原生Range与隐藏门控，角色记忆和用途在新生成函数准确接线',{skip:!supported},async()=>{
  assert.equal(typeof Module.patchStandalone040,'function');const source=await read('lib/standalone.js'),fixed=Module.patchStandalone040(source);
@@ -21,7 +22,7 @@ test('0.4宿主保留原生Range与隐藏门控，角色记忆和用途在新生
 });
 
 test('0.4拆分helper只接原生模块，不还原旧main或sprite，启动和托盘使用对象控制器',{skip:!supported},async()=>{
- assert.equal(typeof Module.patchHelper040,'function');const files=Object.fromEntries(await Promise.all(['main.js','main/tray.js','main/bridge.js','main/ipc.js','main/dpi.js','main/user-data.js','sprite.js','sprite/motion.js','sprite/menu.js','sprite/playback.js','sprite/bubble.js','sprite/input.js','events.js','shared-core.js','index.html'].map(async name=>[name,await read('runtime/electron-helper/'+name)]))),fixed=Module.patchHelper040(files);
+ assert.equal(typeof Module.patchHelper040,'function');const files=Object.fromEntries(await Promise.all(['main.js','main/tray.js','main/bridge.js','main/ipc.js','main/dpi.js','main/user-data.js','sprite.js','sprite/motion.js','sprite/menu.js','sprite/playback.js','sprite/bubble.js','sprite/input.js','events.js','shared-core.js','index.html',...(meta.version==='0.4.3'?['sprite/init.js','sprite/window-fit.js']:[])].map(async name=>[name,await read('runtime/electron-helper/'+name)]))),fixed=Module.patchHelper040(files);
  for(const[name,source]of Object.entries(fixed))if(name.endsWith('.js'))assert.doesNotThrow(()=>new vm.Script(source,{filename:name}));
  assert.match(fixed['main.js'],/const petWindows = createWindows/);assert.match(fixed['main.js'],/petWindows\.create\(\)/);assert.match(fixed['main.js'],/codexWorkbench/);assert.match(fixed['main.js'],/codexConnections/);
  assert.match(fixed['main/tray.js'],/extraItems\(\)/);assert.match(fixed['main/ipc.js'],/require\('\.\.\/codex-startup\.cjs'\)/);assert.match(fixed['sprite/input.js'],/pet-status-quota\.is-interactive/);
@@ -33,7 +34,7 @@ test('0.4拆分helper只接原生模块，不还原旧main或sprite，启动和�
 
 test('0.4自有装饰器排在全部sprite方法模块之后，语言先于装饰且原模块顺序不变',{skip:!supported},async()=>{
  const original=await read('runtime/electron-helper/index.html'),fixed=localizeIndexHtml(original),scripts=[...fixed.matchAll(/<script src="(?:\.\/)?([^"]+)"/g)].map(row=>row[1]);
- const modules=['sprite/init.js','sprite/playback.js','sprite/motion.js','sprite/input.js','sprite/bubble.js','sprite/menu.js'];for(const name of modules)assert.ok(scripts.indexOf(name)<scripts.indexOf('codex-skin-renderer.js'),name);
+ const modules=['sprite.js',...(meta.version==='0.4.3'?['sprite/window-fit.js']:[]),'sprite/init.js','sprite/playback.js','sprite/motion.js','sprite/input.js','sprite/bubble.js','sprite/menu.js'];for(const name of modules){assert.ok(scripts.indexOf(name)>=0,name);assert.ok(scripts.indexOf(name)<scripts.indexOf('codex-skin-renderer.js'),name);}for(let i=1;i<modules.length;i++)assert.ok(scripts.indexOf(modules[i-1])<scripts.indexOf(modules[i]),modules[i]);
  assert.ok(scripts.indexOf('codex-locale.cjs')<scripts.indexOf('codex-skin-renderer.js'));assert.ok(scripts.indexOf('codex-skin-renderer.js')<scripts.indexOf('events.js'));assert.equal(localizeIndexHtml(fixed),fixed);
 });
 

@@ -1,8 +1,12 @@
 'use strict';
 const test=require('node:test'),assert=require('node:assert/strict'),vm=require('node:vm');
 const {readFileSync}=require('node:fs');
+const {join,resolve}=require('node:path');
+const upstreamRoot=process.env.CODEX_PET_UPSTREAM_FIXTURE?resolve(process.env.CODEX_PET_UPSTREAM_FIXTURE):join(__dirname,'../node_modules/dsh-pet');
+const upstreamVersion=JSON.parse(readFileSync(join(upstreamRoot,'package.json'),'utf8')).version;
+if(!['0.3.8','0.4.0','0.4.1','0.4.3'].includes(upstreamVersion))throw Error('unreviewed-upstream-version');
 const source=readFileSync(require('node:path').join(__dirname,'pet-status-strip.js'),'utf8');
-function load(){const module={exports:{}};vm.runInNewContext(source,{module,structuredClone,console,Promise});return module.exports;}
+function load({areas=[]}={}){const module={exports:{}};vm.runInNewContext(source,{module,structuredClone,console,Promise,WORK_AREAS:areas});return module.exports;}
 const json=value=>JSON.parse(JSON.stringify(value));
 
 test('监控只显示有限真实百分比，unknown不转0，显存只显示已用MiB',()=>{
@@ -18,8 +22,15 @@ test('额度使用实际已用百分比推剩余，缺少读数未知，窗口�
  assert.equal(quotaView(null,shared,'en').remaining,null);assert.equal(quotaView({ok:false},shared,'zh-CN').text,'额度未知');assert.equal(quotaView({ok:true,shape:'windows'},{balanceDetailView:()=>[]},'en').remaining,null);
 });
 
-test('真实上游窗口摘要同时显示5小时、周、月，详情同名，进度仍取最紧窗口',()=>{
- const context={};vm.runInNewContext(readFileSync(require('node:path').join(__dirname,'../node_modules/dsh-pet/runtime/electron-helper/shared-core.js'),'utf8'),context);const shared=context.PetShared,{quotaView}=load();
+test('真实上游窗口摘要同时显示5小时、周、月，详情同名，进度仍取最紧窗口',async()=>{
+ let core=readFileSync(join(upstreamRoot,'runtime/electron-helper/shared-core.js'),'utf8');
+ if(upstreamVersion==='0.4.3'){
+  // 原件仍要求月窗；执行实际准备补丁后再核对Codex单窗口，不在fixture另写解析规则。
+  const {patchHelper043}=await import('../scripts/prepare-runtime-043.mjs');
+  const names=['main.js','main/tray.js','main/bridge.js','main/ipc.js','main/dpi.js','main/user-data.js','sprite.js','sprite/motion.js','sprite/menu.js','sprite/playback.js','sprite/bubble.js','sprite/input.js','events.js','shared-core.js','index.html','sprite/init.js','sprite/window-fit.js'];
+  core=patchHelper043(Object.fromEntries(names.map(name=>[name,readFileSync(join(upstreamRoot,'runtime/electron-helper',name),'utf8')])) )['shared-core.js'];
+ }
+ const context={};vm.runInNewContext(core,context);const shared=context.PetShared,{quotaView}=load();
  const state=shared.toBalanceState({ok:true,shape:'windows',data:{rolling:19,rollingLabel:'5h',weekly:67,monthly:10}}),zh=quotaView(state,shared,'zh-CN'),en=quotaView(state,shared,'en');
  assert.equal(zh.text,'5小时 81% · 周 33% · 月 90%');assert.deepEqual(json(zh.details.map(row=>row.label)),['5小时','周','月']);assert.equal(zh.remaining,33);
  assert.equal(en.text,'5h 81% · Week 33% · Month 90%');assert.deepEqual(json(en.details.map(row=>row.label)),['5h','Week','Month']);assert.equal(en.remaining,33);
@@ -40,7 +51,7 @@ test('脚下完整footer为物理地面预留实际高度，保留各屏原横�
 });
 
 test('原版甩抛积分在预留footer的新地面反弹，原舞台尺寸和比例不变',()=>{
- const {constrainFooterSpace}=load(),context={};vm.runInNewContext(readFileSync(require('node:path').join(__dirname,'../node_modules/dsh-pet/runtime/electron-helper/shared-core.js'),'utf8'),context);const S=context.PetShared;
+ const {constrainFooterSpace}=load(),context={};vm.runInNewContext(readFileSync(join(upstreamRoot,'runtime/electron-helper/shared-core.js'),'utf8'),context);const S=context.PetShared;
  const area={x:0,y:0,width:1000,height:600},base=S.throwSpace({areas:[area],panels:[area],size:320,sideAllow:70}),space=constrainFooterSpace(base,{height:180,top:188,footerHeight:52,width:243,canvasWidth:320},[area]);
  const result=S.throwStepRegion({x:400,y:355,vx:50,vy:800},.1,space,S.DEFAULT_PHYSICS,0);assert.equal(result.y,356);assert.equal(result.bounced,true);assert.ok(result.vy<=0);assert.equal(space.size,320);assert.equal(base.bounds[0].maxY,420);assert.ok(result.y+188+52<=600);
 });
@@ -85,4 +96,31 @@ test('先到推送不会被迟到初始状态覆盖，卸载只退订一次',asy
 
 test('常驻footer余额不占头顶槽，真实上游renderBubble仍显示普通工作状态',()=>{
  const f=fixture({actualBubble:true}),p=new f.Sprite();p.position();Object.assign(p,{bubbleOn:true,balanceView:[{role:'label',text:'5h usage'}],balanceState:{ok:true,shape:'windows',rows:[{role:'quota',label:'5h',percent:20}]},workOn:true,workText:'Working fixture',workState:'working',whisperOn:false});p.renderBubble();assert.equal(p.bubble.textContent,'Working fixture');assert.equal(p.bubbleOn,true);f.close();
+});
+
+test('043真实window-fit与脚下条共用本体偏移，屏幕四边的上报命中区不再按固定margin推断',{skip:upstreamVersion!=='0.4.3'},()=>{
+ const area={x:0,y:0,width:1000,height:600};
+ for(const clamped of [false,true]){
+  const reports=[],window={__dshPetDebug:{},PetShared:{},CodexLocale:{getLocale:()=> 'en'},petBridge:{setBounds:(...args)=>reports.push(args)},addEventListener(){}};
+  const document={createElement:tag=>{const el=new Element(tag);Object.defineProperty(el,'offsetHeight',{get:()=>el.classList.contains('pet-status-footer')?52:0});Object.defineProperty(el,'offsetWidth',{get:()=>el.classList.contains('pet-status-footer')?180:0});return el;}};
+  const context={window,document,navigator:{platform:'Win32'},S:window.PetShared,VIEW:{x:0,y:0,w:1000,h:600},WORK_AREAS:[area],CONFIG:{isWindowClampedToWorkArea:clamped,topInsetRatio:0},toScreen:value=>value*1.5};
+  const actual=require('../test/support/upstream-sprite.cjs')(context);
+  class Sprite{markPoseDirty(){}dispose(){}}
+  Object.setPrototypeOf(Sprite.prototype,actual);
+  const installed=load({areas:[area]}).install({window,document,PetSprite:Sprite});
+  const p=Object.assign(new Sprite(),{pet:{id:'synthetic-geometry',balanceEnabled:true},el:new Element(),stage:new Element(),size:320,height:180,halfW:160,halfH:90,bottomPad:15,winH:195,margin:{l:80,r:80,t:120,b:80},winOffset:{x:80,y:120},hitRect:{x:70,y:30,w:180,h:140},throwState:null,tipOn:false});
+  // 与原buildDom的初值一致；fitWindow只在偏移变化时改写DOM。
+  p.el.style.left=p.winOffset.x+'px';p.el.style.top=p.winOffset.y+'px';
+  p.el.append(p.stage);
+  for(const [x,y]of [[-120,-160],[920,-160],[-120,610],[920,610]]){
+   p.sendBounds(x,y);const report=reports.at(-1),body={x:report[4]/1.5,y:report[5]/1.5},offset={x:report[10]/1.5,y:report[11]/1.5};
+   assert.equal(body.x,report[0]/1.5+offset.x);assert.equal(body.y,report[1]/1.5+offset.y);
+   assert.equal(p.el.style.left,offset.x+'px');assert.equal(p.el.style.top,offset.y+'px');
+   assert.equal(body.x,p.pos.x);assert.equal(body.y,p.pos.y);
+   const footer=p.el.find('pet-status-footer');assert.equal(footer.style.top,'188px');
+   assert.ok(body.y+188+52<=area.height);assert.ok(body.x+160-90>=area.x);assert.ok(body.x+160+90<=area.width);
+   if(clamped){assert.ok(report[0]>=0);assert.ok(report[1]>=0);assert.ok(report[0]/1.5+report[2]/1.5<=area.width);assert.ok(report[1]/1.5+report[3]/1.5<=area.height);}
+  }
+  p.dispose();installed.dispose();
+ }
 });

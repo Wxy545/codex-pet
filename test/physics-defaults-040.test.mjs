@@ -27,7 +27,9 @@ async function api(file){
  const constants=['GRAVITY','RESTITUTION','GROUND_FRICTION'].map(name=>source.match(new RegExp('const '+name+' = [^;]+;'))?.[0]);
  const defaults=source.match(/const DEFAULT_PHYSICS = \{[\s\S]*?\n\};/)?.[0],readStart=source.indexOf('//#region src/client/settings/config/read.ts'),readEnd=source.indexOf('//#endregion',readStart);
  assert.ok(readStart>=0&&readEnd>readStart);
- vm.runInNewContext(constants.join('\n')+'\n'+defaults+'\n'+declaration(source,'flattenConfigPets')+'\n'+source.slice(readStart,readEnd)+'\nglobalThis.api={defaults:DEFAULT_PHYSICS,flatten:flattenConfigPets,read:readMainConfig};',scope);
+ // 0.4.3的readMainConfig直接依赖共享权重解析器，执行同一真实产物中的函数，不用替身补值。
+ const weightsParser=meta.version==='0.4.3'?declaration(source,'parseWeights'):'';
+ vm.runInNewContext(constants.join('\n')+'\n'+defaults+'\n'+weightsParser+'\n'+declaration(source,'flattenConfigPets')+'\n'+source.slice(readStart,readEnd)+'\nglobalThis.api={defaults:DEFAULT_PHYSICS,flatten:flattenConfigPets,read:readMainConfig};',scope);
  return{source,...scope.api};
 }
 
@@ -51,7 +53,7 @@ test('未知、重复、缺失、半应用的默认常量或投影全部拒绝',
  for(const value of corrupt)assert.throws(()=>patchPhysicsDefaults040(value),/0\.4\.0.*物理.*锚点/);
 });
 
-for(const file of ['runtime/electron-helper/shared-core.js','lib/client.js'])test('真实0.4 '+file+'：旧六字段关闭新增体感，完整显式true/false保留',{skip:!['0.4.0','0.4.1'].includes(meta.version)},async()=>{
+for(const file of ['runtime/electron-helper/shared-core.js','lib/client.js'])test('真实0.4 '+file+'：旧六字段关闭新增体感，完整显式true/false保留',{skip:!['0.4.0','0.4.1','0.4.3'].includes(meta.version)},async()=>{
  const actual=await api(file),old={gravity:900,restitution:.4,groundFriction:3,ceilingBounce:false,throwPower:1.2,petCollision:false};
  for(const key of flags)assert.equal(actual.defaults[key],false,key);
  assert.equal(actual.defaults.petCollision,true);assert.equal(actual.defaults.gravity,1400);
@@ -64,6 +66,6 @@ for(const file of ['runtime/electron-helper/shared-core.js','lib/client.js'])tes
  }
 });
 
-test('真实0.4宿主文件不能按shared或client整体修补，禁止对错误文件静默略过',{skip:!['0.4.0','0.4.1'].includes(meta.version)},async()=>{
+test('真实0.4宿主文件不能按shared或client整体修补，禁止对错误文件静默略过',{skip:!['0.4.0','0.4.1','0.4.3'].includes(meta.version)},async()=>{
  for(const file of ['lib/standalone.js','lib/index.js']){const source=await readFile(join(root,file),'utf8');assert.ok(!source.includes('function flattenConfigPets(merged) {'));assert.throws(()=>patchPhysicsDefaults040(source),/0\.4\.0.*物理.*锚点/);}
 });

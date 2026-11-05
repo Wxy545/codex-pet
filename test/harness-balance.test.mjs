@@ -26,7 +26,7 @@ test('Harness脚下条直接显示原生金额、积分和全部额度窗口，�
 
 const webFixture=readUpstream('lib/client.js');
 test('原生web补丁保留工作与碎念气泡及原余额档位事件，只移走头顶余额，幂等且锚点异常停止',()=>{
- const options={statusScript:read('src/pet-status-strip.js'),statusCss:read('src/pet-status-strip.css'),locale:'en'};
+ const options={version:upstreamVersion,statusScript:read('src/pet-status-strip.js'),statusCss:read('src/pet-status-strip.css'),locale:'en'};
  const source=patchNativeWebBalance(webFixture,options);assert.match(source,/h\(CodexNativeBalanceFooter/);assert.match(source,/!input\.balanceEnabled && input\.balanceOn/);assert.match(source,/nativeFooterSpace/);assert.doesNotMatch(source.slice(source.indexOf('/* codex-pet-native-balance-v1 */'),source.indexOf('/* /codex-pet-native-balance-v1 */')),/fetch\(|credentials|CODEX_HOME/);
  assert.equal(patchNativeWebBalance(source,options),source);assert.throws(()=>patchNativeWebBalance(webFixture.replace('props.bubble,','props.changedBubble,'),options),/anchor/);new vm.Script(source.replace(/^export\s*\{[^}]*\};?\s*$/m,''));
 });
