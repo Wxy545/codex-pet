@@ -145,3 +145,64 @@ export function validateModularHelper043(files) {
   patchModularPlayback043(read('sprite/playback.js'));
   return files;
 }
+
+const ELECTRON_RESOLVER_043 = `function resolveElectronPath(candidates = []) {
+\tconst seen = new Set();
+\tconst list = [];
+\tconst push = (value) => {
+\t\tif (!value || seen.has(value)) return;
+\t\tseen.add(value);
+\t\tlist.push(value);
+\t};
+\tfor (const value of candidates) push(value);
+\tif (process.env.DSH_PET_ELECTRON_PATH) push(process.env.DSH_PET_ELECTRON_PATH);
+\ttry {
+\t\tconst resolved = require("electron");
+\t\tif (typeof resolved === "string" && resolved) push(resolved);
+\t} catch {}
+\tpush(defaultElectronExe());
+\treturn list.find(isNonEmptyFile);
+}`;
+const ELECTRON_OWNED_043=ELECTRON_RESOLVER_043.replace(`\ttry {
+\t\tconst resolved = require("electron");
+\t\tif (typeof resolved === "string" && resolved) push(resolved);
+\t} catch {}`, '\t// codex-pet-owned-electron-043：不借宿主npm依赖；显式候选、环境配置和自有下载位置保留。');
+
+const ALPHA_FILTER_043 = `function ensureAlphaFilter() {
+\tif (document.querySelector("svg[data-dsh-pet-alpha-fix]") !== null) return;
+\tconst NS$1 = "http://www.w3.org/2000/svg";
+\tconst svg = document.createElementNS(NS$1, "svg");
+\tsvg.setAttribute("width", "0");
+\tsvg.setAttribute("height", "0");
+\tsvg.setAttribute("aria-hidden", "true");
+\tsvg.setAttribute("data-dsh-pet-alpha-fix", "");
+\tconst defs = document.createElementNS(NS$1, "defs");
+\tconst filter = document.createElementNS(NS$1, "filter");
+\tfilter.id = ALPHA_FIX_ID;
+\tconst transfer = document.createElementNS(NS$1, "feComponentTransfer");
+\tconst func = document.createElementNS(NS$1, "feFuncA");
+\tfunc.setAttribute("type", "linear");
+\tfunc.setAttribute("slope", "1");
+\tfunc.setAttribute("intercept", "-0.0039215686");
+\ttransfer.appendChild(func);
+\tfilter.appendChild(transfer);
+\tdefs.appendChild(filter);
+\tsvg.appendChild(defs);
+\tdocument.body.appendChild(svg);
+}`;
+const ALPHA_LAYOUT_043=ALPHA_FILTER_043.replace('\tsvg.setAttribute("data-dsh-pet-alpha-fix", "");', '\tsvg.setAttribute("data-dsh-pet-alpha-fix", "");\n\tsvg.style.position = "absolute"; // codex-pet-alpha-layout-043：留在同文档，不参与宿主行内流。');
+
+function replaceKnown043(input,before,after){
+  if(typeof input!=='string')throw Error('harness-modular-runtime-anchor-mismatch: 0.4.3上游修复锚点不匹配。');
+  const source=input.replaceAll('\r\n','\n'),old=count(source,before),current=count(source,after);
+  if(count(source,before.slice(0,before.indexOf('\n')))!==1)throw Error('harness-modular-runtime-anchor-mismatch: 0.4.3上游修复锚点不匹配。');
+  if(old===0&&current===1)return source;
+  if(old!==1||current!==0)throw Error('harness-modular-runtime-anchor-mismatch: 0.4.3上游修复锚点不匹配。');
+  return source.replace(before,after);
+}
+
+/** 择取31ed1b31：只移除自动借用宿主npm包，下载、显式覆盖及沙箱决策不改。 */
+export function patchModularOwnedElectron043(input){return replaceKnown043(input,ELECTRON_RESOLVER_043,ELECTRON_OWNED_043);}
+
+/** 择取cf0aec77：零尺寸滤镜仍可按同文档ID解析，同时不再撑高Harness网页。 */
+export function patchModularAlphaLayout043(input){return replaceKnown043(input,ALPHA_FILTER_043,ALPHA_LAYOUT_043);}

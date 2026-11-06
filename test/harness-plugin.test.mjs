@@ -223,14 +223,16 @@ test('Windows installer accepts verified releases in Chinese spaced paths and re
   const root=join(temp,'中文 空格 project'),scripts=join(root,'scripts');mkdirSync(scripts,{recursive:true});
   const installer=join(scripts,'install-harness.ps1');
   writeFileSync(installer,readFileSync(fileURLToPath(new URL('../scripts/install-harness.ps1',import.meta.url))));
+  writeFileSync(join(scripts,'harness-runtime.ps1'),readFileSync(fileURLToPath(new URL('../scripts/harness-runtime.ps1',import.meta.url))));
   writeFileSync(join(scripts,'build-harness-plugin.mjs'),`import{mkdirSync,writeFileSync}from'node:fs';import{dirname,resolve,join}from'node:path';import{fileURLToPath}from'node:url';const r=resolve(dirname(fileURLToPath(import.meta.url)),'..');mkdirSync(join(r,'data/harness-plugin'),{recursive:true});writeFileSync(join(r,'data/harness-plugin/pack.json'),'{}');writeFileSync(join(r,'built.txt'),'yes');console.log(JSON.stringify({directory:join(r,'data/harness-plugin')}));`);
+  writeFileSync(join(scripts,'prepare-harness-profile.mjs'),`import{readFileSync,writeFileSync}from'node:fs';import{dirname,resolve,join}from'node:path';import{fileURLToPath}from'node:url';const r=resolve(dirname(fileURLToPath(import.meta.url)),'..');const calls=readFileSync(join(r,'calls.jsonl'),'utf8').trim().split('\\n').map(JSON.parse);if(calls.length!==2||calls[0][4]!=='dsh-pet@0.4.3'||calls[1][1]!=='--profile')throw Error('prepare-before-bundle-registration');const args=process.argv.slice(2);if(args.length!==6||args[0]!=='--profile-dir'||args[2]!=='--bundle-dir'||args[4]!=='--dsh-version'||args[5]!==readFileSync(join(r,'version.txt'),'utf8'))throw Error('invalid-profile-preparation');writeFileSync(join(r,'prepared.txt'),JSON.stringify(args));`);
   const stub=join(root,'dsh.cmd'),log=join(root,'calls.jsonl'),versionFile=join(root,'version.txt');
   writeFileSync(join(root,'dsh-stub.mjs'),`import{appendFileSync,readFileSync}from'node:fs';const a=process.argv.slice(2);if(a[0]==='--version')console.log(readFileSync(${JSON.stringify(versionFile)},'utf8'));else appendFileSync(${JSON.stringify(log)},JSON.stringify(a)+'\\n');`);
   writeFileSync(stub,`@"${process.execPath}" "%~dp0dsh-stub.mjs" %*\r\n`);
   writeFileSync(join(root,'pnpm.cmd'),'@echo 10.20.0\r\n');
   const env={...process.env,PATH:root+';'+process.env.PATH};
   const args=['-NoProfile','-ExecutionPolicy','Bypass','-File',installer,'-Profile','web','-DshHome',join(temp,'isolated-home'),'-DshCommand',stub,'-NodeCommand',process.execPath];
-  for(const version of ['0.2.1-rc.2','0.2.1-rc.5']){
+  for(const version of ['0.2.1-rc.2','0.2.1-rc.5',...(Number(process.versions.node.split('.')[0])>=24?['0.2.2-rc.1']:[])]){
     writeFileSync(versionFile,version);writeFileSync(log,'');
     const run=spawnSync('powershell.exe',args,{encoding:'utf8',env,windowsHide:true,timeout:15000});
     assert.equal(run.status,0,run.stderr||run.stdout);
@@ -240,7 +242,9 @@ test('Windows installer accepts verified releases in Chinese spaced paths and re
     // Windows可能保留8.3短名拼写，用卷号和文件ID确认仍是同一中文空格目录。
     const actualTarget=statSync(calls[1][4],{bigint:true}),expectedTarget=statSync(join(root,'data/harness-plugin'),{bigint:true});
     assert.ok(actualTarget.isDirectory());assert.equal(actualTarget.dev,expectedTarget.dev);assert.equal(actualTarget.ino,expectedTarget.ino);
+    assert.equal(JSON.parse(readFileSync(join(root,'prepared.txt'),'utf8'))[1].replaceAll('\\','/').endsWith('/profiles/web'),true);
     rmSync(join(root,'built.txt'));
+    rmSync(join(root,'prepared.txt'));
   }
   const existingPackage=join(temp,'isolated-home','profiles','web','node_modules','dsh-pet','package.json');
   mkdirSync(dirname(existingPackage),{recursive:true});writeFileSync(versionFile,'0.2.1-rc.5');
@@ -250,12 +254,13 @@ test('Windows installer accepts verified releases in Chinese spaced paths and re
     assert.equal(upgraded.status,0,upgraded.stderr||upgraded.stdout);
     assert.deepEqual(JSON.parse(readFileSync(log,'utf8').trim().split('\n')[0]),['plugin','--profile','web','add','dsh-pet@0.4.3']);
     rmSync(join(root,'built.txt'));
+    rmSync(join(root,'prepared.txt'));
   }
   const unknownPackage=JSON.stringify({name:'dsh-pet',version:'0.4.2'});writeFileSync(existingPackage,unknownPackage);writeFileSync(log,'');
   const unverifiedPet=spawnSync('powershell.exe',args,{encoding:'utf8',env,windowsHide:true,timeout:15000});
   assert.notEqual(unverifiedPet.status,0);assert.match(unverifiedPet.stderr,/Kept the existing version/);
   assert.equal(readFileSync(existingPackage,'utf8'),unknownPackage);assert.equal(readFileSync(log,'utf8'),'');assert.throws(()=>readFileSync(join(root,'built.txt')),/ENOENT/);
-  for(const version of ['0.2.1-rc.3','0.2.1-rc.6','0.2.1']){
+  for(const version of ['0.2.1-rc.3','0.2.1-rc.6','0.2.1','0.2.2-rc.2']){
     writeFileSync(versionFile,version);writeFileSync(log,'');
     const denied=spawnSync('powershell.exe',args,{encoding:'utf8',env,windowsHide:true,timeout:15000});
     assert.notEqual(denied.status,0);assert.match(denied.stderr,/Other versions have not been verified/);

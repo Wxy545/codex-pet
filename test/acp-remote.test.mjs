@@ -49,6 +49,24 @@ test('ACP rejects busy or unknown owner state before native resume',async t=>{
   await assert.rejects(adapter.prompt({text:'go',threadId:'owned'}),{code:'thread_busy'});assert.equal(connection.frames.some(frame=>frame.method==='session/resume'),false);
 });
 
+test('ACP取消异步启动使本次票据失效，迟到启动不spawn且不破坏后续连接',async t=>{
+  const cwd=fixture(t),connection=peer((frame,child)=>{if(frame.method==='session/new')child.send({id:frame.id,result:{sessionId:'next-owned'}});if(frame.method==='session/close')child.send({id:frame.id,result:{}});});
+  let release,started,signal,launches=0,spawns=0;const reached=new Promise(accept=>{started=accept;}),deferred=new Promise(accept=>{release=accept;});
+  const adapter=remote(cwd,connection,{launch:async input=>{if(++launches===1){signal=input?.signal;started();await deferred;}return{command:'synthetic',args:[],env:{}};},spawnImpl:(...args)=>{spawns++;return connection.spawnImpl(...args);}});t.after(()=>adapter.close());
+  const pending=adapter.prompt({text:'synthetic start'});await reached;assert.equal(await adapter.cancel(),true);assert.equal(signal?.aborted,true);
+  assert.equal((await pending).status,'cancelled');assert.equal(spawns,0);
+  assert.equal((await adapter.createThread()).id,'next-owned');assert.equal(spawns,1);
+  release();await next();assert.equal(spawns,1);assert.equal((await adapter.ready()).supported,true);assert.equal(connection.child.exitCode,null);
+});
+
+test('ACP关闭时撤销尚未spawn的目录启动，迟到结果不能创建后台进程',async t=>{
+  const cwd=fixture(t),connection=peer();let release,started,signal,spawns=0;
+  const reached=new Promise(accept=>{started=accept;}),deferred=new Promise(accept=>{release=accept;});
+  const adapter=remote(cwd,connection,{launch:async input=>{signal=input?.signal;started();await deferred;return{command:'synthetic',args:[],env:{}};},spawnImpl:(...args)=>{spawns++;return connection.spawnImpl(...args);}});
+  const creating=adapter.createThread();creating.catch(()=>{});await reached;await adapter.close();assert.equal(signal?.aborted,true);await assert.rejects(creating);
+  release();await next();assert.equal(spawns,0);
+});
+
 test('file review refuses secrets, out-of-root, unsupported tools, readonly writes and partial operation details',t=>{
   const cwd=fixture(t),read=path=>({title:'read',rawInput:{file_path:path}}),write=path=>({title:'write',rawInput:{file_path:path,content:'new'}});
   assert.equal(reviewRemoteTool(cwd,'read-only',read('a.txt')).kind,'read');assert.equal(reviewRemoteTool(cwd,'workspace-write',write('new.txt')).kind,'file');

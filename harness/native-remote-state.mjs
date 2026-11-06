@@ -47,7 +47,7 @@ function remoteStateBlock() {
     codexPetQQTimer?.unref?.();
     return true;
   } });
-  ctx.on("dispose", () => { codexPetQQDisposed = true; codexPetQQClear(); });
+  ctx.effect(() => () => { codexPetQQDisposed = true; codexPetQQClear(); });
 ` + END + '\n';
 }
 
@@ -63,7 +63,11 @@ export function patchHarnessRemoteState(input, {version} = {}) {
   }
   const block = remoteStateBlock(), patched = ANCHOR + '\n' + block;
   if (source.includes(MARKER)) {
-    if (source.split(MARKER).length !== 2 || source.split(patched).length !== 2) throw Error('harness-native-remote-state-anchor-mismatch');
+    // 仅迁移本项目完整旧块，不把陌生或半改过的补丁当成可升级对象。
+    const legacy = patched.replace('ctx.effect(() => () => { codexPetQQDisposed = true; codexPetQQClear(); });', 'ctx.on("dispose", () => { codexPetQQDisposed = true; codexPetQQClear(); });');
+    if (source.split(MARKER).length !== 2 || source.split(END).length !== 2) throw Error('harness-native-remote-state-anchor-mismatch');
+    if (source.split(legacy).length === 2) source = source.replace(legacy, patched);
+    if (source.split(patched).length !== 2) throw Error('harness-native-remote-state-anchor-mismatch');
     return source;
   }
   if (source.split(ANCHOR).length !== 2 || source.includes(END)) throw Error('harness-native-remote-state-anchor-mismatch');
@@ -131,9 +135,10 @@ export function installHarnessRemoteState(ctx, {sourceRoot, locale, now = Date.n
     let stopped = false, timer;
     const poll = () => {if (stopped || disposed) return; const file = activityFile(sourceRoot); const view = file ? normalizeRemoteQQView(readSmallJSON(file), now()) : null; service.update(view);};
     const stop = () => {if (stopped) return; stopped = true; if (timer !== undefined) timers.clearInterval(timer); service.update(null);};
-    stopPoll = stop; child.on?.('dispose', stop); poll(); timer = timers.setInterval(poll, 1500); timer?.unref?.();
+    stopPoll = stop; poll(); timer = timers.setInterval(poll, 1500); timer?.unref?.();
     return stop;
   });
-  ctx.on?.('dispose', dispose);
+  // Cordis 不发通用 dispose 事件，清理必须属于插件的 effect。
+  ctx.effect(() => dispose);
   return {status: 'installed', dispose};
 }

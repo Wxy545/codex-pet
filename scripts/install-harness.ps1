@@ -3,7 +3,8 @@ param(
     [ValidatePattern('^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$')][string]$Profile = 'web',
     [string]$DshHome,
     [string]$DshCommand,
-    [string]$NodeCommand
+    [string]$NodeCommand,
+    [string]$HarnessNodeCommand
 )
 
 $ErrorActionPreference = 'Stop'
@@ -11,7 +12,7 @@ $taskRoot = Split-Path $PSScriptRoot -Parent
 if (-not $NodeCommand) { $NodeCommand = (Get-Command node -ErrorAction Stop).Source }
 if (-not $DshCommand) {
     $taskDshExecutable = Get-Command dsh -ErrorAction SilentlyContinue
-    if (-not $taskDshExecutable) { throw 'Install DeepSeek Harness first: npm install -g @deepseek-ai/dsh@0.2.1-rc.5' }
+    if (-not $taskDshExecutable) { throw 'Install DeepSeek Harness first: npm install -g @deepseek-ai/dsh@0.2.2-rc.1 (Node.js 24.9+)' }
     $DshCommand = $taskDshExecutable.Source
 }
 $taskBundledCli = $DshCommand -match '[\\/]resources[\\/]runtime[\\/]cli[\\/]bin[\\/]dsh(?:\.cmd)?$'
@@ -21,11 +22,13 @@ if ($Profile -ieq 'desktop' -and -not $taskBundledCli) {
 if (-not $taskBundledCli -and -not (Get-Command pnpm -ErrorAction SilentlyContinue)) {
     throw 'The npm Harness CLI needs pnpm on PATH. Install pnpm first, then retry.'
 }
-$taskVersion = (& $DshCommand --version | Out-String).Trim()
-if ($LASTEXITCODE -ne 0 -or $taskVersion -notmatch '^0\.2\.1-rc\.(2|5)$') { throw 'This bundle requires DeepSeek Harness 0.2.1-rc.2 or 0.2.1-rc.5. Other versions have not been verified.' }
+. (Join-Path $PSScriptRoot 'harness-runtime.ps1')
+$taskRuntime = Get-HarnessCliRuntime -DshCommand $DshCommand -HarnessNodeCommand $HarnessNodeCommand
 
 $taskPreviousHome = [Environment]::GetEnvironmentVariable('DSH_HOME', 'Process')
+$taskPreviousPath = [Environment]::GetEnvironmentVariable('PATH', 'Process')
 try {
+    if ($taskRuntime.NodeCommand) { $env:PATH = [IO.Path]::GetDirectoryName($taskRuntime.NodeCommand) + [IO.Path]::PathSeparator + $taskPreviousPath }
     if ($DshHome) { $env:DSH_HOME = [IO.Path]::GetFullPath($DshHome) }
     if ($Profile -ieq 'desktop') {
         & $DshCommand plugin --profile desktop list --depth 0
@@ -48,7 +51,11 @@ try {
     if ($LASTEXITCODE -ne 0) { throw 'dsh-pet installation failed; the dragon bundle was not activated.' }
     & $DshCommand plugin --profile $Profile add $taskBundleDirectory
     if ($LASTEXITCODE -ne 0) { throw 'The dragon bundle installation failed.' }
+    # Loader 会先导入模块再等待 inject；首次启动前离线修补，避免进程缓存旧宿主函数。
+    & $NodeCommand (Join-Path $PSScriptRoot 'prepare-harness-profile.mjs') --profile-dir $taskProfileRoot --bundle-dir $taskBundleDirectory --dsh-version $taskRuntime.Version | Out-Null
+    if ($LASTEXITCODE -ne 0) { throw 'The installed Harness profile could not be prepared. It was not connected; keep Harness closed and retry the installation.' }
     Write-Output ('White Dragon Girl is installed in the {0} profile. Restart that Harness profile to load it.' -f $Profile)
 } finally {
     [Environment]::SetEnvironmentVariable('DSH_HOME', $taskPreviousHome, 'Process')
+    [Environment]::SetEnvironmentVariable('PATH', $taskPreviousPath, 'Process')
 }

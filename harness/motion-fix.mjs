@@ -2,7 +2,7 @@ import { lstatSync, readFileSync, realpathSync, renameSync, unlinkSync, writeFil
 import { createRequire } from 'node:module';
 import { randomUUID } from 'node:crypto';
 import { dirname, isAbsolute, join, relative, sep } from 'node:path';
-import { patchModularMain, patchModularMouseRelease, patchModularSandbox, patchModularUserData, patchModularPlayback043, validateModularClient043, validateModularHelper043, validateModularDpi, validateModularMotion } from './modular-runtime-fix.mjs';
+import { patchModularMain, patchModularMouseRelease, patchModularSandbox, patchModularUserData, patchModularPlayback043, patchModularOwnedElectron043, patchModularAlphaLayout043, validateModularClient043, validateModularHelper043, validateModularDpi, validateModularMotion } from './modular-runtime-fix.mjs';
 import { patchPhysicsDefaults040 } from './physics-defaults-fix.mjs';
 import { patchNativeAvatar041 } from './avatar-fix.mjs';
 import {patchDrag041,patchAlpha041,patchTurn041} from './main-fixes-041.mjs';
@@ -37,8 +37,8 @@ export function prepareHarnessDependency({ profileDir }) {
   const meta = JSON.parse(readFileSync(join(packageRoot, 'package.json'), 'utf8'));
   if (meta.name !== 'dsh-pet' || !['0.4.0', '0.4.1', '0.4.3'].includes(meta.version)) throw new Error('harness-dsh-pet-0.4.0-or-0.4.1-or-0.4.3-required');
   const transforms = [
-    ['lib/client.js', source => {const native=meta.version==='0.4.3'?validateModularClient043(source):source;const base=patchPhysicsDefaults040(patchModularMouseRelease(validateModularMotion(native, { browser: true })));return meta.version==='0.4.1'?patchTurn041(patchAlpha041(patchDrag041(base,{browser:true}),{browser:true})):base;}],
-    ['lib/index.js', source => patchModularSandbox(['0.4.1','0.4.3'].includes(meta.version) ? patchNativeAvatar041(source) : source)],
+    ['lib/client.js', source => {const native=meta.version==='0.4.3'?patchModularAlphaLayout043(validateModularClient043(source)):source;const base=patchPhysicsDefaults040(patchModularMouseRelease(validateModularMotion(native, { browser: true })));return meta.version==='0.4.1'?patchTurn041(patchAlpha041(patchDrag041(base,{browser:true}),{browser:true})):base;}],
+    ['lib/index.js', source => {const native=meta.version==='0.4.3'?patchModularOwnedElectron043(source):source;return patchModularSandbox(['0.4.1','0.4.3'].includes(meta.version) ? patchNativeAvatar041(native) : native);}],
     ['runtime/electron-helper/shared-core.js', patchPhysicsDefaults040],
     ['runtime/electron-helper/sprite/motion.js', validateModularMotion],
     ['runtime/electron-helper/main.js', patchModularMain],

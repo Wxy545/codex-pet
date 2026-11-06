@@ -42,6 +42,14 @@ test('固定真实源码补丁幂等，只原子替换选中profile，保留pnpm
   const apply=patched.indexOf('function apply(ctx) {'),bridge=patched.indexOf(ANCHOR,apply),remote=patched.indexOf('/* codex-pet-native-remote-state-v1 */');assert.ok(apply>=0&&bridge>apply&&remote>bridge&&remote<patched.indexOf('const downloadReport =',bridge),'QQ槽必须在真正宿主apply拿到workStatus之后');
 });
 
+test('完整旧QQ块迁移为Cordis effect清理，不接受半补丁或重复结束标记',()=>{
+ const patched=patchHarnessRemoteState(actual),legacy=patched.replace('ctx.effect(() => () => { codexPetQQDisposed = true; codexPetQQClear(); });','ctx.on("dispose", () => { codexPetQQDisposed = true; codexPetQQClear(); });');
+ assert.notEqual(legacy,patched);assert.equal(patchHarnessRemoteState(legacy),patched);
+ assert.equal(patchHarnessRemoteState(patched),patched);
+ assert.throws(()=>patchHarnessRemoteState(legacy.replace('codexPetQQDisposed = true;','codexPetQQDisposed = false;')),/anchor/);
+ assert.throws(()=>patchHarnessRemoteState(patched+'\n/* /codex-pet-native-remote-state-v1 */'),/anchor/);
+});
+
 test('锚点不符或包版本变化时停止，内部目录越界链接不写入外部', t => {
   const f = fixture(t), file = join(f.pkg, 'lib/index.js'); writeFileSync(file, 'unknown upstream');
   assert.throws(() => prepareHarnessRemoteState({profileDir: f.profileDir}), /anchor/); assert.equal(readFileSync(file, 'utf8'), 'unknown upstream');
@@ -72,7 +80,7 @@ function serviceFixture() {
   const timers = timerFixture(), disposers = [], services = {}, publishes = [];
   const start = actual.indexOf('const WORK_STATUS_PRIORITY ='), end = actual.indexOf('//#endregion', actual.indexOf('var WorkStatusStore = class'));
   assert.ok(start >= 0 && end > start);
-  const context = {Date: class extends Date {static now() {return timers.now();}}, setTimeout: timers.setTimeout, clearTimeout: timers.clearTimeout, ctx: {provide(name, service) {services[name] = service;}, on(name, callback) {if (name === 'dispose') disposers.push(callback);}}, publishes};
+  const context = {Date: class extends Date {static now() {return timers.now();}}, setTimeout: timers.setTimeout, clearTimeout: timers.clearTimeout, ctx: {provide(name, service) {services[name] = service;}, effect(setup) {disposers.push(setup());}}, publishes};
   vm.createContext(context); vm.runInContext(actual.slice(start, end) + '\nvar workStatus = new WorkStatusStore(); var publishWorkStatus=()=>publishes.push({...workStatus.snapshot()});', context);
   const patch = patchHarnessRemoteState(synthetic), from = patch.indexOf('/* codex-pet-native-remote-state-v1 */'), to = patch.indexOf('/* /codex-pet-native-remote-state-v1 */');
   vm.runInContext(patch.slice(from, to), context);
@@ -103,7 +111,7 @@ test('过期、未来、跨宿主和混入正文的metadata不能占槽，终态
 function pollFixture(t, f, options = {}) {
   const updates = [], ticks = new Map(), callbacks = [], contexts = []; let serial = 0, now = 1_000_000;
   const service = {update(value) {updates.push(value);}};
-  const ctx = {inject(names, apply) {assert.deepEqual(names, ['codexPetQQState']); const inner = {get: name => name === 'codexPetQQState' ? service : undefined, on(event, handler) {if (event === 'dispose') contexts.push(handler);}}; apply(inner); return {dispose() {contexts.forEach(handler => handler());}};}, on(event, handler) {if (event === 'dispose') callbacks.push(handler);}};
+  const ctx = {inject(names, apply) {assert.deepEqual(names, ['codexPetQQState']); const inner = {get: name => name === 'codexPetQQState' ? service : undefined}; contexts.push(apply(inner)); return {dispose() {contexts.forEach(handler => handler?.());}};}, effect(setup) {callbacks.push(setup());}};
   const installed = installHarnessRemoteState(ctx, {sourceRoot: f.sourceRoot, locale: 'en', now: () => now,
     timers: {setInterval(fn, ms) {assert.equal(ms, 1500); const id = ++serial; ticks.set(id, fn); return id;}, clearInterval(id) {ticks.delete(id);}}, ...options});
   t.after(() => installed.dispose());

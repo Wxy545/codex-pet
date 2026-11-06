@@ -7,7 +7,8 @@ import {createAcpRemote,remoteError,reviewRemoteTool as reviewGuard,terminateRem
 import {normalizeRemoteToolPolicy,remoteToolScope} from './remote-tool-policy.mjs';
 import {selectNativeMcp} from './native-mcp.mjs';
 
-const VERSIONS=new Set(['0.2.1-rc.2','0.2.1-rc.5']);
+const VERSIONS=new Set(['0.2.1-rc.2','0.2.1-rc.5','0.2.2-rc.1']);
+const PET_VERSIONS=new Set(['0.4.0','0.4.1','0.4.3']);
 const profileName=/^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
 const file=path=>{try{const s=lstatSync(path);return s.isFile()&&!s.isSymbolicLink();}catch{return false;}};
 const inside=(root,target)=>{const r=relative(root,target);return !isAbsolute(r)&&r!=='..'&&!r.startsWith('..'+sep);};
@@ -15,8 +16,38 @@ function json(path,limit=65536){const s=lstatSync(path);if(!s.isFile()||s.isSymb
 function validateNative(native){
   if(!native||!isAbsolute(native.command??'')||!isAbsolute(native.home??'')||!file(native.command)||!/^dsh(?:\.cmd|\.exe)?$/i.test(basename(native.command))||!profileName.test(native.profile??'')||!VERSIONS.has(native.version))throw remoteError('not_installed');
   if(native.args!==undefined&&(!Array.isArray(native.args)||native.args.length))throw remoteError('invalid_native_options');
+  if(native.nodeCommand!==undefined&&(typeof native.nodeCommand!=='string'||!isAbsolute(native.nodeCommand)||!/^node(?:\.exe)?$/i.test(basename(native.nodeCommand))||!file(native.nodeCommand)||/[\\/]resources[\\/]runtime[\\/]cli[\\/]bin[\\/]dsh(?:\.cmd)?$/i.test(native.command)))throw remoteError('invalid_native_options');
   try{const s=lstatSync(native.home);if(!s.isDirectory()||s.isSymbolicLink())throw Error();if(!file(join(native.home,'profiles',native.profile,'package.json')))throw Error();}catch{throw remoteError('not_installed');}
-  return{command:realpathSync(native.command),home:realpathSync(native.home),profile:native.profile,version:native.version};
+  return{command:realpathSync(native.command),home:realpathSync(native.home),profile:native.profile,version:native.version,...native.nodeCommand===undefined?{}:{nodeCommand:realpathSync(native.nodeCommand)}};
+}
+
+/** 所选 npm CLI 的运行时仅影响自有子进程；每次重新核实实际版本，不信保存的版本文本。 */
+export async function harnessChildEnvironment(native,permission,{spawnImpl=spawn,signal}={}){
+  const env={...process.env,DSH_HOME:native.home,DSH_PERMISSION_MODE:permission,DSH_TELEMETRY_DISABLED:'1',NODE_OPTIONS:'',NODE_PATH:''};
+  if(native.nodeCommand===undefined){
+    if(native.version==='0.2.2-rc.1'&&!/[\\/]resources[\\/]runtime[\\/]cli[\\/]bin[\\/]dsh(?:\.cmd)?$/i.test(native.command))throw remoteError('native_runtime_rebind_required');
+    return env;
+  }
+  if(typeof native.nodeCommand!=='string'||!isAbsolute(native.nodeCommand)||!/^node(?:\.exe)?$/i.test(basename(native.nodeCommand))||!file(native.nodeCommand)||/[\\/]resources[\\/]runtime[\\/]cli[\\/]bin[\\/]dsh(?:\.cmd)?$/i.test(native.command))throw remoteError('native_runtime_unavailable');
+  const adjacent=join(dirname(native.command),'node.exe');
+  if(process.platform==='win32'&&native.command.toLowerCase().endsWith('.cmd')&&existsSync(adjacent)&&(!file(adjacent)||realpathSync.native(adjacent).toLowerCase()!==realpathSync.native(native.nodeCommand).toLowerCase()))throw remoteError('native_runtime_incompatible');
+  if(signal?.aborted)throw remoteError('profile_prepare_aborted');
+  const version=await new Promise((accept,reject)=>{
+    let child,output='',settled=false;const cleanup=()=>{clearTimeout(timer);signal?.removeEventListener('abort',abort);};
+    const finish=error=>{if(settled)return;settled=true;cleanup();error?reject(remoteError(error)):accept(output.trim());};
+    const abort=()=>{finish('profile_prepare_aborted');if(child)terminateRemoteChild(child);};
+    const timer=setTimeout(()=>{finish('native_runtime_unavailable');if(child)terminateRemoteChild(child);},5000);
+    try{child=spawnImpl(native.nodeCommand,['--version'],{env,shell:false,windowsHide:true,stdio:['ignore','pipe','pipe']});}catch{finish('native_runtime_unavailable');return;}
+    signal?.addEventListener('abort',abort,{once:true});if(signal?.aborted){abort();return;}
+    child.stdout.on('data',chunk=>{output+=chunk.toString();if(output.length>128){finish('native_runtime_unavailable');terminateRemoteChild(child);}});child.stderr.on('data',()=>{});
+    child.once('error',()=>finish('native_runtime_unavailable'));child.once('close',code=>finish(code===0?undefined:'native_runtime_unavailable'));
+  });
+  const match=/^v(\d+)\.(\d+)\.(\d+)$/.exec(version),minimum=native.version==='0.2.2-rc.1'?[24,9,0]:[22,12,0];
+  if(!match||match.slice(1).some(value=>!Number.isSafeInteger(Number(value))))throw remoteError('native_runtime_unavailable');
+  const parts=match.slice(1).map(Number),difference=parts.findIndex((value,index)=>value!==minimum[index]);
+  if(difference!==-1&&parts[difference]<minimum[difference])throw remoteError('native_runtime_incompatible');
+  const pathKey=Object.keys(env).find(key=>key.toLowerCase()==='path')??'PATH';
+  env[pathKey]=dirname(native.nodeCommand)+delimiter+(env[pathKey]??'');return env;
 }
 
 /** Harness 的正式移交记录与审计目录分开；不读取任何凭据或会话日志。 */
@@ -27,7 +58,7 @@ export function resolveHarnessNative({dataRoot,projectRoot}={}){
     if(record.schemaVersion!==1||!isAbsolute(record.command??'')||inside(projectRoot,record.command)||!isAbsolute(record.home??'')||inside(dataRoot,record.home))throw Error();
     const native=validateNative(record),profile=json(join(native.home,'profiles',native.profile,'package.json'));
     const plugin=json(join(native.home,'profiles',native.profile,'node_modules/codex-pet-harness/package.json'));
-    if(profile.dependencies?.['dsh-pet']!=='0.4.0'||!profile.dsh?.profile?.bundles?.includes('codex-pet-harness')||plugin.name!=='codex-pet-harness')throw Error();return native;
+    if(!PET_VERSIONS.has(profile.dependencies?.['dsh-pet'])||!profile.dsh?.profile?.bundles?.includes('codex-pet-harness')||plugin.name!=='codex-pet-harness')throw Error();return native;
   }catch{throw remoteError('not_installed');}
 }
 
@@ -98,8 +129,8 @@ export async function prepareHarnessRemoteProfile({native,cwd,permission='read-o
   if(policy.mcp)selectNativeMcp({host:'harness',native,cwd,sourcePath:mcpSourcePath,revision:mcpRevision,serverIds:policy.mcpServerIds});
   const where={...location(native,cwd,permission,scope),toolScope:scope},mcpContext=policy.mcp?{native,mcpSourcePath,mcpRevision}:{};
   const expected=profileFiles(native,where,permission,policy,mcpContext);assertOwnProfile(where,expected,{create:true});
-  const env={...process.env,DSH_HOME:native.home,DSH_PERMISSION_MODE:permission,DSH_TELEMETRY_DISABLED:'1',NODE_OPTIONS:'',NODE_PATH:''};
-  if(pnpmDirectory!==undefined){if(!isAbsolute(pnpmDirectory)||!lstatSync(pnpmDirectory).isDirectory())throw remoteError('pnpm_unavailable');env.PATH=pnpmDirectory+delimiter+(env.PATH??env.Path??'');}
+  const env=await harnessChildEnvironment(native,permission,{signal});
+  if(pnpmDirectory!==undefined){if(!isAbsolute(pnpmDirectory)||!lstatSync(pnpmDirectory).isDirectory())throw remoteError('pnpm_unavailable');const pathKey=Object.keys(env).find(key=>key.toLowerCase()==='path')??'PATH';env[pathKey]=[...(native.nodeCommand?[dirname(native.nodeCommand)]:[]),pnpmDirectory,env[pathKey]??''].join(delimiter);}
   if(!runtimeAvailable(native)){
     onStage('preparing');await runPreparation(commandSpec(native,['plugin','--profile',where.profile,'add','@deepseek-ai/dsh-base@'+native.version,'@deepseek-ai/dsh-acp-app@'+native.version,'--save-exact','--ignore-scripts','--store-dir',join(where.directory,'.pnpm-store')],env),{spawnImpl,signal});
     // 原生安装器可以规范化 manifest；必须保留本项目的固定依赖与唯一 bundle。
@@ -128,9 +159,9 @@ export function createHarnessRemote(options={}){
   const where={...location(native,options.cwd,permission,scope),toolScope:scope},mcpContext=policy.mcp?{native,mcpSourcePath:options.mcpSourcePath,mcpRevision:options.mcpRevision}:{};
   const expected=profileFiles(native,where,permission,policy,mcpContext),selected=()=>policy.mcp?selectNativeMcp({host:'harness',native,cwd:options.cwd,sourcePath:options.mcpSourcePath,revision:options.mcpRevision,serverIds:policy.mcpServerIds}):[];
   if(policy.mcp)selected();
-  return createAcpRemote({...options,host:'harness',permission,toolPolicy:policy,toolScope:scope,sessionConfig:()=>({mcpServers:selected()}),checkToolContext:()=>{selected();},launch:async()=>{
+  return createAcpRemote({...options,host:'harness',permission,toolPolicy:policy,toolScope:scope,sessionConfig:()=>({mcpServers:selected()}),checkToolContext:()=>{selected();},launch:async({signal})=>{
     selected();
     assertOwnProfile(where,expected);
-    return commandSpec(native,['--profile',where.profile],{...process.env,DSH_HOME:native.home,DSH_PERMISSION_MODE:permission,DSH_TELEMETRY_DISABLED:'1',NODE_OPTIONS:'',NODE_PATH:''});
+    return commandSpec(native,['--profile',where.profile],await harnessChildEnvironment(native,permission,{signal}));
   }});
 }

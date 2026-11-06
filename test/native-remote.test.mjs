@@ -1,10 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {mkdtempSync,mkdirSync,writeFileSync,readFileSync,rmSync,symlinkSync} from 'node:fs';
+import {mkdtempSync,mkdirSync,writeFileSync,readFileSync,rmSync,symlinkSync,realpathSync} from 'node:fs';
 import {tmpdir} from 'node:os';
-import {join} from 'node:path';
+import {join,dirname,delimiter} from 'node:path';
 import {createWorkBuddyRemote,resolveWorkBuddyNative} from '../src/workbuddy-remote.mjs';
-import {createHarnessRemote,prepareHarnessRemoteProfile,createRemoteGuard,resolveHarnessNative} from '../src/harness-remote.mjs';
+import {createHarnessRemote,prepareHarnessRemoteProfile,createRemoteGuard,resolveHarnessNative,harnessChildEnvironment} from '../src/harness-remote.mjs';
 import {readNativeMcpCatalog,selectNativeMcp} from '../src/native-mcp.mjs';
 import {remoteToolScope} from '../src/remote-tool-policy.mjs';
 import {EventEmitter} from 'node:events';
@@ -47,6 +47,74 @@ test('Harness rejects missing native installation or absent managed preparation'
   const adapter=createHarnessRemote({cwd,native});t.after(()=>adapter.close());assert.equal((await adapter.probe()).reason,'remote_profile_unavailable');assert.throws(()=>resolveHarnessNative({dataRoot:cwd,projectRoot:cwd}),{code:'not_installed'});
 });
 
+for(const harnessVersion of ['0.2.1-rc.2','0.2.1-rc.5','0.2.2-rc.1'])test('Harness '+harnessVersion+'正式注册接受精确已验证的原生桌宠依赖，043不能被旧040条件误拒',t=>{
+  const {root,put,native}=harness(t),projectRoot=join(root,'project'),dataRoot=join(projectRoot,'data');
+  native.version=harnessVersion;
+  const record={schemaVersion:1,...native};
+  put('project/data/harness-link.json',JSON.stringify(record));
+  put('harness-home/profiles/web/node_modules/codex-pet-harness/package.json',JSON.stringify({name:'codex-pet-harness'}));
+  for(const version of ['0.4.0','0.4.1','0.4.3']){
+    put('harness-home/profiles/web/package.json',JSON.stringify({dependencies:{'dsh-pet':version},dsh:{profile:{bundles:['codex-pet-harness']}}}));
+    assert.equal(resolveHarnessNative({dataRoot,projectRoot}).version,native.version,version);
+  }
+  for(const version of ['^0.4.3','0.4.2','0.4.4','latest']){
+    put('harness-home/profiles/web/package.json',JSON.stringify({dependencies:{'dsh-pet':version},dsh:{profile:{bundles:['codex-pet-harness']}}}));
+    assert.throws(()=>resolveHarnessNative({dataRoot,projectRoot}),{code:'not_installed'},version);
+  }
+  put('harness-home/profiles/web/package.json',JSON.stringify({dependencies:{'dsh-pet':'0.4.3'},dsh:{profile:{bundles:[]}}}));
+  assert.throws(()=>resolveHarnessNative({dataRoot,projectRoot}),{code:'not_installed'});
+  put('project/data/harness-link.json',JSON.stringify({...record,command:put('project/audit/dsh.cmd')}));
+  assert.throws(()=>resolveHarnessNative({dataRoot,projectRoot}),{code:'not_installed'});
+});
+
+test('Harness选定Node只进入自有子进程PATH，每次核对实际版本且不修改父环境',async t=>{
+  const {native,put}=harness(t),nodeCommand=put('chosen/node.exe'),originalPath=process.env.PATH??process.env.Path;
+  let calls=0;
+  const probe=version=>(command,args,options)=>{
+    calls++;assert.equal(command,nodeCommand);assert.deepEqual(args,['--version']);assert.equal(options.shell,false);assert.equal(options.windowsHide,true);assert.equal(options.env.NODE_OPTIONS,'');
+    const child=new EventEmitter();child.stdout=new PassThrough();child.stderr=new PassThrough();child.exitCode=null;child.kill=()=>{child.exitCode=-1;child.emit('close',-1);};
+    queueMicrotask(()=>{child.stdout.write(version+'\n');child.exitCode=0;child.emit('close',0);});return child;
+  };
+  const env=await harnessChildEnvironment({...native,nodeCommand},'read-only',{spawnImpl:probe('v22.12.0')}),pathKey=Object.keys(env).find(key=>key.toLowerCase()==='path');
+  assert.ok(env[pathKey].startsWith(join(nodeCommand,'..')));assert.equal(env.DSH_HOME,native.home);assert.equal(env.DSH_PERMISSION_MODE,'read-only');assert.equal(process.env.PATH??process.env.Path,originalPath);
+  await assert.rejects(harnessChildEnvironment({...native,nodeCommand,version:'0.2.2-rc.1',nodeVersion:'24.18.0'},'read-only',{spawnImpl:probe('v22.12.0')}),{code:'native_runtime_incompatible'});
+  await harnessChildEnvironment({...native,nodeCommand,version:'0.2.2-rc.1'},'read-only',{spawnImpl:probe('v24.9.0')});
+  await assert.rejects(harnessChildEnvironment({...native,nodeCommand},'read-only',{spawnImpl:probe('not-a-version')}),{code:'native_runtime_unavailable'});
+  await assert.rejects(harnessChildEnvironment({...native,nodeCommand:put('chosen/not-node.exe')},'read-only',{spawnImpl:()=>{throw Error('must not start');}}),{code:'native_runtime_unavailable'});
+  assert.equal(calls,4);
+});
+
+test('Harness运行时探针取消只结束自有子进程，原桌宠与正式会话不受影响',async t=>{
+  const {native,put}=harness(t),nodeCommand=put('chosen/node.exe'),controller=new AbortController();let killed=0;
+  const pending=harnessChildEnvironment({...native,nodeCommand},'read-only',{signal:controller.signal,spawnImpl:()=>{const child=new EventEmitter();child.stdout=new PassThrough();child.stderr=new PassThrough();child.exitCode=null;child.kill=()=>{killed++;child.exitCode=-1;child.emit('close',-1);};return child;}});
+  controller.abort();await assert.rejects(pending,{code:'profile_prepare_aborted'});assert.equal(killed,1);
+});
+
+test('Harness rc1普通npm缺运行时登记要求重新绑定，旧版与桌面内置启动器不借外部Node',async t=>{
+  const {native,put}=harness(t);
+  await assert.rejects(harnessChildEnvironment({...native,version:'0.2.2-rc.1'},'read-only'),{code:'native_runtime_rebind_required'});
+  await assert.rejects(harnessChildEnvironment({...native,command:put('standalone/dsh.exe'),version:'0.2.2-rc.1'},'read-only'),{code:'native_runtime_rebind_required'});
+  assert.equal((await harnessChildEnvironment(native,'read-only')).DSH_HOME,native.home);
+  const bundled={...native,version:'0.2.2-rc.1',command:put('Desktop/resources/runtime/cli/bin/dsh.cmd')};
+  assert.equal((await harnessChildEnvironment(bundled,'read-only')).DSH_HOME,native.home);
+  await assert.rejects(harnessChildEnvironment({...bundled,nodeCommand:put('chosen/node.exe')},'read-only'),{code:'native_runtime_unavailable'});
+});
+
+test('Harness相邻Node的大小写别名属于同一文件，真实不同Node仍拒绝',{skip:process.platform!=='win32'},async t=>{
+  const {native,put}=harness(t),nodeCommand=put('installed/node.exe');
+  const probe=()=>{const child=new EventEmitter();child.stdout=new PassThrough();child.stderr=new PassThrough();queueMicrotask(()=>{child.stdout.write('v24.9.0\n');child.emit('close',0);});return child;};
+  await harnessChildEnvironment({...native,nodeCommand:nodeCommand.toUpperCase(),version:'0.2.2-rc.1'},'read-only',{spawnImpl:probe});
+  await assert.rejects(harnessChildEnvironment({...native,nodeCommand:put('different/node.exe')},'read-only',{spawnImpl:()=>{throw Error('must not start');}}),{code:'native_runtime_incompatible'});
+});
+
+test('Harness准备依赖时pnpm目录不能盖过已核实Node，Path只保留一个键',async t=>{
+  const {native,cwd,put}=harness(t),nodeCommand=realpathSync(process.execPath),pnpmDirectory=dirname(put('pnpm/node.exe'));let childEnv;
+  await prepareHarnessRemoteProfile({native:{...native,nodeCommand},cwd,pnpmDirectory,runtimeAvailable:()=>false,spawnImpl:(_command,_args,options)=>{
+    childEnv=options.env;const child=new EventEmitter();child.stdout=new PassThrough();child.stderr=new PassThrough();queueMicrotask(()=>child.emit('close',0));return child;
+  }});
+  const keys=Object.keys(childEnv).filter(key=>key.toLowerCase()==='path');assert.equal(keys.length,1);assert.deepEqual(childEnv[keys[0]].split(delimiter).slice(0,2),[dirname(nodeCommand),pnpmDirectory]);
+});
+
 test('Harness actual execution guard enforces same root, readonly, no Shell and an approval for each write',async t=>{
   const {cwd}=harness(t);writeFileSync(join(cwd,'a.txt'),'ok');const hooks=new Map(),ctx={on:(name,fn)=>hooks.set(name,fn)},agent={session:{header:{cwd}}};
   createRemoteGuard(ctx,{root:cwd,permission:'read-only'});const read={name:'read',arguments:{file_path:'a.txt'},agent},write={name:'write',arguments:{file_path:'a.txt',content:'new'},agent};
@@ -58,9 +126,10 @@ test('Harness actual execution guard enforces same root, readonly, no Shell and 
 
 test('Harness dependency preparation aborts only its own child promptly',async t=>{
   const {native,cwd}=harness(t),controller=new AbortController();let killed=0,launched=false;
+  let started;const reachedChild=new Promise(accept=>{started=accept;});
   const child=new EventEmitter();child.stdout=new PassThrough();child.stderr=new PassThrough();child.exitCode=null;child.kill=()=>{killed++;child.exitCode=-1;child.emit('close',-1);};
-  const pending=prepareHarnessRemoteProfile({native,cwd,runtimeAvailable:()=>false,signal:controller.signal,spawnImpl:()=>{launched=true;return child;}});
-  controller.abort();await assert.rejects(pending,{code:'profile_prepare_aborted'});assert.equal(launched,true);assert.equal(killed,1);
+  const pending=prepareHarnessRemoteProfile({native,cwd,runtimeAvailable:()=>false,signal:controller.signal,spawnImpl:()=>{launched=true;started();return child;}});
+  await reachedChild;controller.abort();await assert.rejects(pending,{code:'profile_prepare_aborted'});assert.equal(launched,true);assert.equal(killed,1);
   await assert.rejects(prepareHarnessRemoteProfile({native,cwd,signal:controller.signal,runtimeAvailable:()=>false,spawnImpl:()=>{throw Error('must not spawn');}}),{code:'profile_prepare_aborted'});
 });
 

@@ -6,12 +6,13 @@ const {randomUUID}=require('node:crypto');
 const {execFile}=require('node:child_process');
 const L=require('./codex-locale.cjs');
 const OFFICIAL_URL='https://deepseek.com/harness/';
-const VERSIONS=['0.2.1-rc.2','0.2.1-rc.5'];
+const VERSIONS=['0.2.1-rc.2','0.2.1-rc.5','0.2.2-rc.1'];
 const PROFILE=/^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
 const text=(zh,en)=>L.getLocale()==='zh-CN'?zh:en;
 const inside=(file,root)=>{const relative=path.relative(root,file);return relative===''||!relative.startsWith('..'+path.sep)&&relative!=='..'&&!path.isAbsolute(relative);};
 const bundled=command=>/[\\/]resources[\\/]runtime[\\/]cli[\\/]bin[\\/]dsh(?:\.cmd)?$/i.test(command);
 const regularFile=file=>{try{const stat=fs.lstatSync(file);return stat.isFile()&&!stat.isSymbolicLink();}catch{return false;}};
+const validNode=command=>typeof command==='string'&&path.isAbsolute(command)&&/^node\.exe$/i.test(path.basename(command))&&regularFile(command);
 function json(file,limit=1048576){const stat=fs.lstatSync(file);if(!stat.isFile()||stat.isSymbolicLink()||stat.size>limit)throw Error('invalid-file');return JSON.parse(fs.readFileSync(file,'utf8').replace(/^\uFEFF/,''));}
 
 /** 独立宿主的 DSH_HOME 属于本项目；原生 Harness 始终使用自己的 home。 */
@@ -27,7 +28,7 @@ function profiles(home,desktop){
  try{return fs.readdirSync(path.join(home,'profiles'),{withFileTypes:true}).filter(item=>item.isDirectory()&&!item.isSymbolicLink()&&PROFILE.test(item.name)&&(desktop||item.name!=='desktop')&&regularFile(path.join(home,'profiles',item.name,'package.json'))).map(item=>item.name).sort();}catch{return[];}
 }
 function verifiedProfile(record){
- if(!record||!path.isAbsolute(record.home)||!PROFILE.test(record.profile)||!VERSIONS.includes(record.version)||!regularFile(record.command))return false;
+ if(!record||!path.isAbsolute(record.home)||!PROFILE.test(record.profile)||!VERSIONS.includes(record.version)||!regularFile(record.command)||record.nodeCommand!==undefined&&(bundled(record.command)||!validNode(record.nodeCommand)))return false;
  try{
   const profile=json(path.join(record.home,'profiles',record.profile,'package.json'));
   const installed=json(path.join(record.home,'profiles',record.profile,'node_modules','codex-pet-harness','package.json'));
@@ -37,7 +38,7 @@ function verifiedProfile(record){
 }
 function readLink(dataRoot,projectRoot){
  const link=json(path.join(dataRoot,'harness-link.json'),8192);
- if(link.schemaVersion!==1||typeof link.active!=='boolean'||!path.isAbsolute(link.command)||inside(link.command,projectRoot)||!path.isAbsolute(link.home)||inside(link.home,dataRoot)||!PROFILE.test(link.profile)||!VERSIONS.includes(link.version))throw Error('invalid-link');
+ if(link.schemaVersion!==1||typeof link.active!=='boolean'||!path.isAbsolute(link.command)||inside(link.command,projectRoot)||!path.isAbsolute(link.home)||inside(link.home,dataRoot)||!PROFILE.test(link.profile)||!VERSIONS.includes(link.version)||link.nodeCommand!==undefined&&(bundled(link.command)||!validNode(link.nodeCommand)))throw Error('invalid-link');
  return link;
 }
 /** 后端与原生窗口共用同一份已验证移交记录，不把任意 active 字段当成已接入。 */
@@ -99,11 +100,16 @@ function createController({electron,projectRoot=path.resolve(__dirname,'../../..
   const command=await chooseCommand();if(!command)return{cancelled:true,...publicState()};
   const inspection=await run('inspect',{command,home:link?.home||home});available();
   if(!VERSIONS.includes(inspection.version))throw Error('unsupported-version');
+  if(inspection.nodeCommand!=null&&(bundled(command)||!validNode(inspection.nodeCommand)))throw Error('invalid-node-runtime');
   const selected=await chooseProfile(command);if(!selected)return{cancelled:true,...publicState()};
   const confirmed=await dialog.showMessageBox({type:'question',message:text('将龙娘接入这个 Harness profile？','Add Dragon Girl to this Harness profile?'),detail:text(`配置：${selected.profile}。桌面版请先从托盘完全退出 Harness；安装不会替你结束会话。安装后重新打开该 profile。`,`Profile: ${selected.profile}. For Desktop, fully quit Harness from its tray first. No running session will be stopped. Reopen the profile after installation.`),buttons:[text('安装并接入','Install and connect'),text('取消','Cancel')],defaultId:0,cancelId:1});
   available();if(confirmed.response!==0)return{cancelled:true,...publicState()};
-  await run('install',selected);available();
-  const record={schemaVersion:1,active:true,...selected,version:inspection.version};if(!verifiedProfile(record))throw Error('install-unverified');
+  const installation=await run('install',selected);available();
+  if(installation.version!==inspection.version)throw Error('harness-version-changed');
+  const selectedNode=installation.nodeCommand??inspection.nodeCommand;
+  if(selectedNode!=null&&(bundled(command)||!validNode(selectedNode)))throw Error('invalid-node-runtime');
+  // 仅保存本次正式 CLI 已核对的运行时，供 QQ 自有子进程复用；不改变系统 PATH。
+  const record={schemaVersion:1,active:true,...selected,version:inspection.version,...(selectedNode?{nodeCommand:fs.realpathSync(selectedNode)}:{})};if(!verifiedProfile(record))throw Error('install-unverified');
   const previous=link;save(record);link=record;
   try{await onHandoff(publicState());}catch{if(previous){save(previous);link=previous;}else{save({...record,active:false});link={...record,active:false};}throw Error('handoff-failed');}
   return{external:true,...publicState()};
@@ -111,7 +117,7 @@ function createController({electron,projectRoot=path.resolve(__dirname,'../../..
  async function open(){
   available();if(opening)return opening;
   opening=flow().catch(async error=>{
-   if(!disposed)await dialog.showMessageBox({type:'error',message:text('Harness 尚未接入，当前桌宠保持原样。','Harness was not connected. Your current pet is unchanged.'),detail:error.message==='unsupported-version'?text('当前插件已验证 Harness 0.2.1-rc.2 和 0.2.1-rc.5。请更新项目或选择兼容的正式安装。','This plugin has been verified with Harness 0.2.1-rc.2 and 0.2.1-rc.5. Update Codex Pet or choose a compatible installation.'):text('请检查安装位置、数据目录和 profile；桌面版需先完全退出。原配置和账户不会被替换。','Check the installation, data folder and profile. Fully quit Desktop first. Existing configuration and account settings are kept.'),buttons:[text('确定','OK')]});
+   if(!disposed)await dialog.showMessageBox({type:'error',message:text('Harness 尚未接入，当前桌宠保持原样。','Harness was not connected. Your current pet is unchanged.'),detail:error.message==='unsupported-version'?text('当前插件兼容 Harness 0.2.1-rc.2、0.2.1-rc.5 和 0.2.2-rc.1；0.2.2 需要 Node.js 24.9 或更新版。请检查正式安装。','This plugin supports Harness 0.2.1-rc.2, 0.2.1-rc.5 and 0.2.2-rc.1. Harness 0.2.2 needs Node.js 24.9 or later. Check your installation.'):text('请检查安装位置、数据目录、Node.js 版本和 profile；桌面版需先完全退出。原配置和账户不会被替换。','Check the installation, data folder, Node.js version and profile. Fully quit Desktop first. Existing configuration and account settings are kept.'),buttons:[text('确定','OK')]});
    throw Error('harness-unavailable');
   });try{return await opening;}finally{opening=null;}
  }

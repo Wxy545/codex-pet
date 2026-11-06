@@ -2,10 +2,10 @@ import {patchStandalone040,patchPlayback040,prepareRuntime040} from './prepare-r
 import {patchHelper041} from './prepare-runtime-041.mjs';
 import {captureUpstreamSnapshot043} from './upstream-snapshot-043.mjs';
 import {preserveStandalonePolicy041,protectStandaloneReads041} from './standalone-policy-041.mjs';
-import {patchModularPlayback043,validateModularHelper043} from '../harness/modular-runtime-fix.mjs';
+import {patchModularPlayback043,validateModularHelper043,patchModularOwnedElectron043} from '../harness/modular-runtime-fix.mjs';
 
 /** 0.4.3沿用逐项核对过的宿主策略，不改变已保存的账号、周期和权限。 */
-export function patchStandalone043(source){return protectStandaloneReads041(patchStandalone040(preserveStandalonePolicy041(source),{version:'0.4.3'}));}
+export function patchStandalone043(source){return protectStandaloneReads041(patchStandalone040(preserveStandalonePolicy041(patchModularOwnedElectron043(source)),{version:'0.4.3'}));}
 
 /** 原循环续播留给043状态机；只纠正单次标记并保留本项目解冻后的状态同步。 */
 export function patchPlayback043(input){return patchPlayback040(patchModularPlayback043(input));}

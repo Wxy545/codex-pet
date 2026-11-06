@@ -36,7 +36,8 @@ export function installHarnessTasks(ctx,{locale='en'}={}){
  const profile=realpathSync(ctx.profileContext.dir),file=join(profile,'codex-pet-task-register.json');if(lstatSync(ctx.profileContext.dir).isSymbolicLink())fail('native-task-profile');let saved=[];
  if(existsSync(file)){const stat=lstatSync(file);if(!stat.isFile()||stat.isSymbolicLink()||stat.nlink!==1||stat.size>1024*1024)fail('native-task-storage');const value=JSON.parse(readFileSync(file,'utf8'));if(value.schemaVersion!==1)fail('native-task-storage');saved=value.items;}
  const store=createNativeTaskStore({saved,locale,persist:items=>{const temp=file+'.tmp-'+randomUUID();try{if(existsSync(file)&&lstatSync(file).isSymbolicLink())fail('native-task-storage');writeFileSync(temp,JSON.stringify({schemaVersion:1,items})+'\n',{flag:'wx',mode:0o600});renameSync(temp,file);}finally{if(existsSync(temp))unlinkSync(temp);}}});
- ctx.provide('codexPetHarnessTasks',store);const remove=ctx.on('session/event',(session,event)=>store.observe(session,event));ctx.on('dispose',()=>remove?.());return store;
+ // provide 与 on 由同一 Cordis Fiber 持有，卸载时自动撤销，无需虚构 dispose 事件。
+ ctx.provide('codexPetHarnessTasks',store);ctx.on('session/event',(session,event)=>store.observe(session,event));return store;
 }
 
 const MARK='/* codex-pet-native-tasks-v1 */',END='/* /codex-pet-native-tasks-v1 */';

@@ -8,13 +8,15 @@ You can ask Codex: **Install White Dragon Girl from https://github.com/Wxy545/co
 
 ## Install
 
-On Windows, use DeepSeek Harness **0.2.1-rc.2 or 0.2.1-rc.5**, `dsh-pet` **0.4.3**, and Node.js **22.12 or newer**. The npm Harness CLI also needs `pnpm` on PATH. From the Codex Pet checkout, run:
+On Windows, use DeepSeek Harness **0.2.2-rc.1** with Node.js **24.9 or newer**, and `dsh-pet` **0.4.3**. Existing Harness **0.2.1-rc.2 and 0.2.1-rc.5** installations remain supported with Node.js **22.12 or newer**. The npm Harness CLI also needs `pnpm` on PATH. From the Codex Pet checkout, run:
 
 ```powershell
 powershell -File scripts/install-harness.ps1 -Profile web
 ```
 
-The script builds a JavaScript bundle in `data/harness-plugin`, then asks the official `dsh plugin` CLI to add `dsh-pet` and `codex-pet-harness` to that profile. It accepts existing `dsh-pet` 0.4.0, 0.4.1 or 0.4.3 profiles and stops for unverified versions.
+The script builds a JavaScript bundle in `data/harness-plugin`, then asks the official `dsh plugin` CLI to add `dsh-pet` and `codex-pet-harness` to that profile. It prepares the selected profile before its first launch, so task tracking and QQ status are available immediately. It accepts existing `dsh-pet` 0.4.0, 0.4.1 or 0.4.3 profiles and stops for unverified versions.
+
+The installer checks the Node runtime used by the selected npm CLI. If a suitable installed runtime is available, it uses that runtime for Harness commands in this process only. The bundle can still be built with the project's Node 22 runtime; Codex and WorkBuddy requirements do not change. Nothing is installed globally and your PATH is restored when the installer exits.
 
 Keep the checkout in a permanent folder, such as `%LOCALAPPDATA%\codex-pet`. A local install links to its `data/harness-plugin` directory; moving or deleting the checkout breaks that link.
 
@@ -22,7 +24,13 @@ For Harness Desktop, launch it once, then fully quit it. Use `-Profile desktop` 
 
 Restart the selected profile. Dragon Girl appears in the web overlay and desktop pet window; `/pet` lists her as `codex-white-dragon`. Use the original pet's display setting if you want only one character. The installation keeps the whale maid and its saved settings.
 
-Already have a prebuilt bundle? Install `dsh-pet@0.4.3` first, then run `dsh plugin --profile web add <bundle-folder-or-tarball>`. Keep both bundles enabled: the dragon bundle seeds the pack before dsh-pet reads its configuration. The source `harness/` folder is not a built bundle; use the build script or installer first.
+Already have a prebuilt bundle? Install `dsh-pet@0.4.3` first, then run `dsh plugin --profile web add <bundle-folder-or-tarball>`. Before opening the profile, run the following from this checkout, using the installed bundle's real folder and the version returned by your selected `dsh --version`:
+
+```powershell
+node scripts/prepare-harness-profile.mjs --profile-dir '<Harness-home>/profiles/web' --bundle-dir '<installed-bundle-folder>' --dsh-version 0.2.2-rc.1
+```
+
+Keep both bundles enabled. The source `harness/` folder is not a built bundle; use the build script or installer first.
 
 The original dsh-pet host supplies Harness session states, six balance tiers, three chatter slots, chat, click physics, dragging, the action menu, and its notification handling. Balance, chatter, and some work slots reuse the available dragon videos. Model calls and balance queries follow the Harness account and dsh-pet settings.
 
@@ -40,13 +48,17 @@ The bundle checks dsh-pet 0.4.3's playback, motion, input and window modules bef
 
 也可以直接对 Codex 说：**把 https://github.com/Wxy545/codex-pet 的白龙娘插件装到我正在用的 DeepSeek Harness，按 harness/README.md 选择对应的官方 CLI，保留现有宠物设置。**
 
-Windows 上需要 DeepSeek Harness **0.2.1-rc.2 或 0.2.1-rc.5**、`dsh-pet` **0.4.3** 和 Node.js **22.12 或更新版**。普通 npm 版 Harness CLI 还需要 PATH 中有 `pnpm`。在 Codex Pet 项目目录运行：
+Windows 上支持 DeepSeek Harness **0.2.2-rc.1**，该版本需要 Node.js **24.9 或更新版**，配合 `dsh-pet` **0.4.3**。旧版 Harness **0.2.1-rc.2、0.2.1-rc.5** 仍可使用，Node.js 要求保持 **22.12 或更新版**。普通 npm 版 Harness CLI 还需要 PATH 中有 `pnpm`。在 Codex Pet 项目目录运行：
 
 ```powershell
 powershell -File scripts/install-harness.ps1 -Profile web
 ```
 
-脚本会构建龙娘插件，再通过官方 `dsh plugin` 命令把原版 dsh-pet 和龙娘扩展加入指定 profile。已有 dsh-pet 版本不同时会停止，保留现有版本。安装后重启该 profile；`/pet` 可以选择 `codex-white-dragon`。龙娘默认同时显示在网页和桌面，原鱼及其显示设置保留。
+脚本会构建龙娘插件，再通过官方 `dsh plugin` 命令把原版 dsh-pet 和龙娘扩展加入指定 profile，并在首次启动前自动完成补丁准备，让任务列表和 QQ 状态直接生效。遇到未验证的 dsh-pet 版本会停止。安装后重启该 profile；`/pet` 可以选择 `codex-white-dragon`。龙娘默认同时显示在网页和桌面，原鱼及其显示设置保留。
+
+手工添加预构建包时，在打开 profile 前执行上面的 `prepare-harness-profile.mjs` 命令：目录填所选 profile 和已安装插件的真实位置，版本填该 Harness CLI 实际返回的版本。使用安装器时无需另做这一步。
+
+安装器会核对所选 npm CLI 实际使用的 Node。有合适的已安装运行时时，仅在本次 Harness 命令中使用；退出后恢复 PATH，不安装全局软件。龙娘插件仍可用项目的 Node 22 构建，Codex 与 WorkBuddy 的要求不变。
 
 项目需放在并保留于固定目录，例如 `%LOCALAPPDATA%\codex-pet`。本地安装链接的是其中的 `data/harness-plugin`；移动或删除项目目录会断开插件。
 

@@ -244,6 +244,8 @@ After updating the source, run `node scripts/prepare-runtime.mjs` to prepare the
 
 Choose **Companion app → DeepSeek Harness (native plugin)** in the control center or tray menu to select an installed Harness and its profile, then install the dragon girl's 23 clips into its native dsh-pet. For Harness Desktop, open it once to initialize the profile, then fully quit it before installation. Reopen that profile afterward.
 
+Harness 0.2.2-rc.1 needs Node.js 24.9 or newer. The installer checks the selected Harness CLI's runtime separately; Codex and WorkBuddy keep their existing requirements. Harness 0.2.1-rc.2 and rc.5 remain supported.
+
 Harness uses its own account, sessions, balance, and chat. The bar below the pet shows its provider's API balance, credits, or available usage windows; click a window summary for reset details. Switch back to Codex or WorkBuddy from the tray or control center to restore the standalone pet and your saved character. Startup themes and imported videos currently apply to the standalone pet, not Harness's native startup page. See the [Harness guide](harness/README.md) for supported versions and manual installation.
 
 The native task button lists turns observed in that Harness profile, with counts, elapsed time, and reported model details. It supports read/snooze and opening a conversation when the native client is connected. It does not take over or cancel existing desktop sessions. The supported CLI profiles have been checked in isolation; Harness Desktop itself remains unverified.

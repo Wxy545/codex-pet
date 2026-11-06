@@ -91,7 +91,7 @@ export function createAcpRemote({host,cwd,permission='read-only',launch,managedT
     let same=false;try{same=realpathSync(entry.cwd)===root;}catch{}if(!same)continue;
     threads.set(entry.id,{id:entry.id,title:safeRemoteText(entry.title,80)?entry.title:'',cwd:root,status:'notLoaded',updatedAt:Number.isSafeInteger(entry.updatedAt)&&entry.updatedAt>=0?entry.updatedAt:0});
   }
-  let child,readyPromise,closed=false,catalogBusy=false,active,sequence=0,state='idle',protocolStarted=false,preambleBytes=0;
+  let child,readyPromise,startup,closed=false,catalogBusy=false,active,sequence=0,state='idle',protocolStarted=false,preambleBytes=0;
   const pending=new Map(),decisions=new Map(),loaded=new Set(),seenRequests=new Set();
   const capabilities=Object.freeze({managedSessions:true,desktopSessions:false,models:false,input:false,files:true,shell:policy.shell,mcp:policy.mcp,approval:true,cancel:true});
   const emit=event=>{try{Promise.resolve(onEvent(event)).catch(()=>{});}catch{}};
@@ -106,7 +106,7 @@ export function createAcpRemote({host,cwd,permission='read-only',launch,managedT
     if(error)run.reject(remoteError(error));else run.resolve({threadId:run.threadId,status,text});
   }
   function disconnect(code,owned=child){
-    if(owned!==child)return;drain();child=undefined;readyPromise=undefined;loaded.clear();
+    if(owned!==child)return;const starting=startup;startup=undefined;starting?.abort(remoteError(code));drain();child=undefined;readyPromise=undefined;loaded.clear();
     for(const item of pending.values()){clearTimeout(item.timer);item.reject(remoteError(code));}pending.clear();
     if(active)finish(active,active.cancelError?{error:active.cancelError}:active.cancelRequested?{status:'cancelled'}:{error:code});
     if(owned&&owned.exitCode==null)terminateRemoteChild(owned);
@@ -160,15 +160,19 @@ export function createAcpRemote({host,cwd,permission='read-only',launch,managedT
   }
   async function ready(){
     if(closed)throw remoteError('closed');if(readyPromise)return readyPromise;
-    readyPromise=(async()=>{
-      const spec=await launch();if(closed)throw remoteError('closed');let owned;try{owned=spawnImpl(spec.command,spec.args,{cwd:root,env:spec.env,shell:false,windowsHide:true,stdio:['pipe','pipe','pipe']});}catch{throw remoteError('spawn_failed');}
+    const ticket=new AbortController();startup=ticket;
+    const preparing=(async()=>{
+      // 取消或关闭会撤销本次初始化；不合作的迟到 launch 也不能再创建 ACP 子进程。
+      let onAbort,spec;const interrupted=new Promise((_,reject)=>{onAbort=()=>reject(ticket.signal.reason??remoteError('cancelled'));ticket.signal.addEventListener('abort',onAbort,{once:true});});
+      try{spec=await Promise.race([launch({signal:ticket.signal}),interrupted]);}finally{ticket.signal.removeEventListener('abort',onAbort);}
+      if(closed)throw remoteError('closed');if(startup!==ticket||ticket.signal.aborted)throw remoteError('cancelled');let owned;try{owned=spawnImpl(spec.command,spec.args,{cwd:root,env:spec.env,shell:false,windowsHide:true,stdio:['pipe','pipe','pipe']});}catch{throw remoteError('spawn_failed');}
       child=owned;let buffer='';const decoder=new StringDecoder('utf8');seenRequests.clear();protocolStarted=false;preambleBytes=0;
       owned.stdout.on('data',chunk=>{if(child!==owned)return;if(active){active.bytes+=Buffer.byteLength(chunk);if(active.bytes>4*1024*1024){disconnect('output_limit',owned);return;}}buffer+=typeof chunk==='string'?chunk:decoder.write(chunk);if(buffer.length>1048576){disconnect('output_limit',owned);return;}let cut;while(child===owned&&(cut=buffer.indexOf('\n'))>=0){const line=buffer.slice(0,cut);buffer=buffer.slice(cut+1);acceptLine(line);}});
       owned.stderr.on('data',()=>{});owned.stdin.on('error',()=>disconnect('process_exited',owned));owned.once('error',()=>disconnect('spawn_failed',owned));owned.once('close',()=>disconnect('process_exited',owned));
       const response=await request('initialize',{protocolVersion:1,clientInfo:{name:'codex-pet-remote',version:'1.0.0'},clientCapabilities:{fs:{readTextFile:false,writeTextFile:false},terminal:false}});
       if(!isRecord(response)||response.protocolVersion!==1||!isRecord(response.agentCapabilities))throw remoteError('unsupported_protocol');
       return{supported:true,transport:'stdio',protocol:'acp-v1',capabilities};
-    })();try{return await readyPromise;}catch(error){if(child)disconnect(error.code??'remote_failed');readyPromise=undefined;throw error;}
+    })();readyPromise=preparing;try{return await preparing;}catch(error){if(startup===ticket)disconnect(error.code??'remote_failed');throw error;}
   }
   async function stored(metadata,created){try{await onThread(metadata.id,{created,host,permission,toolScope:scope,...metadata});}catch{throw remoteError('thread_storage_failed');}}
   async function newThread(title=''){
@@ -227,7 +231,7 @@ export function createAcpRemote({host,cwd,permission='read-only',launch,managedT
     reply(item.rpcId,allowed?{outcome:{outcome:'selected',optionId:item.optionId}}:{outcome:{outcome:'cancelled'}});setState(decisions.size?'waiting':'working');return true;
   }
   async function close(){
-    if(closed)return;closed=true;if(active)await stopRun(active);drain();const owned=child;if(!owned)return;
+    if(closed)return;closed=true;if(active)await stopRun(active);drain();const owned=child;if(!owned){disconnect('closed');return;}
     if(closeSession)for(const id of loaded){try{await request('session/close',{sessionId:id});}catch{break;}}
     await new Promise(accept=>{const timer=setTimeout(()=>{disconnect('closed',owned);accept();},1000);owned.once('close',()=>{clearTimeout(timer);accept();});try{owned.stdin.end();}catch{clearTimeout(timer);disconnect('closed',owned);accept();}});
   }

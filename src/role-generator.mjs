@@ -7,7 +7,7 @@ import {mkdtemp,writeFile,unlink,rmdir} from 'node:fs/promises';
 import {createCodexChildEnv} from './codex-child-env.mjs';
 import {locateCodex} from './codex-path.mjs';
 import {resolveWorkBuddyNative} from './workbuddy-remote.mjs';
-import {resolveHarnessNative} from './harness-remote.mjs';
+import {resolveHarnessNative,harnessChildEnvironment} from './harness-remote.mjs';
 import {terminateRemoteChild} from './acp-remote.mjs';
 
 const fail=code=>{throw Object.assign(Error(code),{code});};
@@ -51,8 +51,8 @@ function workBuddySpec(native){
  const settings={permissions:{allow:[],ask:[],deny:DENY_WB,additionalDirectories:[]},disableAllHooks:true,sandbox:{enabled:false,autoAllowBashIfSandboxed:false,allowUnsandboxedCommands:false,excludedCommands:[],systemToolPolicy:'disabled'}};
  return{command:native.nodePath,args:[native.cliPath,'--serve','--acp','--acp-transport','stdio','--host','127.0.0.1','--port','0','--auth','password','--permission-mode','plan','--setting-sources','none','--tools','','--strict-mcp-config','--mcp-config','{"mcpServers":{}}','--settings',JSON.stringify(settings)],env:{...process.env,CODEBUDDY_CONFIG_DIR:native.configDir,WORKBUDDY_CONFIG_DIR:native.configDir,CODEBUDDY_FORCE_LITE_WB_BUNDLE:'1',CODEBUDDY_GATEWAY_PASSWORD:randomBytes(32).toString('base64url'),DISABLE_TELEMETRY:'1',NODE_OPTIONS:'',NODE_PATH:''}};
 }
-function ownHarnessProfile(native,cwd){
- if(!native||!isAbsolute(native.command??'')||!file(native.command)||!/^dsh(?:\.cmd|\.exe)?$/i.test(basename(native.command))||!isAbsolute(native.home??'')||!['0.2.1-rc.2','0.2.1-rc.5'].includes(native.version)||!field(native.profile)||!file(join(native.home,'profiles',native.profile,'package.json')))fail('not_installed');
+async function ownHarnessProfile(native,cwd,signal){
+ if(!native||!isAbsolute(native.command??'')||!file(native.command)||!/^dsh(?:\.cmd|\.exe)?$/i.test(basename(native.command))||!isAbsolute(native.home??'')||!['0.2.1-rc.2','0.2.1-rc.5','0.2.2-rc.1'].includes(native.version)||!field(native.profile)||!file(join(native.home,'profiles',native.profile,'package.json')))fail('not_installed');
  const parent=directory(join(native.home,'profiles'),{create:false});
  const digest=createHash('sha256').update(cwd+'\0'+native.version+'\0role-chat-v1').digest('hex').slice(0,18),profile='codex-pet-chat-'+digest,root=directory(join(parent,profile));
  const guard=`import {createRoleChatGuard} from ${JSON.stringify(new URL('./role-generator.mjs',import.meta.url).href)};\nexport const name='codex-pet-chat-guard';\nexport const inject=['tools'];\nexport function apply(ctx){createRoleChatGuard(ctx);}\n`;
@@ -67,7 +67,7 @@ function ownHarnessProfile(native,cwd){
   const target=join(root,name);if(existsSync(target)){const info=lstatSync(target);if(!info.isFile()||info.isSymbolicLink()||info.nlink!==1||info.size!==Buffer.byteLength(body)||readFileSync(target,'utf8')!==body)fail('role_generator_profile_modified');}
   else{const temporary=target+'.tmp-'+randomUUID();try{writeFileSync(temporary,body,{flag:'wx',mode:0o600});renameSync(temporary,target);}finally{try{unlinkSync(temporary);}catch{}}}
  }
- const args=['--profile',profile],env={...process.env,DSH_HOME:native.home,DSH_PERMISSION_MODE:'read-only',DSH_TELEMETRY_DISABLED:'1',NODE_OPTIONS:'',NODE_PATH:''};
+ const args=['--profile',profile],env=await harnessChildEnvironment(native,'read-only',{signal});
  if(process.platform==='win32'&&native.command.toLowerCase().endsWith('.cmd')){
   const literal=value=>"'"+value.replaceAll("'","''")+"'",source='& '+[native.command,...args].map(literal).join(' ')+'\nexit $LASTEXITCODE';
   return{command:join(process.env.SystemRoot||'C:/Windows','System32/WindowsPowerShell/v1.0/powershell.exe'),args:['-NoProfile','-NonInteractive','-EncodedCommand',Buffer.from(source,'utf16le').toString('base64')],env};
@@ -99,7 +99,7 @@ export function createRoleChatGenerator({dataRoot,projectRoot,codexPath,resolveE
    spec={command,args:['exec','--ephemeral','--skip-git-repo-check','--sandbox','read-only','--json','--thread-source','pet-chat','--ignore-user-config','--color','never','-c','approval_policy="never"','-c','web_search="disabled"','-c','project_doc_max_bytes=0','-c','developer_instructions='+JSON.stringify(input.character.locale==='en'?RULES_EN:RULES),...(selected?.model?['--model',selected.model]:[]),...(selected?.effort?['-c','model_reasoning_effort='+JSON.stringify(selected.effort)]:[]),...DISABLED.flatMap(value=>['--disable',value]),...imageFiles.flatMap(path=>['--image',path]),'-'],env:createCodexChildEnv()};
   }else{
    if(input.execution?.model!=null||input.execution?.effort!=null)fail('model_selection_unavailable');
-   const native=await nativeFor(input.host);spec=input.host==='workbuddy'?workBuddySpec(native):ownHarnessProfile(native,cwd);
+    const native=await nativeFor(input.host);spec=input.host==='workbuddy'?workBuddySpec(native):await ownHarnessProfile(native,cwd,input.signal);
   }
   if(disposed||input.signal?.aborted)fail('role_generator_cancelled');
   const release=activityGate?.acquire('role-chat');if(activityGate&&!release)fail('role_generator_busy');
