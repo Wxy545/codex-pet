@@ -206,3 +206,27 @@ export function patchModularOwnedElectron043(input){return replaceKnown043(input
 
 /** 择取cf0aec77：零尺寸滤镜仍可按同文档ID解析，同时不再撑高Harness网页。 */
 export function patchModularAlphaLayout043(input){return replaceKnown043(input,ALPHA_FILTER_043,ALPHA_LAYOUT_043);}
+
+const ELECTRON_OWNED_045=ELECTRON_RESOLVER_043.replace(`\ttry {
+\t\tconst resolved = require("electron");
+\t\tif (typeof resolved === "string" && resolved) push(resolved);
+\t} catch {}\n`, '');
+const ALPHA_LAYOUT_045=ALPHA_FILTER_043.replaceAll('NS$1','NS$2').replace('\tsvg.setAttribute("data-dsh-pet-alpha-fix", "");', '\tsvg.setAttribute("data-dsh-pet-alpha-fix", "");\n\tsvg.style.position = "absolute";');
+
+/** 0.4.5 已原生只用自有 Electron；完整核对原函数，不叠加 043 的替换标记。 */
+export function validateModularOwnedElectron045(input){
+  if(typeof input!=='string')throw Error('harness-modular-runtime-anchor-mismatch');
+  const source=input.replaceAll('\r\n','\n');
+  requireOnce(source,'function resolveElectronPath(candidates = []) {');
+  requireOnce(source,ELECTRON_OWNED_045);
+  return input;
+}
+
+/** 0.4.5 原生滤镜已脱离页面行内流；同时核对原透明、转向和工作状态契约。 */
+export function validateModularAlphaLayout045(input){
+  if(typeof input!=='string')throw Error('harness-modular-runtime-anchor-mismatch');
+  const source=validateModularClient043(input).replaceAll('\r\n','\n');
+  requireOnce(source,'function ensureAlphaFilter() {');
+  requireOnce(source,ALPHA_LAYOUT_045);
+  return input;
+}

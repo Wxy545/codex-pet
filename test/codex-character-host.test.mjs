@@ -16,7 +16,14 @@ function fixture(kind,{pauseMemory=false}={}){
  assert.ok(expression,'prepared host closure not found');
  const code=kind==='whisper'?'('+expression[1]+'\n})':'('+expression[1]+'\n}))';
  // 新版语音落点和配图选池也执行实际辅助函数；这里只提供本fixture无素材的目录，不调用任何语音服务。
- const helpers=['displayCovers','pickVoiceSurface','voiceTargetFor','readMemePool','pickMeme','matchMeme'].map(name=>source.match(new RegExp('function '+name+'\\([^)]*\\) \\{[\\s\\S]*?^\\}','m'))?.[0]).filter(Boolean).join('\n');
+ let helpers=['displayCovers','pickVoiceSurface','voiceTargetFor','readMemePool','pickMeme','matchMeme'].map(name=>source.match(new RegExp('function '+name+'\\([^)]*\\) \\{[\\s\\S]*?^\\}','m'))?.[0]).filter(Boolean).join('\n');
+ if(source.includes('//#region src/host/chat-memory-provider.ts')){
+  // 新宿主多了一层原生召回/接收，执行实际门控及闭包，不以返回空值的替身跳过。
+  const registryStart=source.indexOf('//#region src/host/chat-memory-provider.ts'),registryEnd=source.indexOf('//#endregion',registryStart);
+  const recallStart=source.indexOf('const recallPatch = async'),recallEnd=source.indexOf('const publishWhisper = async',recallStart);
+  assert.ok(registryEnd>registryStart&&recallStart>=0&&recallEnd>recallStart);
+  helpers+='\n'+source.slice(registryStart,registryEnd)+'\n'+source.slice(recallStart,recallEnd);
+ }
  const fn=vm.runInNewContext(helpers+'\n'+code,context);
  return{fn,writes,inputs,get disk(){return disk;},set character(next){character=next;},resolve:value=>resolveGeneration(value),resumeMemory:()=>resolveMemory()};
 }

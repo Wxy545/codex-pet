@@ -8,7 +8,7 @@ import {prepareHarnessProfile} from '../scripts/prepare-harness-profile.mjs';
 import {readUpstream,upstreamVersion} from './support/harness-upstream.mjs';
 
 const files=['lib/client.js','lib/index.js','runtime/electron-helper/shared-core.js','runtime/electron-helper/sprite/motion.js','runtime/electron-helper/main.js','runtime/electron-helper/main/dpi.js','runtime/electron-helper/main/user-data.js','runtime/electron-helper/sprite.js','runtime/electron-helper/sprite/input.js','runtime/electron-helper/index.html'];
-if(upstreamVersion==='0.4.3')files.push('runtime/electron-helper/sprite/playback.js','runtime/electron-helper/sprite/window-fit.js');
+if(['0.4.3','0.4.5'].includes(upstreamVersion))files.push('runtime/electron-helper/sprite/playback.js','runtime/electron-helper/sprite/window-fit.js');
 function fixture(t){
  const root=mkdtempSync(join(tmpdir(),'harness-pre-import-'));t.after(()=>rmSync(root,{recursive:true,force:true}));
  const profileDir=join(root,'home','profiles','web'),pkg=join(profileDir,'node_modules','dsh-pet'),bundleDir=join(root,'bundle');mkdirSync(pkg,{recursive:true});mkdirSync(join(bundleDir,'runtime'),{recursive:true});
@@ -33,6 +33,12 @@ test('未登记、错误bundle或未知版本在准备前拒绝，真实原件�
  const f=fixture(t),original=readFileSync(join(f.pkg,'lib/index.js'),'utf8');
  assert.throws(()=>prepareHarnessProfile({...f.options,dshVersion:'next'}),/unverified/);
  assert.throws(()=>prepareHarnessProfile({...f.options,bundleDir:f.root}),/bundle-mismatch/);
+ for(const version of ['0.4.4','0.4.6','^0.4.5']){
+  f.manifest.dependencies['dsh-pet']=version;writeFileSync(join(f.profileDir,'package.json'),JSON.stringify(f.manifest));
+  assert.throws(()=>prepareHarnessProfile(f.options),/not-registered/);
+  assert.equal(readFileSync(join(f.pkg,'lib/index.js'),'utf8'),original);
+ }
+ f.manifest.dependencies['dsh-pet']=upstreamVersion;
  f.manifest.dsh.profile.bundles.pop();writeFileSync(join(f.profileDir,'package.json'),JSON.stringify(f.manifest));assert.throws(()=>prepareHarnessProfile(f.options),/not-registered/);
  assert.equal(readFileSync(join(f.pkg,'lib/index.js'),'utf8'),original);
 });

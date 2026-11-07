@@ -2,7 +2,9 @@ const one=(source,before,after,label)=>{const old=source.split(before).length-1,
 const region=(source,name,run)=>{const start='//#region src/'+name,a=source.indexOf(start),b=source.indexOf('//#endregion',a);if(a<0||b<0||source.indexOf(start,a+start.length)>=0)throw Error('0.4.1 模块定位失败：'+name);return source.slice(0,a)+run(source.slice(a,b))+source.slice(b);};
 
 /** 新版运行时保留原模块，仅恢复本项目已授权的启用、自动周期和调用上限。 */
-export function preserveStandalonePolicy041(input){
+export function preserveStandalonePolicy041(input,{version='0.4.1'}={}){
+ if(!['0.4.1','0.4.3','0.4.5'].includes(version))throw Error('未知独立宿主策略版本。');
+ const connectionVariable=version==='0.4.5'?'current$3':'current$2';
  let source=input.replaceAll('\r\n','\n');
  source=region(source,'standalone/settings.ts',block=>{
   block=one(block,'\tclearApiKey: z.boolean().optional(),','\tclearApiKey: z.boolean().optional(),\n\tenabled: z.boolean().optional(),','设置启用位');
@@ -25,7 +27,7 @@ export function preserveStandalonePolicy041(input){
  });
  source=region(source,'standalone/ai-provider/limits.ts',block=>one(block,'const MAX_EVENTS = 4096;','const MAX_EVENTS = 4096;\nconst REQUESTS_PER_MINUTE = 6;\nconst RATE_WINDOW_MS = 6e4;','原调用上限'));
  source=region(source,'standalone/ai-provider/stream.ts',block=>one(block,'\t\tif (runtime.active) throw new Error("Standalone AI is busy. Please wait.");','\t\tif (runtime.active) throw new Error("Standalone AI is busy. Please wait.");\n\t\tconst recent = runtime.requests.filter((time) => runtime.now() - time < RATE_WINDOW_MS);\n\t\tif (recent.length >= REQUESTS_PER_MINUTE) throw new Error("Standalone AI rate limit reached. Please wait.");\n\t\truntime.requests = [...recent, runtime.now()];','原六次每分钟门控'));
- source=region(source,'standalone/ai-provider/test-connection.ts',block=>one(block,'\tconst apiKey = (input.apiKey !== void 0 && input.apiKey !== "" ? input.apiKey : current$2.apiKey).trim();','\tif(input.clearApiKey===true)return {ok:false,message:"请先填写 API 密钥"};\n\tif(current$2.apiKey&&input.baseUrl!==undefined&&baseUrl!==current$2.baseUrl&&!input.apiKey)return {ok:false,message:"更换接口地址时请同时填写新密钥。"};\n\tconst apiKey = (input.apiKey !== void 0 && input.apiKey !== "" ? input.apiKey : current$2.apiKey).trim();','连接测试凭据端点隔离'));
+ source=region(source,'standalone/ai-provider/test-connection.ts',block=>one(block,`\tconst apiKey = (input.apiKey !== void 0 && input.apiKey !== "" ? input.apiKey : ${connectionVariable}.apiKey).trim();`,`\tif(input.clearApiKey===true)return {ok:false,message:"请先填写 API 密钥"};\n\tif(${connectionVariable}.apiKey&&input.baseUrl!==undefined&&baseUrl!==${connectionVariable}.baseUrl&&!input.apiKey)return {ok:false,message:"更换接口地址时请同时填写新密钥。"};\n\tconst apiKey = (input.apiKey !== void 0 && input.apiKey !== "" ? input.apiKey : ${connectionVariable}.apiKey).trim();`,'连接测试凭据端点隔离'));
  source=region(source,'standalone/context.ts',block=>{
   block=one(block,'\t\t\tisReady: () => ai.isReady(),','\t\t\tisReady: () => ai.isReady(),\n\t\t\tcanWhisper: () => ai.canWhisper(),\n\t\t\twhisperIntervalSec: () => ai.getSettings().whisperIntervalSec,','宿主自动策略');
   return one(block,'balanceAuth: () => ai.balanceAuth()','balanceAuth: () => undefined','额度仅使用注册宿主来源');

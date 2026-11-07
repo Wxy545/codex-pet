@@ -123,6 +123,16 @@ test('无选择优先就绪Q龙娘，显式选择保留，缺图和无效清单�
  assert.equal(C.readCharacter(f.root).id,'bluefish');
  assert.deepEqual((await store.readModel()).selection,C.readCharacter(f.root).selection);
 });
+test('045原鱼吃白饭槽只留原鱼，自有角色不借素材且不改用户保存的配置',t=>{
+ const f=fixture(t);f.write('skins/white-dragon/sprites.png',f.png);
+ const baifan=['下落','追饭','等饭','吃碗饭','吃饭团'],animations={idle:['呼吸'],baifan},config={main:{pets:[{id:'main'}],animations}};
+ f.write('dsh-pet/main-config.jsonc',config.main);const before=fs.readFileSync(path.join(f.root,'dsh-pet/main-config.jsonc'),'utf8');
+ assert.equal(C.readCharacter(f.root).id,'white-dragon');const dragon=C.projectConfig(config,{dataRoot:f.root});
+ assert.equal(Object.hasOwn(dragon.main.animations,'baifan'),false);assert.deepEqual(dragon.main.animations.idle,['呼吸']);assert.deepEqual(config.main.animations.baifan,baifan);
+ assert.equal(fs.readFileSync(path.join(f.root,'dsh-pet/main-config.jsonc'),'utf8'),before);
+ f.write('skins/selection.json',{character:'bluefish',mode:'q'});const fish=C.projectConfig(config,{dataRoot:f.root});assert.equal(fish.main.animations,animations);assert.deepEqual(fish.main.animations.baifan,baifan);
+});
+
 test('旧选择缺少Q素材时回原鱼且保留请求角色，旧形态图片不能代替Q',t=>{
  const f=fixture(t);f.write('skins/white-dragon/sister.png',f.png);
  for(const mode of ['sister','occasional']){

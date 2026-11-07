@@ -31,7 +31,7 @@ function upstreamCapabilityResult040(rest, method) {
 
 /** 只适配0.4.0实际宿主；Range和调度使用新包原生实现，核验失败即停止。 */
 export function patchStandalone040(input,{version='0.4.0'}={}){
- if(!['0.4.0','0.4.1','0.4.3'].includes(version))throw Error('未知独立运行时版本。');
+ if(!['0.4.0','0.4.1','0.4.3','0.4.5'].includes(version))throw Error('未知独立运行时版本。');
  let source=input.replaceAll('\r\n','\n');
  verify(source,['const decision = parseRange(req.headers.range, totalBytes);','if (!isDisplayed(display)) {','else sendFile(req, res, result.file, result.contentType);'],'原生Range及隐藏碎念');
  source=patchModularSandbox(source);
@@ -181,9 +181,9 @@ export function patchHelper040(input,{version='0.4.0'}={}){
 }
 
 export async function prepareRuntime040({root,pkg,version='0.4.0',capture=captureUpstreamSnapshot040,patchHost=patchStandalone040,patchHelper=patchHelper040}={}){
- if(!['0.4.0','0.4.1','0.4.3'].includes(version)||JSON.parse(await readFile(join(pkg,'package.json'),'utf8')).version!==version)throw Error('独立运行时版本不匹配。');
+ if(!['0.4.0','0.4.1','0.4.3','0.4.5'].includes(version)||JSON.parse(await readFile(join(pkg,'package.json'),'utf8')).version!==version)throw Error('独立运行时版本不匹配。');
  await capture({pkg});
- const helper=join(pkg,'runtime/electron-helper'),names=['main.js','main/tray.js','main/bridge.js','main/ipc.js','main/dpi.js','main/user-data.js','sprite.js','sprite/motion.js','sprite/menu.js','sprite/playback.js','sprite/bubble.js','sprite/input.js','events.js','shared-core.js','index.html',...(version==='0.4.3'?['sprite/init.js','sprite/window-fit.js']:[])];
+ const helper=join(pkg,'runtime/electron-helper'),names=['main.js','main/tray.js','main/bridge.js','main/ipc.js','main/dpi.js','main/user-data.js','sprite.js','sprite/motion.js','sprite/menu.js','sprite/playback.js','sprite/bubble.js','sprite/input.js','events.js','shared-core.js','index.html',...(['0.4.3','0.4.5'].includes(version)?['sprite/init.js','sprite/window-fit.js']:[])];
  // 直接核验当前已安装文件；未知改动不使用旧快照掩盖，也不覆盖成旧整份runtime。
  const originals=Object.fromEntries(await Promise.all(names.map(async name=>[name,await readFile(join(helper,name),'utf8')])));originals['standalone.js']=await readFile(join(pkg,'lib/standalone.js'),'utf8');originals['preload.js']=await readFile(join(helper,'preload.js'),'utf8');
  const fixed=patchHelper(Object.fromEntries(names.map(name=>[name,originals[name]]))),host=patchHost(originals['standalone.js'],{version});

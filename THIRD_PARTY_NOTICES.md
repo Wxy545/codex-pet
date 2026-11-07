@@ -1,13 +1,13 @@
 # 第三方来源与许可
 
-本文记录 codex-pet 使用的主要第三方来源与许可边界，由项目维护者随依赖和分发方式更新。适用范围为本仓库及其运行时准备流程；核对日期为 2026-11-05。
+本文记录 codex-pet 使用的主要第三方来源与许可边界，由项目维护者随依赖和分发方式更新。适用范围为本仓库及其运行时准备流程；核对日期为 2026-11-07。
 
 根目录 [LICENSE](LICENSE) 只适用于本项目自有代码与文档，不替代第三方软件、角色或素材的许可。安装依赖、公开源代码与分发成品时，都应保留所用第三方内容要求的版权和许可说明。
 
 ## dsh-pet 代码
 
 - 原仓库：[PC2005-cloud/dsh-pet](https://github.com/PC2005-cloud/dsh-pet)
-- 本项目使用版本：npm 包 `dsh-pet@0.4.3`，由 `package-lock.json` 锁定。
+- 本项目使用版本：npm 包 `dsh-pet@0.4.5`，由 `package-lock.json` 锁定。
 - 上游自有代码许可：[MIT](https://github.com/PC2005-cloud/dsh-pet/blob/main/LICENSE)。
 - 本项目保留原角色、动画播放、物理互动和菜单实现，增加 Codex 与 WorkBuddy 宿主、事件聚合、Codex 额度和 CLI 聊天、通知及兼容性检查。`scripts/prepare-runtime.mjs` 对已安装的固定版本生成适配入口和局部补丁。
 
@@ -47,7 +47,7 @@ SOFTWARE.
 
 dsh-pet 0.4.0 新增的 `@andresaya/edge-tts` 在本项目锁定为 **1.9.1**，作者为 **Andres Aya**，采用 **GPL-3.0-only**。依赖通过官方 npm 下载，源代码对应 [v1.9.1 提交 93f6dbc](https://github.com/andresayac/edge-tts/tree/93f6dbc5905293402ebf4b6dc162d31f7e61136e)；[原 LICENSE](https://github.com/andresayac/edge-tts/blob/93f6dbc5905293402ebf4b6dc162d31f7e61136e/LICENSE) 全文保留在 [licenses/edge-tts-GPL-3.0.txt](licenses/edge-tts-GPL-3.0.txt)。
 
-0.4.3 发布包的 `lib/dist-DpF6qLoG.js` 还内联了该库 1.9.1；其对应 TypeScript 源码及构建文件可从上述固定提交取得。默认关闭语音不会改变该内联代码的 GPL-3.0-only 许可。
+0.4.5 发布包的 `lib/dist-DpF6qLoG.js` 还内联了该库 1.9.1；其对应 TypeScript 源码及构建文件可从上述固定提交取得。默认关闭语音不会改变该内联代码的 GPL-3.0-only 许可。
 
 该依赖不属于本项目自有代码的 MIT 授权。当前仓库分发源代码、锁文件与安装脚本，不包含该库代码或打包运行时；语音默认关闭。若另行分发含该库的运行时或安装包，须核对 GPL 对组合程序、相应源代码及安装信息的要求，不能仅保留本页链接便按 MIT 发布整包。
 
@@ -62,6 +62,8 @@ dsh-pet 0.4.0 新增的 `@andresaya/edge-tts` 在本项目锁定为 **1.9.1**，
 上游 [README 的许可说明](https://github.com/PC2005-cloud/dsh-pet#许可) 将代码与素材分开：代码采用 MIT；动画、提示词、源视频允许开源使用，禁止商用。上游还要求公开的衍生、改版或换皮作品注明其 GitHub 仓库地址。本项目保留该来源声明，不将素材归入自有代码的 MIT 许可。
 
 原素材通过 npm 依赖取得；本仓库不直接提交 `node_modules/` 或另行打包、重新授权原素材。若后续制作含第三方素材的安装包或其他分发形式，仍须保留原来源与适用条件，不能因它们来自依赖包而省略许可说明。
+
+0.4.5 相比 0.4.3 新增“吃白饭”玩法的 3 张 PNG 和 5 段 WebM，来源为[对应发布源码 ada5aecb](https://github.com/PC2005-cloud/dsh-pet/tree/ada5aecbf8ab01577ad515b40d16b03e5066c8cb)。它们仅随原 npm 依赖取得，没有复制到本项目角色包；不属于白龙娘或卷卷的新动作。新增 PNG 没有单独授权说明，本项目不据此推定其为 MIT 或可商用素材，继续保留上游素材与角色各自的许可边界。
 
 ## 蓝色大肥鱼角色形象
 

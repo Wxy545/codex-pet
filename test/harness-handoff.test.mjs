@@ -75,10 +75,10 @@ test('后端实时核对已验证的原生移交记录，弱active或项目内�
  writeFileSync(join(f.home,'profiles','web','node_modules','codex-pet-harness','package.json'),'{}');assert.equal(selected(),false);
 });
 
-test('已验证4.0/4.1/4.3原生profile可移交，未知依赖版本不能占用独立宿主',async t=>{
+test('已验证4.0/4.1/4.3/4.5原生profile可移交，未知依赖版本不能占用独立宿主',async t=>{
  const f=fixture(t);await f.controller.open();
  const file=join(f.home,'profiles','web','package.json'),profile=JSON.parse(readFileSync(file,'utf8'));
- for(const [version,expected]of [['0.4.0',true],['0.4.1',true],['0.4.3',true],['0.4.2',false],['^0.4.1',false]]){
+ for(const [version,expected]of [['0.4.0',true],['0.4.1',true],['0.4.3',true],['0.4.5',true],['0.4.2',false],['0.4.4',false],['0.4.6',false],['^0.4.5',false],['^0.4.1',false]]){
   profile.dependencies['dsh-pet']=version;writeFileSync(file,JSON.stringify(profile));
   assert.equal(Harness.isActive({dataRoot:f.dataRoot,projectRoot:f.projectRoot}),expected,version);
  }

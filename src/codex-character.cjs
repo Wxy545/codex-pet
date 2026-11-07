@@ -202,6 +202,11 @@ function projectConfig(config, { dataRoot = process.env.DSH_HOME } = {}) {
   // 新版原鱼的睡眠三段没有对应角色素材，不能让自有角色继承鱼动画及额外梦话调度。
   if (character.id !== 'bluefish') {
     if (Array.isArray(main.animations?.sleep) && main.animations.sleep.length) next.animations = { ...main.animations, sleep: [] };
+    // 吃白饭的五段素材属于原鱼；没有对应角色媒体时，不继承其玩法与动作允许集。
+    if (main.animations && Object.hasOwn(main.animations, 'baifan')) {
+      next.animations = { ...(next.animations ?? main.animations) };
+      delete next.animations.baifan;
+    }
     // 角色切换需清理旧鱼睡眠；唤醒只清状态，不给新角色补发原鱼台词。
     for (const key of ['sleepRefuseTexts', 'sleepStartTexts', 'sleepEndTexts']) next[key] = [];
   }

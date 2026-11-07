@@ -49,7 +49,7 @@ export function localizeHost(source){
   // 0.4将HTTP处理器移到静态页面之前；范围必须止于模块边界，不能把HTML属性和客户端JS当宿主字符串包裹。
   source=region(source,'function settingsHandler(ai)',settings041?'//#endregion':modularSettings?'//#endregion\n//#region src/standalone/settings-page.ts':'function dispatch(options, shutdownSecurity)',literals,'AI设置请求');
   if(modularSettings)source=region(source,'//#region src/standalone/request-body.ts','//#endregion\n//#region src/standalone/server/listener.ts',literals,'AI请求正文');
-  if(source.includes('async function testAiConnection(fetcher, current$2, input) {')){
+  if(['async function testAiConnection(fetcher, current$2, input) {','async function testAiConnection(fetcher, current$3, input) {'].some(anchor=>source.includes(anchor))){
     source=region(source,'function missingField(baseUrl, model, apiKey)', '\n//#endregion\n//#region src/standalone/ai-provider/create.ts',code=>{
       code=literals(code);return one(code,'return `连接失败：${raw}`;','return codexFixedText("连接失败：{message}",{message:raw});','AI连接错误');
     },'AI连接测试');

@@ -5,8 +5,8 @@ import {resolve,join} from 'node:path';
 import {setMaxListeners} from 'node:events';
 import vm from 'node:vm';
 import {localizeIndexHtml} from '../scripts/runtime-locale-patches.mjs';
-const root=resolve(process.env.CODEX_PET_UPSTREAM_FIXTURE||'node_modules/dsh-pet'),meta=JSON.parse(await readFile(join(root,'package.json'),'utf8')),supported=['0.4.0','0.4.1','0.4.3'].includes(meta.version);
-if(!['0.3.8','0.4.0','0.4.1','0.4.3'].includes(meta.version))throw Error('unreviewed-upstream-version');
+const root=resolve(process.env.CODEX_PET_UPSTREAM_FIXTURE||'node_modules/dsh-pet'),meta=JSON.parse(await readFile(join(root,'package.json'),'utf8')),supported=['0.4.0','0.4.1','0.4.3','0.4.5'].includes(meta.version);
+if(!['0.3.8','0.4.0','0.4.1','0.4.3','0.4.5'].includes(meta.version))throw Error('unreviewed-upstream-version');
 const quick=await readFile(new URL('../src/pet-quick-input.js',import.meta.url),'utf8');
 const flush=()=>new Promise(done=>setImmediate(done));
 async function fixture({host='codex',lookup}={}){
@@ -19,7 +19,7 @@ async function fixture({host='codex',lookup}={}){
  const scope={window,document,Event,AbortController:Controller,ResizeObserver:class{observe(){}disconnect(){}},MutationObserver:class{observe(){}disconnect(){}},navigator:{platform:'Win32'},performance:{now:()=>now},console:{log(){},warn(){}},BASE:'synthetic-base',ORIGIN:'synthetic-origin',VIEW:{w:1920,h:1080},WORK_AREAS:[{x:0,y:0,width:1920,height:1080}],CONFIG:{isWindowClampedToWorkArea:true,topInsetRatio:0},toLocal:x=>x,config:{clickSoundEnabled:false},setTimeout:fn=>{timers.push(fn);return timers.length;},URL};
  vm.runInNewContext(await readFile(join(root,'runtime/electron-helper/shared-core.js'),'utf8'),scope);scope.S=scope.PetShared;
  scope.S.spawnScoreBurst=()=>{metrics.score++;};scope.S.mountScorePopup=()=>{};
- for(const file of ['sprite.js','sprite/init.js',...(meta.version==='0.4.3'?['sprite/window-fit.js']:[]),'sprite/input.js','sprite/menu.js'])vm.runInNewContext(await readFile(join(root,'runtime/electron-helper',file),'utf8'),scope);
+ for(const file of ['sprite.js','sprite/init.js',...(['0.4.3','0.4.5'].includes(meta.version)?['sprite/window-fit.js']:[]),'sprite/input.js','sprite/menu.js'])vm.runInNewContext(await readFile(join(root,'runtime/electron-helper',file),'utf8'),scope);
  vm.runInNewContext('window.ActualPetSprite=PetSprite;',scope);vm.runInNewContext(quick,scope);vm.runInNewContext(quick,scope);
  const hit=new EventTarget();hit.classList={add(){},remove(){}};hit.setPointerCapture=()=>{};
  const sprite=Object.assign(Object.create(window.ActualPetSprite.prototype),{hit,stage:{style:{}},pet:{id:'synthetic-pet',size:160},pos:{x:10,y:20},size:160,halfW:80,halfH:45,bottomPad:6,margin:{l:0,t:0},winOffset:{x:0,y:0},hitRect:{x:0,y:0,w:160,h:90},dragState:{active:false,dragging:false},lastPressAt:0,justDragged:false,pressScoreFired:false,frozen:false,menuOpen:false,chatOpen:false,todoOpen:false,sleeping:false,animations:{clicks:['click-response'],idle:['idle'],drag:['drag']},physics:{throwPower:1},hearHold:{release(){}},throwState:null,
