@@ -2,7 +2,7 @@ import { lstatSync, readFileSync, realpathSync, renameSync, unlinkSync, writeFil
 import { createRequire } from 'node:module';
 import { randomUUID } from 'node:crypto';
 import { dirname, isAbsolute, join, relative, sep } from 'node:path';
-import { patchModularMain, patchModularMouseRelease, patchModularSandbox, patchModularUserData, patchModularPlayback043, patchModularOwnedElectron043, patchModularAlphaLayout043, validateModularOwnedElectron045, validateModularAlphaLayout045, validateModularClient043, validateModularHelper043, validateModularDpi, validateModularMotion } from './modular-runtime-fix.mjs';
+import { patchModularMain, patchModularMouseRelease, patchModularSandbox, patchModularUserData, patchModularPlayback043, patchModularOwnedElectron043, patchModularAlphaLayout043, validateModularOwnedElectron045, validateModularAlphaLayout045, validateModularClient043, validateModularHelper043, validateModularHelper046, validateModularDpi, validateModularMotion } from './modular-runtime-fix.mjs';
 import { patchPhysicsDefaults040 } from './physics-defaults-fix.mjs';
 import { patchNativeAvatar041 } from './avatar-fix.mjs';
 import {patchDrag041,patchAlpha041,patchTurn041} from './main-fixes-041.mjs';
@@ -35,10 +35,10 @@ export function prepareHarnessDependency({ profileDir }) {
   const profileRoot = realpathSync(profileDir), rel = relative(profileRoot, packageRoot);
   if (isAbsolute(rel) || rel === '..' || rel.startsWith('..' + sep)) throw new Error('harness-dsh-pet-outside-selected-profile');
   const meta = JSON.parse(readFileSync(join(packageRoot, 'package.json'), 'utf8'));
-  if (meta.name !== 'dsh-pet' || !['0.4.0', '0.4.1', '0.4.3', '0.4.5'].includes(meta.version)) throw new Error('harness-dsh-pet-0.4.0-or-0.4.1-or-0.4.3-or-0.4.5-required');
+  if (meta.name !== 'dsh-pet' || !['0.4.0', '0.4.1', '0.4.3', '0.4.5', '0.4.6'].includes(meta.version)) throw new Error('harness-dsh-pet-0.4.0-or-0.4.1-or-0.4.3-or-0.4.5-or-0.4.6-required');
   const transforms = [
-    ['lib/client.js', source => {const native=meta.version==='0.4.5'?validateModularAlphaLayout045(source):meta.version==='0.4.3'?patchModularAlphaLayout043(validateModularClient043(source)):source;const base=patchPhysicsDefaults040(patchModularMouseRelease(validateModularMotion(native, { browser: true })));return meta.version==='0.4.1'?patchTurn041(patchAlpha041(patchDrag041(base,{browser:true}),{browser:true})):base;}],
-    ['lib/index.js', source => {const native=meta.version==='0.4.5'?validateModularOwnedElectron045(source):meta.version==='0.4.3'?patchModularOwnedElectron043(source):source;return patchModularSandbox(['0.4.1','0.4.3','0.4.5'].includes(meta.version) ? patchNativeAvatar041(native) : native);}],
+    ['lib/client.js', source => {const native=['0.4.5','0.4.6'].includes(meta.version)?validateModularAlphaLayout045(source):meta.version==='0.4.3'?patchModularAlphaLayout043(validateModularClient043(source)):source;const base=patchPhysicsDefaults040(patchModularMouseRelease(validateModularMotion(native, { browser: true })));return meta.version==='0.4.1'?patchTurn041(patchAlpha041(patchDrag041(base,{browser:true}),{browser:true})):base;}],
+    ['lib/index.js', source => {const native=['0.4.5','0.4.6'].includes(meta.version)?validateModularOwnedElectron045(source):meta.version==='0.4.3'?patchModularOwnedElectron043(source):source;return patchModularSandbox(['0.4.1','0.4.3','0.4.5','0.4.6'].includes(meta.version) ? patchNativeAvatar041(native) : native);}],
     ['runtime/electron-helper/shared-core.js', patchPhysicsDefaults040],
     ['runtime/electron-helper/sprite/motion.js', validateModularMotion],
     ['runtime/electron-helper/main.js', patchModularMain],
@@ -46,7 +46,9 @@ export function prepareHarnessDependency({ profileDir }) {
     ['runtime/electron-helper/main/user-data.js', patchModularUserData],
   ];
   if(meta.version==='0.4.1')transforms.push(['runtime/electron-helper/sprite/input.js',patchDrag041],['runtime/electron-helper/index.html',patchAlpha041]);
-  if(['0.4.3','0.4.5'].includes(meta.version))transforms.push(['runtime/electron-helper/sprite/playback.js',patchModularPlayback043],...['sprite.js','sprite/input.js','sprite/window-fit.js','index.html'].map(name=>['runtime/electron-helper/'+name,source=>source]));
+  if(['0.4.3','0.4.5','0.4.6'].includes(meta.version))transforms.push(['runtime/electron-helper/sprite/playback.js',patchModularPlayback043],...['sprite.js','sprite/input.js','sprite/window-fit.js','index.html'].map(name=>['runtime/electron-helper/'+name,source=>source]));
+  // 046 的广播、preload 与 renderer 协议须作为同一组核验，不能只认旧的窗口落位片段。
+  if(meta.version==='0.4.6')transforms.push(...['main/windows.js','main/ipc.js','preload.js','sprite/init.js','events.js'].map(name=>['runtime/electron-helper/'+name,source=>source]));
   const planned = transforms.map(([name, transform]) => {
     const file = join(packageRoot, name), stat = lstatSync(file);
     if (!stat.isFile() || stat.isSymbolicLink()) throw new Error('unsafe-harness-upstream-file');
@@ -55,7 +57,9 @@ export function prepareHarnessDependency({ profileDir }) {
     const before = readFileSync(file, 'utf8'), after = transform(before);
     return { name, file, realFile, before, after, mode: stat.mode };
   });
-  if(['0.4.3','0.4.5'].includes(meta.version))validateModularHelper043(Object.fromEntries(planned.filter(item=>item.name.startsWith('runtime/electron-helper/')).map(item=>[item.name.slice('runtime/electron-helper/'.length),item.after])));
+  const helperFiles=Object.fromEntries(planned.filter(item=>item.name.startsWith('runtime/electron-helper/')).map(item=>[item.name.slice('runtime/electron-helper/'.length),item.after]));
+  if(meta.version==='0.4.6')validateModularHelper046(helperFiles);
+  else if(['0.4.3','0.4.5'].includes(meta.version))validateModularHelper043(helperFiles);
   // 全部锚点文件都通过才落盘；临时文件rename断开pnpm硬链接，不写共享store的inode。
   const changed = [];
   for (const item of planned) {

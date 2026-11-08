@@ -73,7 +73,7 @@ test('固定头像名拒绝路径和数据流，rename失败不改旧文件且�
  for(const id of ['../outside','dragon:stream','dragon\\other'])assert.deepEqual(guard().save(f.dir,id,Buffer.from('replace'),'.png',extensions),{ok:false,reason:'write-failed'});
 });
 
-test('041真实头像模块精确修补并幂等，未知函数和半补丁不静默接受',{skip:!['0.4.1','0.4.3','0.4.5'].includes(upstreamVersion)},()=>{
+test('041真实头像模块精确修补并幂等，未知函数和半补丁不静默接受',{skip:!['0.4.1','0.4.3','0.4.5','0.4.6'].includes(upstreamVersion)},()=>{
  const source=readUpstream('lib/index.js'),patched=patchNativeAvatar041(source);
  assert.notEqual(patched,source);assert.equal(patchNativeAvatar041(patched),patched);
  assert.throws(()=>patchNativeAvatar041(source.replace('writeFileSync(file, bytes);','writeFileSync(file, bytes, "utf8");')),/avatar-anchor/);

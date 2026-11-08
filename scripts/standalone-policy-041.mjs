@@ -3,8 +3,8 @@ const region=(source,name,run)=>{const start='//#region src/'+name,a=source.inde
 
 /** 新版运行时保留原模块，仅恢复本项目已授权的启用、自动周期和调用上限。 */
 export function preserveStandalonePolicy041(input,{version='0.4.1'}={}){
- if(!['0.4.1','0.4.3','0.4.5'].includes(version))throw Error('未知独立宿主策略版本。');
- const connectionVariable=version==='0.4.5'?'current$3':'current$2';
+ if(!['0.4.1','0.4.3','0.4.5','0.4.6'].includes(version))throw Error('未知独立宿主策略版本。');
+ const connectionVariable=['0.4.5','0.4.6'].includes(version)?'current$3':'current$2';
  let source=input.replaceAll('\r\n','\n');
  source=region(source,'standalone/settings.ts',block=>{
   block=one(block,'\tclearApiKey: z.boolean().optional(),','\tclearApiKey: z.boolean().optional(),\n\tenabled: z.boolean().optional(),','设置启用位');

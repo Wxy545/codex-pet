@@ -1,3 +1,4 @@
+import {patchHelper046} from '../scripts/prepare-runtime-046.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import vm from 'node:vm';
@@ -49,10 +50,10 @@ test('仅演出模式在托盘异步重建期间关闭最后窗口仍常驻，�
 test('固定上游main可安全补丁与编译，锚点升级不能静默漏接',async()=>{
  assert.equal(typeof patcher.patchStartupMain,'function');
  const packageRoot=resolve(process.env.CODEX_PET_UPSTREAM_FIXTURE||'node_modules/dsh-pet'),meta=JSON.parse(await readFile(join(packageRoot,'package.json'),'utf8'));
- if(['0.4.0','0.4.1','0.4.3','0.4.5'].includes(meta.version)){
-  const patchHelper={'0.4.0':patchHelper040,'0.4.1':patchHelper041,'0.4.3':patchHelper043,'0.4.5':patchHelper045}[meta.version];
-  const files=Object.fromEntries(await Promise.all(['main.js','main/tray.js','main/bridge.js','main/ipc.js','main/dpi.js','main/user-data.js','sprite.js','sprite/motion.js','sprite/menu.js','sprite/playback.js','sprite/bubble.js','sprite/input.js','events.js','shared-core.js','index.html',...(['0.4.3','0.4.5'].includes(meta.version)?['sprite/init.js','sprite/window-fit.js']:[])].map(async name=>[name,await readFile(join(packageRoot,'runtime/electron-helper',name),'utf8')]))),prepared=patchHelper(files),patched=prepared['main.js'];
-  if(['0.4.3','0.4.5'].includes(meta.version)){const scripts=[...prepared['index.html'].matchAll(/<script src="(?:\.\/)?([^"]+)"/g)].map(row=>row[1]);for(const[name,next]of [['sprite.js','sprite/window-fit.js'],['sprite/window-fit.js','sprite/init.js'],['sprite/menu.js','codex-skin-renderer.js']]){assert.ok(scripts.includes(name)&&scripts.includes(next));assert.ok(scripts.indexOf(name)<scripts.indexOf(next));}}
+ if(['0.4.0','0.4.1','0.4.3','0.4.5','0.4.6'].includes(meta.version)){
+  const patchHelper={'0.4.0':patchHelper040,'0.4.1':patchHelper041,'0.4.3':patchHelper043,'0.4.6':patchHelper046,'0.4.5':patchHelper045}[meta.version];
+  const files=Object.fromEntries(await Promise.all(['main.js','main/tray.js','main/bridge.js','main/ipc.js','main/dpi.js','main/user-data.js','sprite.js','sprite/motion.js','sprite/menu.js','sprite/playback.js','sprite/bubble.js','sprite/input.js','events.js','shared-core.js','index.html',...(['0.4.3','0.4.5','0.4.6'].includes(meta.version)?['sprite/init.js','sprite/window-fit.js']:[]),...(meta.version==='0.4.6'?['main/windows.js','preload.js']:[])].map(async name=>[name,await readFile(join(packageRoot,'runtime/electron-helper',name),'utf8')]))),prepared=patchHelper(files),patched=prepared['main.js'];
+  if(['0.4.3','0.4.5','0.4.6'].includes(meta.version)){const scripts=[...prepared['index.html'].matchAll(/<script src="(?:\.\/)?([^"]+)"/g)].map(row=>row[1]);for(const[name,next]of [['sprite.js','sprite/window-fit.js'],['sprite/window-fit.js','sprite/init.js'],['sprite/menu.js','codex-skin-renderer.js']]){assert.ok(scripts.includes(name)&&scripts.includes(next));assert.ok(scripts.indexOf(name)<scripts.indexOf(next));}}
   assert.doesNotThrow(()=>new vm.Script(patched));assert.match(patched,/if\(codexStartup.petEnabled\(\)\)petWindows.create\(\)/);assert.match(patched,/if \(tray.exists\(\) \|\| !codexStartup.petEnabled\(\)\) return/);
   const from=patched.indexOf('onPetEnabled:')+'onPetEnabled:'.length,to=patched.indexOf(',onModeChanged:',from),calls=[],windows=new Map();assert.ok(from>0&&to>from);
   const change=vm.runInNewContext('('+patched.slice(from,to)+')',{windows,petWindows:{create:()=>calls.push('create')}});

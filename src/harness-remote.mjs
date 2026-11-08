@@ -8,7 +8,7 @@ import {normalizeRemoteToolPolicy,remoteToolScope} from './remote-tool-policy.mj
 import {selectNativeMcp} from './native-mcp.mjs';
 
 const VERSIONS=new Set(['0.2.1-rc.2','0.2.1-rc.5','0.2.2-rc.1']);
-const PET_VERSIONS=new Set(['0.4.0','0.4.1','0.4.3','0.4.5']);
+const PET_VERSIONS=new Set(['0.4.0','0.4.1','0.4.3','0.4.5','0.4.6']);
 const profileName=/^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
 const file=path=>{try{const s=lstatSync(path);return s.isFile()&&!s.isSymbolicLink();}catch{return false;}};
 const inside=(root,target)=>{const r=relative(root,target);return !isAbsolute(r)&&r!=='..'&&!r.startsWith('..'+sep);};

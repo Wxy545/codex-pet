@@ -8,7 +8,8 @@ import {prepareHarnessProfile} from '../scripts/prepare-harness-profile.mjs';
 import {readUpstream,upstreamVersion} from './support/harness-upstream.mjs';
 
 const files=['lib/client.js','lib/index.js','runtime/electron-helper/shared-core.js','runtime/electron-helper/sprite/motion.js','runtime/electron-helper/main.js','runtime/electron-helper/main/dpi.js','runtime/electron-helper/main/user-data.js','runtime/electron-helper/sprite.js','runtime/electron-helper/sprite/input.js','runtime/electron-helper/index.html'];
-if(['0.4.3','0.4.5'].includes(upstreamVersion))files.push('runtime/electron-helper/sprite/playback.js','runtime/electron-helper/sprite/window-fit.js');
+if(['0.4.3','0.4.5','0.4.6'].includes(upstreamVersion))files.push('runtime/electron-helper/sprite/playback.js','runtime/electron-helper/sprite/window-fit.js');
+if(upstreamVersion==='0.4.6')files.push(...['main/windows.js','main/ipc.js','preload.js','sprite/init.js','events.js'].map(name=>'runtime/electron-helper/'+name));
 function fixture(t){
  const root=mkdtempSync(join(tmpdir(),'harness-pre-import-'));t.after(()=>rmSync(root,{recursive:true,force:true}));
  const profileDir=join(root,'home','profiles','web'),pkg=join(profileDir,'node_modules','dsh-pet'),bundleDir=join(root,'bundle');mkdirSync(pkg,{recursive:true});mkdirSync(join(bundleDir,'runtime'),{recursive:true});
@@ -33,7 +34,7 @@ test('未登记、错误bundle或未知版本在准备前拒绝，真实原件�
  const f=fixture(t),original=readFileSync(join(f.pkg,'lib/index.js'),'utf8');
  assert.throws(()=>prepareHarnessProfile({...f.options,dshVersion:'next'}),/unverified/);
  assert.throws(()=>prepareHarnessProfile({...f.options,bundleDir:f.root}),/bundle-mismatch/);
- for(const version of ['0.4.4','0.4.6','^0.4.5']){
+ for(const version of ['0.4.4','0.4.7','^0.4.5','^0.4.6']){
   f.manifest.dependencies['dsh-pet']=version;writeFileSync(join(f.profileDir,'package.json'),JSON.stringify(f.manifest));
   assert.throws(()=>prepareHarnessProfile(f.options),/not-registered/);
   assert.equal(readFileSync(join(f.pkg,'lib/index.js'),'utf8'),original);
@@ -48,4 +49,12 @@ test('profile祖先及后续目标文件链接在第一步写入前拒绝',t=>{
  assert.throws(()=>prepareHarnessProfile({...f.options,profileDir:join(alias,'profiles','web')}),/directory/);assert.equal(readFileSync(join(f.pkg,'lib/index.js'),'utf8'),original);
  const input=join(f.pkg,'runtime/electron-helper/sprite/input.js'),outside=join(f.root,'outside');mkdirSync(outside);writeFileSync(join(outside,'input.js'),'not-a-pet-module');rmSync(dirname(input),{recursive:true});symlinkSync(outside,dirname(input),'junction');
  assert.throws(()=>prepareHarnessProfile(f.options),/directory|outside-profile/);assert.equal(readFileSync(join(f.pkg,'lib/index.js'),'utf8'),original);assert.equal(readFileSync(join(outside,'input.js'),'utf8'),'not-a-pet-module');
+});
+
+test('046新飞行协议混入旧reportFlight通道时四类补丁均不落盘',{skip:upstreamVersion!=='0.4.6'},t=>{
+ const f=fixture(t),before=Object.fromEntries(files.map(name=>[name,readFileSync(join(f.pkg,name),'utf8')]));
+ const name='runtime/electron-helper/main/ipc.js',mixed=before[name]+"\nipcMain.on('pet:report-flight',()=>{});\n";
+ writeFileSync(join(f.pkg,name),mixed);
+ assert.throws(()=>prepareHarnessProfile(f.options),/anchor/);
+ for(const file of files)assert.equal(readFileSync(join(f.pkg,file),'utf8'),file===name?mixed:before[file],file);
 });

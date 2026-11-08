@@ -193,7 +193,7 @@ test('native upstream repair stays in selected profile and leaves caller files a
   mkdirSync(join(pkg,'lib'),{recursive:true});mkdirSync(join(pkg,'runtime','electron-helper'),{recursive:true});
   writeFileSync(join(profile,'package.json'),'{"private":true}');
   writeFileSync(join(pkg,'package.json'),JSON.stringify({name:'dsh-pet',version:upstreamVersion,exports:{'./package.json':'./package.json'}}));
-  for(const file of ['lib/client.js','lib/index.js','runtime/electron-helper/shared-core.js','runtime/electron-helper/sprite/motion.js','runtime/electron-helper/main.js','runtime/electron-helper/main/dpi.js','runtime/electron-helper/main/user-data.js',...(upstreamVersion==='0.4.1'?['runtime/electron-helper/sprite/input.js','runtime/electron-helper/index.html']:[]),...(['0.4.3','0.4.5'].includes(upstreamVersion)?['sprite.js','sprite/input.js','sprite/window-fit.js','sprite/playback.js','index.html'].map(name=>'runtime/electron-helper/'+name):[])]) {
+  for(const file of ['lib/client.js','lib/index.js','runtime/electron-helper/shared-core.js','runtime/electron-helper/sprite/motion.js','runtime/electron-helper/main.js','runtime/electron-helper/main/dpi.js','runtime/electron-helper/main/user-data.js',...(upstreamVersion==='0.4.1'?['runtime/electron-helper/sprite/input.js','runtime/electron-helper/index.html']:[]),...(['0.4.3','0.4.5','0.4.6'].includes(upstreamVersion)?['sprite.js','sprite/input.js','sprite/window-fit.js','sprite/playback.js','index.html'].map(name=>'runtime/electron-helper/'+name):[]),...(upstreamVersion==='0.4.6'?['main/windows.js','main/ipc.js','preload.js','sprite/init.js','events.js'].map(name=>'runtime/electron-helper/'+name):[])]) {
     let source=readUpstream(file);
     if(file.endsWith('/main.js'))source=source.replace(/\/\/ codex-pet-helper-profile-v1:(?:true|false)\n[\s\S]*?(?=\/\/ ② 宿主探测)/,'');
     mkdirSync(dirname(join(pkg,file)),{recursive:true});writeFileSync(join(pkg,file),source);
@@ -225,7 +225,7 @@ test('Windows installer accepts verified releases in Chinese spaced paths and re
   writeFileSync(installer,readFileSync(fileURLToPath(new URL('../scripts/install-harness.ps1',import.meta.url))));
   writeFileSync(join(scripts,'harness-runtime.ps1'),readFileSync(fileURLToPath(new URL('../scripts/harness-runtime.ps1',import.meta.url))));
   writeFileSync(join(scripts,'build-harness-plugin.mjs'),`import{mkdirSync,writeFileSync}from'node:fs';import{dirname,resolve,join}from'node:path';import{fileURLToPath}from'node:url';const r=resolve(dirname(fileURLToPath(import.meta.url)),'..');mkdirSync(join(r,'data/harness-plugin'),{recursive:true});writeFileSync(join(r,'data/harness-plugin/pack.json'),'{}');writeFileSync(join(r,'built.txt'),'yes');console.log(JSON.stringify({directory:join(r,'data/harness-plugin')}));`);
-  writeFileSync(join(scripts,'prepare-harness-profile.mjs'),`import{readFileSync,writeFileSync}from'node:fs';import{dirname,resolve,join}from'node:path';import{fileURLToPath}from'node:url';const r=resolve(dirname(fileURLToPath(import.meta.url)),'..');const calls=readFileSync(join(r,'calls.jsonl'),'utf8').trim().split('\\n').map(JSON.parse);if(calls.length!==2||calls[0][4]!=='dsh-pet@0.4.5'||calls[1][1]!=='--profile')throw Error('prepare-before-bundle-registration');const args=process.argv.slice(2);if(args.length!==6||args[0]!=='--profile-dir'||args[2]!=='--bundle-dir'||args[4]!=='--dsh-version'||args[5]!==readFileSync(join(r,'version.txt'),'utf8'))throw Error('invalid-profile-preparation');writeFileSync(join(r,'prepared.txt'),JSON.stringify(args));`);
+  writeFileSync(join(scripts,'prepare-harness-profile.mjs'),`import{readFileSync,writeFileSync}from'node:fs';import{dirname,resolve,join}from'node:path';import{fileURLToPath}from'node:url';const r=resolve(dirname(fileURLToPath(import.meta.url)),'..');const calls=readFileSync(join(r,'calls.jsonl'),'utf8').trim().split('\\n').map(JSON.parse);if(calls.length!==2||calls[0][4]!=='dsh-pet@0.4.6'||calls[1][1]!=='--profile')throw Error('prepare-before-bundle-registration');const args=process.argv.slice(2);if(args.length!==6||args[0]!=='--profile-dir'||args[2]!=='--bundle-dir'||args[4]!=='--dsh-version'||args[5]!==readFileSync(join(r,'version.txt'),'utf8'))throw Error('invalid-profile-preparation');writeFileSync(join(r,'prepared.txt'),JSON.stringify(args));`);
   const stub=join(root,'dsh.cmd'),log=join(root,'calls.jsonl'),versionFile=join(root,'version.txt');
   writeFileSync(join(root,'dsh-stub.mjs'),`import{appendFileSync,readFileSync}from'node:fs';const a=process.argv.slice(2);if(a[0]==='--version')console.log(readFileSync(${JSON.stringify(versionFile)},'utf8'));else appendFileSync(${JSON.stringify(log)},JSON.stringify(a)+'\\n');`);
   writeFileSync(stub,`@"${process.execPath}" "%~dp0dsh-stub.mjs" %*\r\n`);
@@ -237,7 +237,7 @@ test('Windows installer accepts verified releases in Chinese spaced paths and re
     const run=spawnSync('powershell.exe',args,{encoding:'utf8',env,windowsHide:true,timeout:15000});
     assert.equal(run.status,0,run.stderr||run.stdout);
     const calls=readFileSync(log,'utf8').trim().split('\n').map(line=>JSON.parse(line));
-    assert.deepEqual(calls[0],['plugin','--profile','web','add','dsh-pet@0.4.5']);
+    assert.deepEqual(calls[0],['plugin','--profile','web','add','dsh-pet@0.4.6']);
     assert.deepEqual(calls[1].slice(0,4),['plugin','--profile','web','add']);assert.equal(calls[1].length,5);
     // Windows可能保留8.3短名拼写，用卷号和文件ID确认仍是同一中文空格目录。
     const actualTarget=statSync(calls[1][4],{bigint:true}),expectedTarget=statSync(join(root,'data/harness-plugin'),{bigint:true});
@@ -248,15 +248,15 @@ test('Windows installer accepts verified releases in Chinese spaced paths and re
   }
   const existingPackage=join(temp,'isolated-home','profiles','web','node_modules','dsh-pet','package.json');
   mkdirSync(dirname(existingPackage),{recursive:true});writeFileSync(versionFile,'0.2.1-rc.5');
-  for(const version of ['0.4.0','0.4.1','0.4.3','0.4.5']){
+  for(const version of ['0.4.0','0.4.1','0.4.3','0.4.5','0.4.6']){
     writeFileSync(existingPackage,JSON.stringify({name:'dsh-pet',version}));writeFileSync(log,'');
     const upgraded=spawnSync('powershell.exe',args,{encoding:'utf8',env,windowsHide:true,timeout:15000});
     assert.equal(upgraded.status,0,upgraded.stderr||upgraded.stdout);
-    assert.deepEqual(JSON.parse(readFileSync(log,'utf8').trim().split('\n')[0]),['plugin','--profile','web','add','dsh-pet@0.4.5']);
+    assert.deepEqual(JSON.parse(readFileSync(log,'utf8').trim().split('\n')[0]),['plugin','--profile','web','add','dsh-pet@0.4.6']);
     rmSync(join(root,'built.txt'));
     rmSync(join(root,'prepared.txt'));
   }
-  for(const version of ['0.4.2','0.4.4','0.4.6','^0.4.5']){
+  for(const version of ['0.4.2','0.4.4','0.4.7','^0.4.5','^0.4.6']){
     const unknownPackage=JSON.stringify({name:'dsh-pet',version});writeFileSync(existingPackage,unknownPackage);writeFileSync(log,'');
     const unverifiedPet=spawnSync('powershell.exe',args,{encoding:'utf8',env,windowsHide:true,timeout:15000});
     assert.notEqual(unverifiedPet.status,0);assert.match(unverifiedPet.stderr,/Kept the existing version/);

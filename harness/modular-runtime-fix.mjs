@@ -1,3 +1,5 @@
+import {createHash} from 'node:crypto';
+
 const count = (source, text) => source.split(text).length - 1;
 function requireOnce(source, text) {
   if (count(source, text) !== 1) throw Error('harness-modular-runtime-anchor-mismatch');
@@ -229,4 +231,111 @@ export function validateModularAlphaLayout045(input){
   requireOnce(source,'function ensureAlphaFilter() {');
   requireOnce(source,ALPHA_LAYOUT_045);
   return input;
+}
+
+// 官方 0.4.6 tar 经 SHA512 核验；这里只核对实际原生函数，不复制旧模块或恢复生产源码。
+const NATIVE_HELPER_BLOCKS_046 = [
+  {
+    "file": "sprite.js",
+    "start": "  relayout(prevView) {",
+    "end": "\n  }",
+    "sha256": "dcf779ea394548a518e6a4e4be0897dded1914ee36befa06397dc1be51c4347f"
+  },
+  {
+    "file": "sprite/window-fit.js",
+    "start": "  reportWindow(fit) {",
+    "end": "\n  },",
+    "sha256": "4626732d25b6a65caefdd3ae14d7c670a0cc710b6210f25a6322d7eb3962e8fd"
+  },
+  {
+    "file": "main/windows.js",
+    "start": "  function broadcastPetStates() {",
+    "end": "\n  }",
+    "sha256": "23ad730af6fbaa54667abad07af691f7f5e3f2f2ad86afe1adeb1ae2fcca66e2"
+  },
+  {
+    "file": "main/windows.js",
+    "start": "  function updatePetState(petId, partial) {",
+    "end": "\n  }",
+    "sha256": "10ef6675cad258a4501ac255e795b99593d689a1f424c6392a55a8d40580c1c3"
+  },
+  {
+    "file": "main/windows.js",
+    "start": "    win.on('closed', () => {",
+    "end": "\n    });",
+    "sha256": "6a9e151a34e05828ae8fdf850980e7d8cc906a8553b50cee2b2be538e44d6e00"
+  },
+  {
+    "file": "main/ipc.js",
+    "start": "  ipcMain.on('pet:set-bounds', (event, bounds) => {",
+    "end": "\n  });",
+    "sha256": "ef450d6176da5c72c1216e887c488d983546a1637a413c68c9f1f1e0f47b27f8"
+  },
+  {
+    "file": "preload.js",
+    "start": "  setBounds(x, y, width, height, boxX, boxY, size, bottomPad, vx, vy, marginL, marginT) {",
+    "end": "\n  },",
+    "sha256": "61f8b3f321cd6f4e4a7cc8588a64f2a5d4bf8fc2780949cae2060eb762e0936d"
+  },
+  {
+    "file": "sprite/init.js",
+    "start": "  initMotion() {",
+    "end": "\n  },",
+    "sha256": "db5be58a022c0b2a85d0950447802d6adf002699098104783885242eb4a824eb"
+  },
+  {
+    "file": "sprite/init.js",
+    "start": "  subscribeCollision() {",
+    "end": "\n  },",
+    "sha256": "e894571380f8d9e44e657b8064674153094f4a1bb9536acde09ed77efa7765f4"
+  },
+  {
+    "file": "sprite/motion.js",
+    "start": "  stopThrow() {",
+    "end": "\n  },",
+    "sha256": "63ef54bf028616c8f9d4b9d45c771f11558238582a99ed6e97c3bc6d62fd0a95"
+  },
+  {
+    "file": "events.js",
+    "start": "function startLoops() {",
+    "end": "\n}",
+    "sha256": "d2a1245798bd3f98726b688267d9315b3c12a9749747150058610d4b7973cc6b"
+  },
+  {
+    "file": "shared-core.js",
+    "start": "function utteranceToHold(event) {",
+    "end": "\n}",
+    "sha256": "9e421fc1cc5ff30b63135d9040df5cc9fadb9e0b154a20635f4656b433d91158"
+  },
+  {
+    "file": "shared-core.js",
+    "start": "function stopAutoAudio() {",
+    "end": "\n}",
+    "sha256": "cffe5b3dce3a60322c6efb53c98abb87d27bbfac2b22089428e0093b6a4bc730"
+  },
+  {
+    "file": "shared-core.js",
+    "start": "async function speak(text) {",
+    "end": "\n}",
+    "sha256": "1b42e90a39874abeaf2f3989705feb4382beaea194461fef1d754bbcf2ad713a"
+  }
+];
+
+/** 046 的跨窗协议、切屏定位与语音桥一起核对；残缺或混装模块在落盘前拒绝。 */
+export function validateModularHelper046(files) {
+  validateModularHelper043(files);
+  const names=['index.html','sprite.js','sprite/input.js','sprite/window-fit.js','sprite/playback.js','main/windows.js','main/ipc.js','preload.js','sprite/init.js','sprite/motion.js','events.js','shared-core.js'];
+  const sources={};
+  for(const name of names){
+    if(typeof files?.[name]!=='string')throw Error('harness-modular-runtime-anchor-mismatch');
+    sources[name]=files[name].replaceAll('\r\n','\n');
+    // 046 已将完整状态并入 setBounds；不能混回旧 IPC 或 30ms 上报泵。
+    if(/reportFlight|flightReportTimer|['"]pet:(?:report-flight|flight-state)['"]/.test(sources[name]))throw Error('harness-modular-runtime-anchor-mismatch');
+  }
+  for(const {file,start,end,sha256}of NATIVE_HELPER_BLOCKS_046){
+    const source=sources[file];requireOnce(source,start);
+    const a=source.indexOf(start),b=source.indexOf(end,a+start.length);
+    if(b<0||createHash('sha256').update(source.slice(a,b+end.length)).digest('hex')!==sha256)throw Error('harness-modular-runtime-anchor-mismatch');
+  }
+  return files;
 }
