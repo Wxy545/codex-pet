@@ -234,7 +234,7 @@ export function validateModularAlphaLayout045(input){
 }
 
 // 官方 0.4.6 tar 经 SHA512 核验；这里只核对实际原生函数，不复制旧模块或恢复生产源码。
-const NATIVE_HELPER_BLOCKS_046 = [
+const NATIVE_HELPER_BLOCKS = [
   {
     "file": "sprite.js",
     "start": "  relayout(prevView) {",
@@ -306,7 +306,10 @@ const NATIVE_HELPER_BLOCKS_046 = [
     "start": "function utteranceToHold(event) {",
     "end": "\n}",
     "sha256": "9e421fc1cc5ff30b63135d9040df5cc9fadb9e0b154a20635f4656b433d91158"
-  },
+  }
+];
+
+const NATIVE_VOICE_BLOCKS_046 = [
   {
     "file": "shared-core.js",
     "start": "function stopAutoAudio() {",
@@ -321,10 +324,24 @@ const NATIVE_HELPER_BLOCKS_046 = [
   }
 ];
 
-/** 046 的跨窗协议、切屏定位与语音桥一起核对；残缺或混装模块在落盘前拒绝。 */
-export function validateModularHelper046(files) {
+// 047 改动了音频世代、隐藏播放和 renderer 配置签名。只校验这些实包函数。
+const NATIVE_VOICE_BLOCKS_047 = [
+  {file:'shared-core.js', start:'function setVoiceConfig(name, volume) {', sha256:'f6f89ccab8b68e17612f4fc721798c4568fffb6880a8a203982b3170254096f6'},
+  {file:'shared-core.js', start:'function setVoiceNotifyEnabled(on) {', sha256:'93376f1d3704824efc3bf8a847166251ab4f66a79a3c525bd080d93af7a0dc75'},
+  {file:'shared-core.js', start:'async function loadConfigOnce() {', sha256:'0dccf5db91cdee799f35c65cff157a2c0edd0e1161f2c1eee7eba1422d7c1e1b'},
+  {file:'shared-core.js', start:'function playSayVoice(say) {', sha256:'ebce2ae959a44cb2fa0d995bb9ee7e6d05ef4b6ceb8898a7ff9887f4ec98af0a'},
+  {file:'shared-core.js', start:'async function speakWhenReady(text, canPlayHidden = false) {', sha256:'1c7b49fef4ca89b23d8093649456d887fb4919b56ce077fc91c0f76a4aded523'},
+  {file:'shared-core.js', start:'function speakNotice(text) {', sha256:'370c41ac0889cb531d7fa72f9c7afe2312c6a7a6931e7b90335d12b54a5fe6fa'},
+  {file:'shared-core.js', start:'function stopAutoAudio() {', sha256:'65de090e9ed22e5e048170ea6285b7d00114c47ad2a315f0853be2ead343e570'},
+  {file:'shared-core.js', start:'\nif (typeof document !== "undefined" && typeof document.addEventListener === "function") document.addEventListener("visibilitychange", () => {', end:'\n});', sha256:'2fcaebd3f094f5d039a9000035a3f4a741ae7d25f10e17104d44fd6cce6a48cd'},
+  {file:'shared-core.js', start:'async function speak(text, canPlayHidden = false) {', sha256:'af680096d349dab0bab4f6583b66b4ac743aa487fc11fc5ce5d7a6e5f507bc52'},
+  {file:'renderer.js', start:'async function loadConfig() {', sha256:'f6abd5a15e47de43ee644f81c368c1f2727e00c73bd5b8dfd88a6b22d85875c4'},
+  {file:'renderer.js', start:'async function boot() {', sha256:'a7e7e0e1a85170977cd2876a3103c83a9bad2427ea147110cd02cedaef647554'},
+];
+
+function validateModularHelperNative(files, voiceBlocks, extraFiles = []) {
   validateModularHelper043(files);
-  const names=['index.html','sprite.js','sprite/input.js','sprite/window-fit.js','sprite/playback.js','main/windows.js','main/ipc.js','preload.js','sprite/init.js','sprite/motion.js','events.js','shared-core.js'];
+  const names=['index.html','sprite.js','sprite/input.js','sprite/window-fit.js','sprite/playback.js','main/windows.js','main/ipc.js','preload.js','sprite/init.js','sprite/motion.js','events.js','shared-core.js',...extraFiles];
   const sources={};
   for(const name of names){
     if(typeof files?.[name]!=='string')throw Error('harness-modular-runtime-anchor-mismatch');
@@ -332,10 +349,20 @@ export function validateModularHelper046(files) {
     // 046 已将完整状态并入 setBounds；不能混回旧 IPC 或 30ms 上报泵。
     if(/reportFlight|flightReportTimer|['"]pet:(?:report-flight|flight-state)['"]/.test(sources[name]))throw Error('harness-modular-runtime-anchor-mismatch');
   }
-  for(const {file,start,end,sha256}of NATIVE_HELPER_BLOCKS_046){
+  for(const {file,start,end='\n}',sha256}of [...NATIVE_HELPER_BLOCKS,...voiceBlocks]){
     const source=sources[file];requireOnce(source,start);
     const a=source.indexOf(start),b=source.indexOf(end,a+start.length);
     if(b<0||createHash('sha256').update(source.slice(a,b+end.length)).digest('hex')!==sha256)throw Error('harness-modular-runtime-anchor-mismatch');
   }
   return files;
+}
+
+/** 046 的跨窗协议、切屏定位与语音桥一起核对；残缺或混装模块在落盘前拒绝。 */
+export function validateModularHelper046(files) {
+  return validateModularHelperNative(files, NATIVE_VOICE_BLOCKS_046);
+}
+
+/** 047 保留原跨窗协议，并单独核对新版语音配置与播放链。 */
+export function validateModularHelper047(files) {
+  return validateModularHelperNative(files, NATIVE_VOICE_BLOCKS_047, ['renderer.js']);
 }

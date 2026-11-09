@@ -2,8 +2,8 @@
 const test=require('node:test'),assert=require('node:assert/strict'),{readFileSync}=require('node:fs'),{join}=require('node:path'),vm=require('node:vm'),A=require('./skin-actions.cjs');
 const upstreamRoot=process.env.CODEX_PET_UPSTREAM_FIXTURE||join(__dirname,'../node_modules/dsh-pet');
 const upstreamVersion=JSON.parse(readFileSync(join(upstreamRoot,'package.json'),'utf8')).version;
-if(!['0.3.8','0.4.0','0.4.1','0.4.3','0.4.5','0.4.6'].includes(upstreamVersion))throw Error('unreviewed-upstream-version');
-const supportsSleep=['0.4.0','0.4.1','0.4.3','0.4.5','0.4.6'].includes(upstreamVersion);
+if(!['0.3.8','0.4.0','0.4.1','0.4.3','0.4.5','0.4.6','0.4.7'].includes(upstreamVersion))throw Error('unreviewed-upstream-version');
+const supportsSleep=['0.4.0','0.4.1','0.4.3','0.4.5','0.4.6','0.4.7'].includes(upstreamVersion);
 test('当前角色点击与真实工作状态触发录音，换角色立即清理旧音轨',async()=>{
  const h=harness({videoProfile:true});const role=h.model.characters[0];role.voices={click:{file:'click.wav',volume:.3,cooldownSec:0,interrupt:true},working:{file:'work.wav',volume:.2,cooldownSec:5,interrupt:true}};role.assets['click.wav']={available:true,type:'audio',url:'file:///click.wav'};role.assets['work.wav']={available:true,type:'audio',url:'file:///work.wav'};
  await h.flush();const p=h.sprite();p.playOnce('点击跳跃');await h.ready(p);assert.equal(h.audios.length,1);assert.equal(h.audios[0].src,'file:///click.wav');p.workState={};p.switchTo('工作',false);await h.ready(p);assert.equal(h.audios.length,2);assert.equal(h.audios[0].src,'');assert.equal(h.audios[1].src,'file:///work.wav');h.change({...h.model,selection:{character:'bluefish',mode:'q'}});await h.flush();assert.equal(h.audios[1].src,'');p.dispose();
@@ -403,7 +403,7 @@ test('视频专属动作菜单不标逐帧试作，共用和缺失仍保留原�
 });
 
 test('真实switchTo等待loadeddata提交，新动作不借旧视频相位提前出画',async()=>{const h=harness();await h.flush();const p=h.sprite();p.playOnce('呼吸');assert.equal(h.win.__codexSkinDebug?.action,undefined);await h.ready(p);assert.equal(h.win.__codexSkinDebug.action,'呼吸');await h.frame(p,.75);const count=h.draws.length;p.playOnce('点击跳跃');assert.equal(h.win.__codexSkinDebug.action,'呼吸');assert.equal(h.draws.length,count);await h.ready(p);assert.equal(h.win.__codexSkinDebug.action,'点击跳跃');assert.deepEqual(h.draws.at(-1).args.slice(1,5),[10,30,80,70]);p.dispose();});
-test('真实onWorkTick单候选沿switchTo同步当前动作，覆盖层跟工作动作与实际循环',async()=>{const h=harness();await h.flush();const p=h.sprite();p.playOnce('呼吸');await h.ready(p);p.onWorkTick({state:'working'},1);assert.equal(p.anim,['0.4.3','0.4.5','0.4.6'].includes(upstreamVersion)?'工作':'呼吸');await h.ready(p);assert.equal(h.win.__codexSkinDebug.action,'工作');assert.equal(p.videoA.loop,true);p.dispose();});
+test('真实onWorkTick单候选沿switchTo同步当前动作，覆盖层跟工作动作与实际循环',async()=>{const h=harness();await h.flush();const p=h.sprite();p.playOnce('呼吸');await h.ready(p);p.onWorkTick({state:'working'},1);assert.equal(p.anim,['0.4.3','0.4.5','0.4.6','0.4.7'].includes(upstreamVersion)?'工作':'呼吸');await h.ready(p);assert.equal(h.win.__codexSkinDebug.action,'工作');assert.equal(p.videoA.loop,true);p.dispose();});
 test('PNG网格与rects共用视频时钟，once保持末帧，不拉长或无限重播四姿势',async()=>{const h=harness();await h.flush();const p=h.sprite();p.playOnce('呼吸');await h.ready(p);await h.frame(p,.5);assert.equal(h.draws.at(-1).args[1],200);await h.frame(p,1.2);assert.equal(h.draws.at(-1).args[1],300);await h.frame(p,5.2);assert.equal(h.draws.at(-1).args[1],300);assert.equal(h.win.__codexSkinDebug.playback,'frame-prototype');p.dispose();});
 test('真实pause停止逐帧驱动，冻结中显式playOnce仍播放，不拿frozen代替paused',async()=>{const h=harness();await h.flush();const p=h.sprite();p.playOnce('呼吸');await h.ready(p);p.applyFreeze(true);await h.flush();assert.equal([...h.timers.values()].some(t=>t.kind==='raf'),false);p.playOnce('点击跳跃');await h.ready(p);assert.equal(p.frozen,true);assert.equal(p.videoA.paused,false);await h.frame(p,.25);assert.deepEqual(h.draws.at(-1).args.slice(1,5),[110,2,80,70]);p.dispose();});
 test('异步新图预载，等图期间旧rAF停止，只发布当前已提交动作',async()=>{const h=harness({deferredImages:true});await h.flush();const p=h.sprite();p.playOnce('呼吸');assert.equal(h.images[0].url,'file:///idle.png');await h.finishImage(h.images[0]);await h.ready(p);p.playOnce('点击跳跃');assert.equal(h.images.at(-1).url,'file:///jump.png');await h.ready(p);const count=h.draws.length;await h.frame(p,.75);assert.equal(h.draws.length,count);await h.finishImage(h.images.at(-1));assert.equal(h.win.__codexSkinDebug.action,'点击跳跃');p.dispose();});
@@ -423,7 +423,7 @@ test('无服务端revision时迟到初始GET不能覆盖已提交的角色语言
 });
 test('原版bluefish Q不改播放器时钟，不换成PNG',async()=>{const h=harness();h.model.selection.character='bluefish';await h.flush();const p=h.sprite();p.playOnce('呼吸');await h.ready(p);assert.equal(h.images.length,0);assert.equal(p.stage.classList.contains('codex-skin-active'),false);assert.equal(h.win.__codexSkinDebug.profile,'original-video');p.dispose();});
 
-test('043修复后的原鱼与龙娘保留单次标记，循环提前ended原地续播而不重建换源链',{skip:!['0.4.3','0.4.5','0.4.6'].includes(upstreamVersion)},async()=>{
+test('043修复后的原鱼与龙娘保留单次标记，循环提前ended原地续播而不重建换源链',{skip:!['0.4.3','0.4.5','0.4.6','0.4.7'].includes(upstreamVersion)},async()=>{
  const {patchPlayback043}=await import('../scripts/prepare-runtime-043.mjs');
  for(const character of ['bluefish','white-dragon']){
   const h=harness({patchPlayback:patchPlayback043});h.model.selection.character=character;await h.flush();const p=h.sprite();
@@ -435,7 +435,7 @@ test('043修复后的原鱼与龙娘保留单次标记，循环提前ended原地
  }
 });
 
-test('043第三方label重名才分owner菜单，翻译不改原label或交付身份',{skip:!['0.4.3','0.4.5','0.4.6'].includes(upstreamVersion)},async()=>{
+test('043第三方label重名才分owner菜单，翻译不改原label或交付身份',{skip:!['0.4.3','0.4.5','0.4.6','0.4.7'].includes(upstreamVersion)},async()=>{
  const h=harness({locale:'en'});h.win.CodexLocale.t=key=>require('./codex-locale.cjs').t(key,{},'en');await h.flush();const p=h.sprite(),S=h.win.PetShared,calls=[];S.postAction=async(url,body)=>calls.push({url,body});
  const registered=[{owner:'动作',label:'对话'},{owner:'形象',label:'对话'},{owner:'动作',label:'形象'}],more=S.buildMoreBranch(registered),original=JSON.stringify(more);S.mountContextMenu({tree:[{label:'打开网站',action:'open-site'},more]});const projected=h.menu().tree[1];assert.equal(projected.label,'More');
  const first=projected.children[0],second=projected.children[1],unique=projected.children[2];assert.equal(first.label,'动作');assert.equal(first.children[0].label,'对话');assert.equal(second.label,'形象');assert.equal(second.children[0].label,'对话');assert.equal(unique.label,'形象');assert.equal(unique.owner,'动作');
@@ -450,7 +450,7 @@ test('真实更多菜单只翻根标题，第三方owner和label原文经原onMe
  const original=JSON.stringify(more);S.mountContextMenu({tree:[{label:'打开网站',action:'open-site'},{label:'动作',children:[{label:'写代码',anim:'写代码'}]},more]});
  const tree=h.menu().tree,custom=tree[2];assert.equal(tree[0].label,'Open website');assert.equal(tree[1].label,'Actions');
  assert.equal(tree[1].children[0].label,'Write code');assert.equal(tree[1].children[0].anim,'写代码');assert.equal(custom.label,'More');
- if(['0.4.3','0.4.5','0.4.6'].includes(upstreamVersion))assert.deepEqual(JSON.parse(JSON.stringify(custom.children.map(leaf=>[leaf.owner,leaf.label]))),[['动作','对话'],['动作','形象'],['形象','更多']]);
+ if(['0.4.3','0.4.5','0.4.6','0.4.7'].includes(upstreamVersion))assert.deepEqual(JSON.parse(JSON.stringify(custom.children.map(leaf=>[leaf.owner,leaf.label]))),[['动作','对话'],['动作','形象'],['形象','更多']]);
  else{assert.equal(custom.children[0].label,'动作');assert.equal(custom.children[0].children[0].label,'对话');assert.equal(custom.children[0].children[1].label,'形象');assert.equal(custom.children[1].label,'更多');}
  const leaves=nodes=>nodes.flatMap(node=>node.children?leaves(node.children):[node]);
  for(const leaf of leaves(custom.children))p.onMenuAction(leaf);

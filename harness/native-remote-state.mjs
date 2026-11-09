@@ -56,7 +56,7 @@ export function patchHarnessRemoteState(input, {version} = {}) {
   // 0.4.1工作气泡会跳转所属会话；QQ状态槽并非原生会话，不能生成虚假的跳转目标。
   const focusBefore = 'const sessionId = snap.sessionId === null || snap.sessionId === EXTERNAL_WORK_SESSION ? null : snap.sessionId;';
   const focusAfter = 'const sessionId = snap.sessionId === null || snap.sessionId === EXTERNAL_WORK_SESSION || snap.sessionId === "codex-pet-qq" ? null : snap.sessionId;';
-  if (['0.4.1','0.4.3','0.4.5','0.4.6'].includes(version) || source.includes(focusBefore) || source.includes(focusAfter)) {
+  if (['0.4.1','0.4.3','0.4.5','0.4.6','0.4.7'].includes(version) || source.includes(focusBefore) || source.includes(focusAfter)) {
     const beforeCount = source.split(focusBefore).length - 1, afterCount = source.split(focusAfter).length - 1;
     if (beforeCount === 1 && afterCount === 0) source = source.replace(focusBefore, focusAfter);
     else if (beforeCount !== 0 || afterCount !== 1) throw Error('harness-native-remote-state-anchor-mismatch');
@@ -84,7 +84,7 @@ export function prepareHarnessRemoteState({profileDir}) {
   const metaFile = join(pkg, 'package.json'), metaStat = lstatSync(metaFile);
   if (!metaStat.isFile() || metaStat.isSymbolicLink() || metaStat.size > 65536) throw Error('unsafe-harness-remote-state-package');
   const meta = JSON.parse(readFileSync(metaFile, 'utf8'));
-  if (meta.name !== 'dsh-pet' || !['0.4.0', '0.4.1', '0.4.3', '0.4.5', '0.4.6'].includes(meta.version)) throw Error('harness-dsh-pet-0.4.0-or-0.4.1-or-0.4.3-or-0.4.5-or-0.4.6-required');
+  if (meta.name !== 'dsh-pet' || !['0.4.0', '0.4.1', '0.4.3', '0.4.5', '0.4.6', '0.4.7'].includes(meta.version)) throw Error('harness-dsh-pet-0.4.0-or-0.4.1-or-0.4.3-or-0.4.5-or-0.4.6-or-0.4.7-required');
   const file = join(pkg, 'lib/index.js'), parent = realpathSync(dirname(file)), physical = realpathSync(file), beforeStat = lstatSync(file);
   if (!inside(pkg, parent) || !inside(profile, parent) || !inside(pkg, physical) || !inside(profile, physical)) throw Error('unsafe-harness-remote-state-file-outside-profile');
   if (!beforeStat.isFile() || beforeStat.isSymbolicLink() || beforeStat.size > 8 * 1024 * 1024) throw Error('unsafe-harness-remote-state-file');

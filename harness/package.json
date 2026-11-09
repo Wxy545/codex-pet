@@ -1,6 +1,6 @@
 {
   "name": "codex-pet-harness",
-  "version": "0.13.7",
+  "version": "0.13.8",
   "type": "module",
   "main": "index.mjs",
   "description": "The White Dragon Girl pet pack for DeepSeek Harness, powered by dsh-pet",
@@ -39,7 +39,7 @@
     "dsh": "0.2.1-rc.2 || 0.2.1-rc.5 || 0.2.2-rc.1"
   },
   "peerDependencies": {
-    "dsh-pet": "0.4.0 || 0.4.1 || 0.4.3 || 0.4.5 || 0.4.6"
+    "dsh-pet": "0.4.0 || 0.4.1 || 0.4.3 || 0.4.5 || 0.4.6 || 0.4.7"
   },
   "dsh": {
     "bundle": {

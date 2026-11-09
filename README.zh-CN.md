@@ -263,7 +263,7 @@ Harness 使用自己的账号、会话、余额和聊天。脚下额度条显示
 
 ## 致谢与许可
 
-感谢 [PC2005-cloud/dsh-pet](https://github.com/PC2005-cloud/dsh-pet) 提供桌宠、动画与互动实现。本项目基于 `dsh-pet@0.4.6` 适配。
+本项目基于 `dsh-pet@0.4.7` 适配，感谢上游提供桌宠、动画与互动实现。[PC2005-cloud/dsh-pet](https://github.com/PC2005-cloud/dsh-pet)
 
 启动演出参考了 [884048454/codex-startup-animation](https://github.com/884048454/codex-startup-animation)、[yushua0808-cpu/dragon-codex-boot](https://github.com/yushua0808-cpu/dragon-codex-boot) 和 [linke-e/dsh-opening-animation](https://github.com/linke-e/dsh-opening-animation) 的启动、窗口交接与本地视频管理思路，桌宠交互也参考了 [jingh12312-rgb/bailong-desktop-pet](https://github.com/jingh12312-rgb/bailong-desktop-pet)。感谢这些项目的作者；本项目使用自制的龙娘动作与启动画面。
 
@@ -273,7 +273,7 @@ Harness 使用自己的账号、会话、余额和聊天。脚下额度条显示
 
 卷卷小羊的 AI 参考图由 **Wxy545** 提供，已同意本项目使用并公开分发，动画制作与许可见[小羊素材说明](assets/curly-sheep/NOTICE.md)。
 
-dsh-pet 0.4.6 包含 Edge TTS 1.9.1 语音依赖，采用 GPL-3.0-only；[源码与许可](THIRD_PARTY_NOTICES.md#edge-tts-语音依赖)单独保留。
+dsh-pet 0.4.7 包含 Edge TTS 1.9.1 语音依赖，采用 GPL-3.0-only。[Edge TTS 源码与许可](THIRD_PARTY_NOTICES.md#edge-tts-语音依赖)
 
 项目自有代码和文档采用 [MIT](LICENSE)，原版动画等素材遵守上游非商用约定，鲸鱼娘形象采用 [CC BY-NC-SA 4.0](https://creativecommons.org/licenses/by-nc-sa/4.0/)。完整来源与许可见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。
 

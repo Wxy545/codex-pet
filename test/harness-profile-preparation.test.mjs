@@ -4,12 +4,14 @@ import {mkdtempSync,mkdirSync,writeFileSync,readFileSync,rmSync,symlinkSync,link
 import {dirname,join} from 'node:path';
 import {tmpdir} from 'node:os';
 import {fileURLToPath} from 'node:url';
+import {runInNewContext} from 'node:vm';
 import {prepareHarnessProfile} from '../scripts/prepare-harness-profile.mjs';
 import {readUpstream,upstreamVersion} from './support/harness-upstream.mjs';
 
 const files=['lib/client.js','lib/index.js','runtime/electron-helper/shared-core.js','runtime/electron-helper/sprite/motion.js','runtime/electron-helper/main.js','runtime/electron-helper/main/dpi.js','runtime/electron-helper/main/user-data.js','runtime/electron-helper/sprite.js','runtime/electron-helper/sprite/input.js','runtime/electron-helper/index.html'];
-if(['0.4.3','0.4.5','0.4.6'].includes(upstreamVersion))files.push('runtime/electron-helper/sprite/playback.js','runtime/electron-helper/sprite/window-fit.js');
-if(upstreamVersion==='0.4.6')files.push(...['main/windows.js','main/ipc.js','preload.js','sprite/init.js','events.js'].map(name=>'runtime/electron-helper/'+name));
+if(['0.4.3','0.4.5','0.4.6','0.4.7'].includes(upstreamVersion))files.push('runtime/electron-helper/sprite/playback.js','runtime/electron-helper/sprite/window-fit.js');
+if(['0.4.6','0.4.7'].includes(upstreamVersion))files.push(...['main/windows.js','main/ipc.js','preload.js','sprite/init.js','events.js'].map(name=>'runtime/electron-helper/'+name));
+if(upstreamVersion==='0.4.7')files.push('runtime/electron-helper/renderer.js');
 function fixture(t){
  const root=mkdtempSync(join(tmpdir(),'harness-pre-import-'));t.after(()=>rmSync(root,{recursive:true,force:true}));
  const profileDir=join(root,'home','profiles','web'),pkg=join(profileDir,'node_modules','dsh-pet'),bundleDir=join(root,'bundle');mkdirSync(pkg,{recursive:true});mkdirSync(join(bundleDir,'runtime'),{recursive:true});
@@ -34,7 +36,7 @@ test('未登记、错误bundle或未知版本在准备前拒绝，真实原件�
  const f=fixture(t),original=readFileSync(join(f.pkg,'lib/index.js'),'utf8');
  assert.throws(()=>prepareHarnessProfile({...f.options,dshVersion:'next'}),/unverified/);
  assert.throws(()=>prepareHarnessProfile({...f.options,bundleDir:f.root}),/bundle-mismatch/);
- for(const version of ['0.4.4','0.4.7','^0.4.5','^0.4.6']){
+ for(const version of ['0.4.4','0.4.8','^0.4.5','^0.4.6','^0.4.7']){
   f.manifest.dependencies['dsh-pet']=version;writeFileSync(join(f.profileDir,'package.json'),JSON.stringify(f.manifest));
   assert.throws(()=>prepareHarnessProfile(f.options),/not-registered/);
   assert.equal(readFileSync(join(f.pkg,'lib/index.js'),'utf8'),original);
@@ -51,10 +53,95 @@ test('profile祖先及后续目标文件链接在第一步写入前拒绝',t=>{
  assert.throws(()=>prepareHarnessProfile(f.options),/directory|outside-profile/);assert.equal(readFileSync(join(f.pkg,'lib/index.js'),'utf8'),original);assert.equal(readFileSync(join(outside,'input.js'),'utf8'),'not-a-pet-module');
 });
 
-test('046新飞行协议混入旧reportFlight通道时四类补丁均不落盘',{skip:upstreamVersion!=='0.4.6'},t=>{
+test('046/047飞行协议混入旧reportFlight通道时四类补丁均不落盘',{skip:!['0.4.6','0.4.7'].includes(upstreamVersion)},t=>{
  const f=fixture(t),before=Object.fromEntries(files.map(name=>[name,readFileSync(join(f.pkg,name),'utf8')]));
  const name='runtime/electron-helper/main/ipc.js',mixed=before[name]+"\nipcMain.on('pet:report-flight',()=>{});\n";
  writeFileSync(join(f.pkg,name),mixed);
  assert.throws(()=>prepareHarnessProfile(f.options),/anchor/);
  for(const file of files)assert.equal(readFileSync(join(f.pkg,file),'utf8'),file===name?mixed:before[file],file);
+});
+
+test('047 半套语音配置或未知锚点不在 profile 落盘',{skip:upstreamVersion!=='0.4.7'},t=>{
+ const f=fixture(t),name='runtime/electron-helper/renderer.js';
+ const originals=new Map(files.map(file=>[file,readFileSync(join(f.pkg,file),'utf8')]));
+ for(const modified of [
+  originals.get(name).replace('S.setVoiceConfig(cfg.voiceName, cfg.voiceVolume);','S.setVoiceConfig(cfg.voiceName, cfg.voiceVolume, cfg.voiceEnabled);'),
+  originals.get(name).replace('S.setVoiceConfig(cfg.voiceName, cfg.voiceVolume);','S.setVoiceConfig(cfg.voiceVolume);'),
+ ]){
+  assert.notEqual(modified,originals.get(name));
+  writeFileSync(join(f.pkg,name),modified);
+  assert.throws(()=>prepareHarnessProfile(f.options),/voice-047-anchor-mismatch/);
+  for(const [file,source] of originals)assert.equal(readFileSync(join(f.pkg,file),'utf8'),file===name?modified:source,file);
+ }
+});
+
+test('047 八套网页语言如实区分气泡总闸、分项与独立通知',{skip:upstreamVersion!=='0.4.7'},t=>{
+ const f=fixture(t),name='lib/client.js',file=join(f.pkg,name);
+ const original=readFileSync(file,'utf8');
+ const changed=original.replace('voiceEnabled: "Speak manual whispers"','voiceEnabled: "Unreviewed copy"');
+ assert.notEqual(changed,original);
+ writeFileSync(file,changed);
+ assert.throws(()=>prepareHarnessProfile(f.options),/voice-047-anchor-mismatch/);
+ assert.equal(readFileSync(file,'utf8'),changed);
+ writeFileSync(file,original);
+ prepareHarnessProfile(f.options);
+ const prepared=readFileSync(file,'utf8');
+ const labels={de:'Sprechblasen vorlesen',en:'Speak bubbles',es:'Leer los globos en voz alta',fr:'Lire les bulles à voix haute',ja:'吹き出しの読み上げ',pt:'Ler os balões em voz alta',ru:'Озвучивать реплики в пузырях',zh:'气泡播报'};
+ for(const [locale,label] of Object.entries(labels)){
+  const anchor='//#region src/client/settings/locales/'+locale+'.ts';
+  const start=prepared.indexOf(anchor),end=prepared.indexOf('//#endregion',start);
+  assert.ok(start>=0&&end>start,locale);
+  const dictionary=prepared.slice(start,end);
+  assert.ok(dictionary.includes('voiceEnabled: '+JSON.stringify(label)+','),locale);
+  const oldStart=original.indexOf(anchor);
+  const oldDictionary=original.slice(oldStart,original.indexOf('//#endregion',oldStart));
+  assert.notEqual(dictionary.match(/\tvoiceHint: .*\n/)?.[0],oldDictionary.match(/\tvoiceHint: .*\n/)?.[0],locale);
+ }
+ assert.match(prepared,/Periodic whispers and to-do reminders also need their own switch\. Work-status speech and the chat speaker button for a single line are independent/);
+ assert.match(prepared,/定时碎碎念和待办提醒还要开启各自的开关。工作状态播报单独开启，对话中的喇叭可随时点播一句。/);
+ assert.equal(prepareHarnessProfile(f.options).status,'current');
+});
+
+test('047 网页与桌面保留旧总闸，原生通知与单句点播独立，迟到配置不能重开语音',{skip:upstreamVersion!=='0.4.7'},async t=>{
+ const f=fixture(t);prepareHarnessProfile(f.options);
+ const idle=()=>new Promise(resolve=>setImmediate(resolve));
+ for(const [name,surface] of [['lib/client.js','web'],['runtime/electron-helper/shared-core.js','desktop']]){
+  const source=readFileSync(join(f.pkg,name),'utf8'),start=source.indexOf('//#region src/shared/voice.ts'),end=source.indexOf('//#endregion',start);
+  assert.ok(start>=0&&end>start,name);
+  const synthesized=[];
+  let releaseConfig;
+  const config=new Promise(resolve=>{releaseConfig=resolve;});
+  const document={hidden:false,addEventListener(){}};
+  const voice=runInNewContext(source.slice(start,end)+'\n;({setSurface,setVoiceConfig,setVoiceNotifyEnabled,playSayVoice,speakNotice,speakText});',{
+   ROUTE_PATH:'/test',AbortSignal,document,
+   fetch(url,options){
+    if(url==='/test/config')return config;
+    assert.equal(url,'/test/voice/speak');
+    synthesized.push(JSON.parse(options.body).text);
+    return Promise.resolve({ok:false});
+   },
+  });
+  voice.setSurface(surface);
+  voice.playSayVoice({text:'迟到的旧气泡',voiceTo:surface});
+  voice.setVoiceConfig('',1,false);
+  releaseConfig({json:async()=>({main:{voiceEnabled:true,voiceNotifyEnabled:true}})});
+  await idle();
+  voice.playSayVoice({text:'关着总闸',voiceTo:surface});
+  voice.speakNotice('默认关闭');
+  await idle();
+  assert.deepEqual(synthesized,[],name);
+
+  document.hidden=true;
+  voice.setVoiceNotifyEnabled(true);
+  voice.speakNotice('明确启用通知');
+  voice.speakText('手动点播');
+  await idle();
+  assert.deepEqual(synthesized,['明确启用通知','手动点播'],name);
+
+  document.hidden=false;
+  voice.setVoiceConfig('',1,true);
+  voice.playSayVoice({text:'允许气泡',voiceTo:surface});
+  await idle();
+  assert.deepEqual(synthesized,['明确启用通知','手动点播','允许气泡'],name);
+ }
 });
