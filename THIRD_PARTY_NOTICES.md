@@ -1,6 +1,6 @@
 # 第三方来源与许可
 
-本文记录 codex-pet 使用的主要第三方来源与许可边界，由项目维护者随依赖和分发方式更新。适用范围为本仓库及其运行时准备流程，核对日期为 2026-11-09。
+本文记录 codex-pet 使用的主要第三方来源与许可边界，由项目维护者随依赖和分发方式更新。适用范围为本仓库及其运行时准备流程，核对日期为 2026-11-12。
 
 根目录 [LICENSE](LICENSE) 只适用于本项目自有代码与文档，不替代第三方软件、角色或素材的许可。安装依赖、公开源代码与分发成品时，都应保留所用第三方内容要求的版权和许可说明。
 
@@ -16,6 +16,8 @@
 2026-11-01 从上游 [8ad3d957](https://github.com/PC2005-cloud/dsh-pet/commit/8ad3d957f83052d332f0d0f09e90993e9756d2ec) 适配启动缓存可写性检查与 DPI 异常保护，从 [c58f018](https://github.com/PC2005-cloud/dsh-pet/commit/c58f0187957cd969047239e5433fb30ed999299a) 适配 Harness 网页拖拽松手保护。固定依赖不变，代码沿用上游 MIT 与版权署名；未导入本次上游新增功能或美术素材。
 
 2026-11-02 升级到固定 npm `0.4.0`，按实际模块重新适配；保留原来的默认配置和运行沙箱。已审上游 main 至 [485ee3b8](https://github.com/PC2005-cloud/dsh-pet/commit/485ee3b8f3e34b3623e512b1d2c2899e731a1f9d)，未移植与本项目无关的单进程 EXE 修复及未发布的设置页重构。
+
+2026-11-12 适配上游的子菜单收起、桌面画布定位和悬浮提示修复。代码沿用上游 MIT 许可和署名。素材及其许可见下文。[子菜单 b7abd740](https://github.com/PC2005-cloud/dsh-pet/commit/b7abd740fd09a6def0428c797941026cc822aaa6) · [画布 7f6cc57c](https://github.com/PC2005-cloud/dsh-pet/commit/7f6cc57c68e2106f5aaf08dfd51dace6559b32c6) · [悬浮提示 c7ea8b28](https://github.com/PC2005-cloud/dsh-pet/commit/c7ea8b28e2a8b04a495a3b472a871dff6969ccca)
 
 上游 MIT 许可全文如下，版权归属保持原样：
 

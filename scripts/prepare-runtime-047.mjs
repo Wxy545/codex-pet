@@ -3,7 +3,7 @@ import {patchHelper043,patchPlayback043} from './prepare-runtime-043.mjs';
 import {preserveStandalonePolicy046,protectStandaloneCharacter046} from './prepare-runtime-046.mjs';
 import {captureUpstreamSnapshot047} from './upstream-snapshot-047.mjs';
 import {protectStandaloneReads041} from './standalone-policy-041.mjs';
-import {validateModularOwnedElectron045,validateModularHelper047} from '../harness/modular-runtime-fix.mjs';
+import {patchModularCanvas047,patchModularMenu047,patchModularTooltip047,validateModularOwnedElectron045,validateModularHelper047} from '../harness/modular-runtime-fix.mjs';
 
 function exactBlocks(input,changes,label){
  if(typeof input!=='string')throw Error('0.4.7 '+label+'锚点不匹配。');
@@ -122,8 +122,9 @@ export function patchHelper047(input){
  const fixed=patchHelper043(original);
  validateModularHelper047(fixed);
  fixed['renderer.js']=renderer.fixed;
- fixed['shared-core.js']=exactBlocks(fixed['shared-core.js'],coreVoiceChanges,'独立语音播放').fixed;
- return fixed;
+ fixed['shared-core.js']=patchModularMenu047(exactBlocks(fixed['shared-core.js'],coreVoiceChanges,'独立语音播放').fixed);
+ fixed['index.html']=patchModularCanvas047(fixed['index.html']);
+ return patchModularTooltip047(fixed);
 }
 
 export const patchPlayback047=patchPlayback043;

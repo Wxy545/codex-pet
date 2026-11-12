@@ -233,6 +233,58 @@ export function validateModularAlphaLayout045(input){
   return input;
 }
 
+const MENU_REGION_047 = '//#region src/shared/menu/mount.ts';
+const MENU_SECTION_DIGESTS_047 = new Set([
+  '51fddd7dc65cbaba58d773dfe27edae2a9d42841c4f254421c379f4553f0102e', // 桌面 shared-core.js
+  '29d346879f3052b48d38098aa2c7a4db37101db61b74e69db81757f7934c2ef4', // Harness lib/client.js
+]);
+const MENU_LEAF_047 = '\t\t\t} else {\n\t\t\t\tif (node.thumb) {';
+const MENU_LEAF_HOVER_047 = [
+  '\t\t\t} else {',
+  '\t\t\t\t// 上游 b7abd740：悬停叶子项时，收起同层展开的子菜单链。',
+  '\t\t\t\titem.addEventListener("mouseenter", () => {',
+  '\t\t\t\t\tconst prev = openChild.get(panel);',
+  '\t\t\t\t\tif (prev) hideChain(prev);',
+  '\t\t\t\t});',
+  '\t\t\t\tif (node.thumb) {',
+].join('\n');
+
+export function patchModularMenu047(input) {
+  if (typeof input !== 'string') throw Error('harness-modular-runtime-anchor-mismatch');
+  requireOnce(input, MENU_REGION_047);
+  const start = input.indexOf(MENU_REGION_047);
+  const end = input.indexOf('//#endregion', start);
+  if (end < 0) throw Error('harness-modular-runtime-anchor-mismatch');
+  const region = input.slice(start, end);
+  const normalized = region.replaceAll('\r\n', '\n');
+  const patched = normalized.includes(MENU_LEAF_HOVER_047);
+  const original = normalized.replace(MENU_LEAF_HOVER_047, MENU_LEAF_047);
+  if (!MENU_SECTION_DIGESTS_047.has(createHash('sha256').update(original).digest('hex'))) {
+    throw Error('harness-modular-runtime-anchor-mismatch');
+  }
+  if (patched) return input;
+  const eol = region.includes('\r\n') ? '\r\n' : '\n';
+  const before = MENU_LEAF_047.replaceAll('\n', eol);
+  requireOnce(region, before);
+  const fixed = region.replace(before, MENU_LEAF_HOVER_047.replaceAll('\n', eol));
+  return input.slice(0, start) + fixed + input.slice(end);
+}
+
+/** 择取 7f6cc57 的画布定位修复，行内 SVG 不再推移窗口内容原点。 */
+export function patchModularCanvas047(input) {
+  if (typeof input !== 'string') throw Error('harness-modular-runtime-anchor-mismatch');
+  const selector = '      #root {';
+  requireOnce(input, selector);
+  requireOnce(input, '    <div id="root"></div>');
+  const afterSelector = input.indexOf(selector) + selector.length;
+  const eol = input.startsWith('\r\n', afterSelector) ? '\r\n' : '\n';
+  const before = [selector, '        position: relative;', '        width: 100%;', '        height: 100%;', '      }'].join(eol);
+  const after = [selector, '        position: absolute;', '        inset: 0;', '      }'].join(eol);
+  if (count(input, after) === 1) return input;
+  requireOnce(input, before);
+  return input.replace(before, after);
+}
+
 // 官方 0.4.6 tar 经 SHA512 核验；这里只核对实际原生函数，不复制旧模块或恢复生产源码。
 const NATIVE_HELPER_BLOCKS = [
   {
@@ -360,6 +412,59 @@ function validateModularHelperNative(files, voiceBlocks, extraFiles = []) {
 /** 046 的跨窗协议、切屏定位与语音桥一起核对；残缺或混装模块在落盘前拒绝。 */
 export function validateModularHelper046(files) {
   return validateModularHelperNative(files, NATIVE_VOICE_BLOCKS_046);
+}
+
+const POINTER_FALLBACK_START = '  function startPointerFallback(win) {\n    const pointerTimer = setInterval(() => {';
+const POINTER_ZONE_LINE = '      const zone = pointerZone(bounds, point, margin);';
+const DISPLAYS_PRELOAD = "  onDisplays(cb) {\n    ipcRenderer.on('pet:displays', (e, geo) => cb(geo));\n  },";
+const RENDERER_BOOT = 'injectAssets();\nvoid boot();';
+const TOOLTIP_FIX_047 = {
+  'main/windows.js': [
+    [POINTER_FALLBACK_START, `  function startPointerFallback(win) {
+    let previousPointerZone;
+    const pointerTimer = setInterval(() => {`],
+    [POINTER_ZONE_LINE, `${POINTER_ZONE_LINE}
+      // 上游 c7ea8b2：宠物离开光标时可能没有 mousemove，用现有轮询补收提示。
+      if (!busy && previousPointerZone === 'body' && zone !== 'body') {
+        win.webContents.send('pet:pointer-left');
+      }
+      previousPointerZone = zone;`],
+  ],
+  'preload.js': [
+    [DISPLAYS_PRELOAD, `${DISPLAYS_PRELOAD}
+  onPointerLeft(callback) {
+    ipcRenderer.on('pet:pointer-left', () => callback());
+  },`],
+  ],
+  'renderer.js': [
+    [RENDERER_BOOT, `// 每个页面只订阅一次，角色重建后只操作当前的 sprites。
+window.petBridge?.onPointerLeft?.(() => {
+  for (const sprite of sprites) sprite.setTip(false);
+});
+${RENDERER_BOOT}`],
+  ],
+};
+
+/** 同一窗口复用穿透轮询，渲染订阅与窗口页面同寿命。 */
+export function patchModularTooltip047(files) {
+  const fixed = { ...files };
+  const modes = new Set();
+  for (const [file, replacements] of Object.entries(TOOLTIP_FIX_047)) {
+    if (typeof files?.[file] !== 'string') throw Error('harness-modular-tooltip-047-anchor-mismatch');
+    let source = files[file].replaceAll('\r\n', '\n');
+    for (const [before, after] of replacements) {
+      const newCount = count(source, after);
+      const oldCount = count(source.replaceAll(after, ''), before);
+      if (oldCount === 1 && newCount === 0) {
+        modes.add('original');
+        source = source.replace(before, after);
+      } else if (oldCount === 0 && newCount === 1) modes.add('patched');
+      else throw Error('harness-modular-tooltip-047-anchor-mismatch');
+    }
+    fixed[file] = source;
+  }
+  if (modes.size !== 1) throw Error('harness-modular-tooltip-047-anchor-mismatch');
+  return fixed;
 }
 
 /** 047 保留原跨窗协议，并单独核对新版语音配置与播放链。 */

@@ -188,11 +188,16 @@ export async function prepareRuntime040({root,pkg,version='0.4.0',capture=captur
  const originals=Object.fromEntries(await Promise.all(names.map(async name=>[name,await readFile(join(helper,name),'utf8')])));originals['standalone.js']=await readFile(join(pkg,'lib/standalone.js'),'utf8');originals['preload.js']=await readFile(join(helper,'preload.js'),'utf8');
  const fixed=patchHelper(Object.fromEntries(names.map(name=>[name,originals[name]]))),host=patchHost(originals['standalone.js'],{version});
  const configFile=join(pkg,'assets/config.jsonc'),defaults=preserveRuntimeDefaults040(await readFile(configFile,'utf8'));
+ const preloads=['codex-task-window.cjs','codex-chat-window.cjs','codex-skins.cjs','codex-startup.cjs','pet-host-menu.cjs','qq-window.cjs','control-window.cjs','panel-navigation.cjs','pet-visibility.cjs','pet-telemetry.cjs','pet-actions.cjs','workbench-window.cjs','memory-window.cjs'];
+ const preloadHook='\n// codex-pet-preloads-v040\n'+preloads.map(name=>"require('./"+name+"').installPreload();").join('\n')+'\n';
+ const preload=fixed['preload.js']??originals['preload.js'];
+ if(preload.includes('// codex-pet-preloads-v040')){
+  verify(preload,[preloadHook],'既有预加载');
+  fixed['preload.js']=preload;
+ }else fixed['preload.js']=preload+preloadHook;
  // 模板全部锚点通过后才写依赖文件；不改变用户data中的覆盖值。
  await writeFile(configFile,defaults);
  for(const[name,source]of Object.entries(fixed))await writeFile(join(helper,name),source);await writeFile(join(pkg,'lib/codex-host.js'),host);
- const preloads=['codex-task-window.cjs','codex-chat-window.cjs','codex-skins.cjs','codex-startup.cjs','pet-host-menu.cjs','qq-window.cjs','control-window.cjs','panel-navigation.cjs','pet-visibility.cjs','pet-telemetry.cjs','pet-actions.cjs','workbench-window.cjs','memory-window.cjs'];
- const preloadHook='\n// codex-pet-preloads-v040\n'+preloads.map(name=>"require('./"+name+"').installPreload();").join('\n')+'\n';if(originals['preload.js'].includes('// codex-pet-preloads-v040'))verify(originals['preload.js'],[preloadHook],'既有预加载');else await writeFile(join(helper,'preload.js'),originals['preload.js']+preloadHook);
  // 只复制公开src的桌面脚本、样式与页面；后端mjs、测试、配置和运行数据不进Electron目录。
  for(const entry of await readdir(join(root,'src'),{withFileTypes:true}))if(entry.isFile()&&/\.(?:cjs|js|css|html|ps1)$/.test(entry.name)&&!/\.test\.(?:cjs|js)$/.test(entry.name))await copyFile(join(root,'src',entry.name),join(helper,entry.name));
  await mkdir(join(root,'data'),{recursive:true});await seedBundledWhiteDragon({projectRoot:root});await seedBundledSheep({projectRoot:root});await seedBundledStartup({projectRoot:root});

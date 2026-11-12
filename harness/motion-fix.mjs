@@ -6,6 +6,7 @@ import { patchModularMain, patchModularMouseRelease, patchModularSandbox, patchM
 import { patchPhysicsDefaults040 } from './physics-defaults-fix.mjs';
 import { patchNativeAvatar041 } from './avatar-fix.mjs';
 import {patchDrag041,patchAlpha041,patchTurn041} from './main-fixes-041.mjs';
+import {patchModularCanvas047,patchModularMenu047,patchModularTooltip047} from './modular-runtime-fix.mjs';
 
 const staysWithin = (root, file) => { const rel = relative(root, file); return !isAbsolute(rel) && rel !== '..' && !rel.startsWith('..' + sep); };
 
@@ -159,10 +160,18 @@ export function prepareHarnessDependency({ profileDir }) {
     const voice = voice047 && voiceFiles047[name] ? planVoice047(before, voiceFiles047[name], voiceModes) : null;
     return { name, file, realFile, before, after: transform(voice?.patched ?? before), native: voice?.native ?? before, mode: stat.mode };
   });
-  const helperFiles=Object.fromEntries(planned.filter(item=>item.name.startsWith('runtime/electron-helper/')).map(item=>[item.name.slice('runtime/electron-helper/'.length),voice047?item.native:item.after]));
+  const helperPrefix = 'runtime/electron-helper/';
+  const helperEntries = planned.filter(item => item.name.startsWith(helperPrefix));
+  const helperFiles=Object.fromEntries(helperEntries.map(item=>[item.name.slice(helperPrefix.length),voice047?item.native:item.after]));
   if(voice047){
     if(voiceModes.size!==1)throw Error('harness-native-voice-047-anchor-mismatch');
     validateModularHelper047(helperFiles);
+    const prepared = patchModularTooltip047(Object.fromEntries(helperEntries.map(item => [item.name.slice(helperPrefix.length), item.after])));
+    prepared['index.html'] = patchModularCanvas047(prepared['index.html']);
+    prepared['shared-core.js'] = patchModularMenu047(prepared['shared-core.js']);
+    for (const item of helperEntries) item.after = prepared[item.name.slice(helperPrefix.length)];
+    const client = planned.find(item => item.name === 'lib/client.js');
+    client.after = patchModularMenu047(client.after);
   }else if(meta.version==='0.4.6')validateModularHelper046(helperFiles);
   else if(['0.4.3','0.4.5'].includes(meta.version))validateModularHelper043(helperFiles);
   // 全部锚点文件都通过才落盘；临时文件rename断开pnpm硬链接，不写共享store的inode。

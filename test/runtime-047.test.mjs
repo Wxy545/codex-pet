@@ -15,6 +15,73 @@ const readHost=()=>read('lib/standalone.js');
 const names=['main.js','main/tray.js','main/bridge.js','main/ipc.js','main/dpi.js','main/user-data.js','main/windows.js','preload.js','renderer.js','sprite.js','sprite/init.js','sprite/window-fit.js','sprite/motion.js','sprite/menu.js','sprite/playback.js','sprite/bubble.js','sprite/input.js','events.js','shared-core.js','index.html'];
 const helper=()=>Object.fromEntries(names.map(name=>[name,read('runtime/electron-helper/'+name)]));
 
+test('047桌面轮询在宠物移出光标时关闭提示，窗口关闭后停止且重建角色使用当前实例', options, () => {
+ const original = helper();
+ const fixed = patchHelper047(original);
+ assert.throws(() => patchHelper047({...fixed, 'preload.js': original['preload.js']}), /tooltip-047-anchor-mismatch/);
+ const pointer = {exports: {}};
+ vm.runInNewContext(read('runtime/electron-helper/pointer-target.js'), {module: pointer});
+ const {pointerZone, decideWindowIgnore, spriteHitRect} = pointer.exports;
+ const initialBounds = {x: 0, y: 0, width: 400, height: 350};
+ const hit = spriteHitRect(initialBounds);
+ const point = {x: (hit.left + hit.right) / 2, y: (hit.top + hit.bottom) / 2};
+ let bounds = initialBounds;
+ let poll;
+ const sent = [];
+ const receivers = new Map();
+ const inputBusy = new Map();
+ const win = {
+  id: 1, isDestroyed: () => false, getBounds: () => bounds,
+  webContents: {send: channel => { sent.push(channel); receivers.get(channel)(); }},
+ };
+ const windowSource = fixed['main/windows.js'];
+ const start = windowSource.indexOf('  function startPointerFallback(win) {');
+ const end = windowSource.indexOf('\n  }', start) + 4;
+ assert.ok(start >= 0 && end > start);
+ const startPoll = vm.runInNewContext(windowSource.slice(start, end) + '\nstartPointerFallback', {
+  pointerFallbackPaused: false, windowIgnore: new Map(), inputBusy, winMargins: new Map(),
+  offBodyMs: new Map(), inputRegions: new Map(), dpi: {currentPointer: () => point},
+  pointerZone, decideWindowIgnore, POINTER_POLL_MS: 60, setWindowIgnore() {},
+  setInterval(callback) { poll = callback; return 1; },
+  clearInterval(id) { assert.equal(id, 1); poll = undefined; },
+ });
+ const window = {};
+ vm.runInNewContext(fixed['preload.js'], {require: () => ({
+  contextBridge: {exposeInMainWorld: (key, value) => { window[key] = value; }},
+  ipcRenderer: {on(channel, listener) {
+   assert.equal(receivers.has(channel), false);
+   receivers.set(channel, listener);
+  }},
+ })});
+ const formerTip = [], currentTip = [];
+ const sprites = [{setTip: value => formerTip.push(value)}];
+ const renderer = fixed['renderer.js'];
+ const subscription = renderer.lastIndexOf('window.petBridge?.onPointerLeft?.(');
+ assert.ok(subscription >= 0);
+ vm.runInNewContext(renderer.slice(subscription), {window, sprites, injectAssets() {}, boot() {}});
+ sprites.splice(0, 1, {setTip: value => currentTip.push(value)});
+
+ const stop = startPoll(win);
+ poll();
+ assert.deepEqual(sent, []);
+ bounds = {...initialBounds, x: 800};
+ poll();
+ poll();
+ assert.deepEqual(sent, ['pet:pointer-left']);
+ assert.deepEqual(formerTip, []);
+ assert.deepEqual(currentTip, [false]);
+ bounds = initialBounds;
+ poll();
+ inputBusy.set(1, true);
+ bounds = {...initialBounds, x: 800};
+ poll();
+ inputBusy.set(1, false);
+ poll();
+ assert.deepEqual(sent, ['pet:pointer-left']);
+ stop();
+ assert.equal(poll, undefined);
+});
+
 function region(source,name){
  const marker='//#region src/'+name;
  const start=source.indexOf(marker),end=source.indexOf('//#endregion',start);
