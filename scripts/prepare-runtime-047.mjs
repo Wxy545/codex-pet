@@ -5,15 +5,15 @@ import {captureUpstreamSnapshot047} from './upstream-snapshot-047.mjs';
 import {protectStandaloneReads041} from './standalone-policy-041.mjs';
 import {patchModularCanvas047,patchModularMenu047,patchModularTooltip047,validateModularOwnedElectron045,validateModularHelper047} from '../harness/modular-runtime-fix.mjs';
 
-function exactBlocks(input,changes,label){
- if(typeof input!=='string')throw Error('0.4.7 '+label+'锚点不匹配。');
+function exactBlocks(input,changes,label,version='0.4.7'){
+ if(typeof input!=='string')throw Error(version+' '+label+'锚点不匹配。');
  const source=input.replaceAll('\r\n','\n');
  const matches=side=>changes.every(pair=>{
   const own=pair[side],other=pair[1-side];
   return source.split(own).length===2&&source.split(other).length===own.split(other).length;
  });
  const before=matches(0),after=matches(1);
- if(before===after)throw Error('0.4.7 '+label+'锚点不匹配或补丁不完整。');
+ if(before===after)throw Error(version+' '+label+'锚点不匹配或补丁不完整。');
  const replace=side=>changes.reduce((result,pair)=>result.replace(pair[side],()=>pair[1-side]),source);
  return before?{raw:source,fixed:replace(0),applied:false}:{raw:replace(1),fixed:source,applied:true};
 }
@@ -77,13 +77,14 @@ const voiceConfigChanges=[
  ['\tif (vne !== void 0) bodyOwned.add("voiceNotifyEnabled");\n\tif (te !== void 0) bodyOwned.add("trayEnabled");','\t// 通知语音不属于本次设置保存。\n\tif (te !== void 0) bodyOwned.add("trayEnabled");']
 ];
 
-export function protectStandaloneVoice047(input){
+export function protectStandaloneVoice047(input,{version='0.4.7'}={}){
  // 手动碎念和聊天回复已在047宿主以总闸判定，确认这两个原生门控完整后再适配其它来源。
+ const chatIndent=version==='0.4.8'?'\t\t\t':'\t\t';
  for(const anchor of [
   '\t\tconst manualVoiceOn = cfg.main?.voiceEnabled === true;\n\t\tconst voiceOff = kind === "whisper" ? !whisperVoiceOn : !manualVoiceOn;\n\t\tconst target = voiceOff ? void 0 : voiceTo ?? voiceTargetFor(found.pet);',
-  '\t\tconst replyVoiceTo = cfg.main?.voiceEnabled === true ? voiceTargetFor(found.pet) : void 0;\n\t\tif (generated.text !== "") state.writePet(petId, "say", {'
- ])if(typeof input!=='string'||input.replaceAll('\r\n','\n').split(anchor).length!==2)throw Error('0.4.7 原生手动播报锚点不匹配。');
- return exactBlocks(input,voiceConfigChanges,'独立语音来源').fixed;
+  chatIndent+'const replyVoiceTo = cfg.main?.voiceEnabled === true ? voiceTargetFor(found.pet) : void 0;\n'+chatIndent+'if (generated.text !== "") state.writePet(petId, "say", {'
+ ])if(typeof input!=='string'||input.replaceAll('\r\n','\n').split(anchor).length!==2)throw Error(version+' 原生手动播报锚点不匹配。');
+ return exactBlocks(input,voiceConfigChanges,'独立语音来源',version).fixed;
 }
 
 export function patchStandalone047(input){
@@ -112,16 +113,24 @@ const coreVoiceChanges=[
  ['function speakNotice(text) {\n\tif (text === "") return;\n\tspeakWhenReady(text, true);\n}','function speakNotice() { /* 独立版不自动合成通知语音。 */ }']
 ];
 
+/** 新版沿用已核对的语音块，先还原临时视图核验原生锚点，再保留其它运行时补丁。 */
+export function standaloneHelperVoice047(input,{version='0.4.7'}={}){
+ const renderer=exactBlocks(input?.['renderer.js'],rendererVoiceChanges,'独立语音渲染',version);
+ const core=exactBlocks(input?.['shared-core.js'],coreVoiceChanges,'独立语音播放',version);
+ if(renderer.applied!==core.applied)throw Error(version+' 独立语音补丁不完整。');
+ return {
+  raw:{...input,'renderer.js':renderer.raw,'shared-core.js':core.raw},
+  fixed:{...input,'renderer.js':renderer.fixed,'shared-core.js':core.fixed}
+ };
+}
+
 /** 仅为独立Helper恢复自动语音总闸，手动点播保持原来的用户入口和宿主鉴权。 */
 export function patchHelper047(input){
- const renderer=exactBlocks(input?.['renderer.js'],rendererVoiceChanges,'独立语音渲染');
- const core=exactBlocks(input?.['shared-core.js'],coreVoiceChanges,'独立语音播放');
- if(renderer.applied!==core.applied)throw Error('0.4.7 独立语音补丁不完整。');
- const original={...input,'renderer.js':renderer.raw,'shared-core.js':core.raw};
+ const {raw:original,fixed:voice}=standaloneHelperVoice047(input);
  validateModularHelper047(original);
  const fixed=patchHelper043(original);
  validateModularHelper047(fixed);
- fixed['renderer.js']=renderer.fixed;
+ fixed['renderer.js']=voice['renderer.js'];
  fixed['shared-core.js']=patchModularMenu047(exactBlocks(fixed['shared-core.js'],coreVoiceChanges,'独立语音播放').fixed);
  fixed['index.html']=patchModularCanvas047(fixed['index.html']);
  return patchModularTooltip047(fixed);

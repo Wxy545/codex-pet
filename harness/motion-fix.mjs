@@ -1,12 +1,12 @@
 import { lstatSync, readFileSync, realpathSync, renameSync, unlinkSync, writeFileSync, existsSync } from 'node:fs';
 import { createRequire } from 'node:module';
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { dirname, isAbsolute, join, relative, sep } from 'node:path';
 import { patchModularMain, patchModularMouseRelease, patchModularSandbox, patchModularUserData, patchModularPlayback043, patchModularOwnedElectron043, patchModularAlphaLayout043, validateModularOwnedElectron045, validateModularAlphaLayout045, validateModularClient043, validateModularHelper043, validateModularHelper046, validateModularHelper047, validateModularDpi, validateModularMotion } from './modular-runtime-fix.mjs';
 import { patchPhysicsDefaults040 } from './physics-defaults-fix.mjs';
 import { patchNativeAvatar041 } from './avatar-fix.mjs';
 import {patchDrag041,patchAlpha041,patchTurn041} from './main-fixes-041.mjs';
-import {patchModularCanvas047,patchModularMenu047,patchModularTooltip047} from './modular-runtime-fix.mjs';
+import {patchModularCanvas047,patchModularMenu047,patchModularTooltip047,patchModularClient048,patchModularHelper048,validateModularOwnedElectron048} from './modular-runtime-fix.mjs';
 
 const staysWithin = (root, file) => { const rel = relative(root, file); return !isAbsolute(rel) && rel !== '..' && !rel.startsWith('..' + sep); };
 
@@ -127,6 +127,52 @@ function planVoice047(input, anchors, modes) {
   return { native, patched };
 }
 
+const hostFunctions048 = [
+  ['async function currentEnvironment(', '8d66b6935aa93243c0cf8afaf505d4ddc822e23ff0e425284c86234bdc41a6ed', `async function currentEnvironment() {
+	// 继续用本机日期时间，省略上游公网 IP 定位与天气背景。
+	return void 0;
+}`],
+  ['async function handleEnvironmentRoutes(', '38de12b493444faa52d160b5de0d4f5bdb724117173a64834fa4508c2458c53f', `async function handleEnvironmentRoutes(_deps, { rest }) {
+	if (rest !== "environment" && !rest.startsWith("environment/")) return void 0;
+	return { kind: "json", status: 403, obj: failureBody("forbidden", "dsh-pet: environment is disabled") };
+}`],
+];
+const hostLines048 = [
+  [' || rest === "environment" || rest === "broadcast"', ' || rest === "broadcast" /* codex-pet-environment-blocked-048 */'],
+  [
+    'const picFile = resolveExisting(join(userRoot, "pic"), picRel) ?? resolveExisting(join(PACKAGE_ROOT, "assets", "pic"), picRel);',
+    'const picFile = resolveExisting(join(PACKAGE_ROOT, "assets", "pic"), picRel);',
+  ],
+];
+
+function patchNativeHost048(input) {
+  let source = input.replaceAll('\r\n', '\n');
+  const modes = new Set();
+  const fail = () => { throw Error('harness-native-host-048-anchor-mismatch'); };
+  for (const [start, digest, replacement] of hostFunctions048) {
+    const begin = source.indexOf(start);
+    const end = source.indexOf('\n}', begin);
+    if (begin < 0 || end < 0 || source.indexOf(start, begin + start.length) >= 0) fail();
+    const existing = source.slice(begin, end + 2);
+    if (existing === replacement) {
+      modes.add('patched');
+    } else {
+      if (createHash('sha256').update(existing).digest('hex') !== digest) fail();
+      modes.add('native');
+      source = source.slice(0, begin) + replacement + source.slice(end + 2);
+    }
+  }
+  for (const [before, after] of hostLines048) {
+    const oldCount = source.split(before).length - 1;
+    const newCount = source.split(after).length - 1;
+    if (oldCount + newCount !== 1) fail();
+    modes.add(oldCount ? 'native' : 'patched');
+    if (oldCount) source = source.replace(before, after);
+  }
+  if (modes.size !== 1) fail();
+  return source;
+}
+
 export function prepareHarnessDependency({ profileDir }) {
   if (!isAbsolute(profileDir)) throw new Error('absolute-harness-profile-required');
   // 显式从官方profile目录解析，不能落到外部linked bundle祖先的Codex依赖。
@@ -135,36 +181,60 @@ export function prepareHarnessDependency({ profileDir }) {
   const profileRoot = realpathSync(profileDir), rel = relative(profileRoot, packageRoot);
   if (isAbsolute(rel) || rel === '..' || rel.startsWith('..' + sep)) throw new Error('harness-dsh-pet-outside-selected-profile');
   const meta = JSON.parse(readFileSync(join(packageRoot, 'package.json'), 'utf8'));
-  if (meta.name !== 'dsh-pet' || !['0.4.0', '0.4.1', '0.4.3', '0.4.5', '0.4.6', '0.4.7'].includes(meta.version)) throw new Error('harness-dsh-pet-0.4.0-or-0.4.1-or-0.4.3-or-0.4.5-or-0.4.6-or-0.4.7-required');
-  const voice047 = meta.version === '0.4.7', voiceModes = new Set();
+  if (meta.name !== 'dsh-pet' || !['0.4.0', '0.4.1', '0.4.3', '0.4.5', '0.4.6', '0.4.7', '0.4.8'].includes(meta.version)) throw new Error('harness-dsh-pet-0.4.0-or-0.4.1-or-0.4.3-or-0.4.5-or-0.4.6-or-0.4.7-or-0.4.8-required');
+  const version = meta.version;
+  const is048 = version === '0.4.8';
+  const hasVoiceConfig = version === '0.4.7' || is048;
+  const voiceModes = new Set();
   const transforms = [
-    ['lib/client.js', source => {const native=['0.4.5','0.4.6','0.4.7'].includes(meta.version)?validateModularAlphaLayout045(source):meta.version==='0.4.3'?patchModularAlphaLayout043(validateModularClient043(source)):source;const base=patchPhysicsDefaults040(patchModularMouseRelease(validateModularMotion(native, { browser: true })));return meta.version==='0.4.1'?patchTurn041(patchAlpha041(patchDrag041(base,{browser:true}),{browser:true})):base;}],
-    ['lib/index.js', source => {const native=['0.4.5','0.4.6','0.4.7'].includes(meta.version)?validateModularOwnedElectron045(source):meta.version==='0.4.3'?patchModularOwnedElectron043(source):source;return patchModularSandbox(['0.4.1','0.4.3','0.4.5','0.4.6','0.4.7'].includes(meta.version) ? patchNativeAvatar041(native) : native);}],
+    ['lib/client.js', source => {
+      let native = source;
+      if (is048) native = patchModularClient048(source);
+      else if (['0.4.5', '0.4.6', '0.4.7'].includes(version)) native = validateModularAlphaLayout045(source);
+      else if (version === '0.4.3') native = patchModularAlphaLayout043(validateModularClient043(source));
+      const base = patchPhysicsDefaults040(patchModularMouseRelease(validateModularMotion(native, { browser: true })));
+      return version === '0.4.1' ? patchTurn041(patchAlpha041(patchDrag041(base, { browser: true }), { browser: true })) : base;
+    }],
+    ['lib/index.js', source => {
+      let native = source;
+      if (is048) native = patchNativeHost048(validateModularOwnedElectron048(source));
+      else if (['0.4.5', '0.4.6', '0.4.7'].includes(version)) native = validateModularOwnedElectron045(source);
+      else if (version === '0.4.3') native = patchModularOwnedElectron043(source);
+      return patchModularSandbox(version === '0.4.0' ? native : patchNativeAvatar041(native));
+    }],
     ['runtime/electron-helper/shared-core.js', patchPhysicsDefaults040],
     ['runtime/electron-helper/sprite/motion.js', validateModularMotion],
     ['runtime/electron-helper/main.js', patchModularMain],
     ['runtime/electron-helper/main/dpi.js', validateModularDpi],
     ['runtime/electron-helper/main/user-data.js', patchModularUserData],
   ];
-  if(meta.version==='0.4.1')transforms.push(['runtime/electron-helper/sprite/input.js',patchDrag041],['runtime/electron-helper/index.html',patchAlpha041]);
-  if(['0.4.3','0.4.5','0.4.6','0.4.7'].includes(meta.version))transforms.push(['runtime/electron-helper/sprite/playback.js',patchModularPlayback043],...['sprite.js','sprite/input.js','sprite/window-fit.js','index.html'].map(name=>['runtime/electron-helper/'+name,source=>source]));
+  if(version==='0.4.1')transforms.push(['runtime/electron-helper/sprite/input.js',patchDrag041],['runtime/electron-helper/index.html',patchAlpha041]);
+  if(['0.4.3','0.4.5','0.4.6','0.4.7','0.4.8'].includes(version))transforms.push(['runtime/electron-helper/sprite/playback.js',patchModularPlayback043],...['sprite.js','sprite/input.js','sprite/window-fit.js','index.html'].map(name=>['runtime/electron-helper/'+name,source=>source]));
   // 046 起广播、preload 与 renderer 协议须作为同一组核验，不能只认旧的窗口落位片段。
-  if(['0.4.6','0.4.7'].includes(meta.version))transforms.push(...['main/windows.js','main/ipc.js','preload.js','sprite/init.js','events.js'].map(name=>['runtime/electron-helper/'+name,source=>source]));
-  if(voice047)transforms.push(['runtime/electron-helper/renderer.js',source=>source]);
+  if(['0.4.6','0.4.7','0.4.8'].includes(version))transforms.push(...['main/windows.js','main/ipc.js','preload.js','sprite/init.js','events.js'].map(name=>['runtime/electron-helper/'+name,source=>source]));
+  if(hasVoiceConfig)transforms.push(['runtime/electron-helper/renderer.js',source=>source]);
+  if(is048)transforms.push(...['main/displays.js','pointer-target.js','sprite/menu.js'].map(name=>['runtime/electron-helper/'+name,source=>source]));
   const planned = transforms.map(([name, transform]) => {
     const file = join(packageRoot, name), stat = lstatSync(file);
     if (!stat.isFile() || stat.isSymbolicLink()) throw new Error('unsafe-harness-upstream-file');
     const realFile = realpathSync(file);
     if (!staysWithin(packageRoot, realFile) || !staysWithin(profileRoot, realFile)) throw new Error('unsafe-harness-upstream-file-outside-profile');
     const before = readFileSync(file, 'utf8');
-    const voice = voice047 && voiceFiles047[name] ? planVoice047(before, voiceFiles047[name], voiceModes) : null;
-    return { name, file, realFile, before, after: transform(voice?.patched ?? before), native: voice?.native ?? before, mode: stat.mode };
+    const voice = hasVoiceConfig && voiceFiles047[name] ? planVoice047(before, voiceFiles047[name], voiceModes) : null;
+    return { name, file, realFile, before, after: transform(voice?.patched ?? before), native: voice?.native ?? before, transform, mode: stat.mode };
   });
   const helperPrefix = 'runtime/electron-helper/';
   const helperEntries = planned.filter(item => item.name.startsWith(helperPrefix));
-  const helperFiles=Object.fromEntries(helperEntries.map(item=>[item.name.slice(helperPrefix.length),voice047?item.native:item.after]));
-  if(voice047){
-    if(voiceModes.size!==1)throw Error('harness-native-voice-047-anchor-mismatch');
+  const helperFiles=Object.fromEntries(helperEntries.map(item=>[item.name.slice(helperPrefix.length),hasVoiceConfig?item.native:item.after]));
+  if(hasVoiceConfig && voiceModes.size!==1)throw Error('harness-native-voice-047-anchor-mismatch');
+  if(is048){
+    const prepared = patchModularHelper048(helperFiles);
+    for (const item of helperEntries) {
+      let source = prepared[item.name.slice(helperPrefix.length)];
+      if (voiceFiles047[item.name]) source = planVoice047(source, voiceFiles047[item.name], new Set()).patched;
+      item.after = item.transform(source);
+    }
+  }else if(version==='0.4.7'){
     validateModularHelper047(helperFiles);
     const prepared = patchModularTooltip047(Object.fromEntries(helperEntries.map(item => [item.name.slice(helperPrefix.length), item.after])));
     prepared['index.html'] = patchModularCanvas047(prepared['index.html']);

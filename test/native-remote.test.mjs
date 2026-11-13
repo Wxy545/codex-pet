@@ -47,17 +47,17 @@ test('Harness rejects missing native installation or absent managed preparation'
   const adapter=createHarnessRemote({cwd,native});t.after(()=>adapter.close());assert.equal((await adapter.probe()).reason,'remote_profile_unavailable');assert.throws(()=>resolveHarnessNative({dataRoot:cwd,projectRoot:cwd}),{code:'not_installed'});
 });
 
-for(const harnessVersion of ['0.2.1-rc.2','0.2.1-rc.5','0.2.2-rc.1'])test('Harness '+harnessVersion+'正式注册接受精确已验证的原生桌宠依赖，043/045/046/047不能被旧版本条件误拒',t=>{
+for(const harnessVersion of ['0.2.1-rc.2','0.2.1-rc.5','0.2.2-rc.1'])test('Harness '+harnessVersion+'正式注册接受精确已验证的原生桌宠依赖，043/045/046/047/048不能被旧版本条件误拒',t=>{
   const {root,put,native}=harness(t),projectRoot=join(root,'project'),dataRoot=join(projectRoot,'data');
   native.version=harnessVersion;
   const record={schemaVersion:1,...native};
   put('project/data/harness-link.json',JSON.stringify(record));
   put('harness-home/profiles/web/node_modules/codex-pet-harness/package.json',JSON.stringify({name:'codex-pet-harness'}));
-  for(const version of ['0.4.0','0.4.1','0.4.3','0.4.5','0.4.6','0.4.7']){
+  for(const version of ['0.4.0','0.4.1','0.4.3','0.4.5','0.4.6','0.4.7','0.4.8']){
     put('harness-home/profiles/web/package.json',JSON.stringify({dependencies:{'dsh-pet':version},dsh:{profile:{bundles:['codex-pet-harness']}}}));
     assert.equal(resolveHarnessNative({dataRoot,projectRoot}).version,native.version,version);
   }
-  for(const version of ['^0.4.3','^0.4.5','^0.4.6','^0.4.7','0.4.2','0.4.4','0.4.8','latest']){
+  for(const version of ['^0.4.3','^0.4.5','^0.4.6','^0.4.7','^0.4.8','0.4.2','0.4.4','0.4.9','latest']){
     put('harness-home/profiles/web/package.json',JSON.stringify({dependencies:{'dsh-pet':version},dsh:{profile:{bundles:['codex-pet-harness']}}}));
     assert.throws(()=>resolveHarnessNative({dataRoot,projectRoot}),{code:'not_installed'},version);
   }

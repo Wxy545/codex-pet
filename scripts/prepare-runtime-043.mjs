@@ -10,9 +10,9 @@ export function patchStandalone043(source){return protectStandaloneReads041(patc
 /** 原循环续播留给043状态机；只纠正单次标记并保留本项目解冻后的状态同步。 */
 export function patchPlayback043(input){return patchPlayback040(patchModularPlayback043(input));}
 
-export function patchHelper043(input){
+export function patchHelper043(input,{version='0.4.3'}={}){
  validateModularHelper043(input);
- const fixed=patchHelper041({...input,'sprite/playback.js':patchModularPlayback043(input['sprite/playback.js'])},{version:'0.4.3'});
+ const fixed=patchHelper041({...input,'sprite/playback.js':patchModularPlayback043(input['sprite/playback.js'])},{version});
  const source=fixed['sprite/init.js'],before="    stage.className = 'pet-stage';",after=before+'\n    this.stage = stage; // codex-pet-stage-reference-043';
  if(typeof source!=='string'||source.split(before).length!==2)throw Error('0.4.3角色覆盖层锚点不匹配。');
  // 上游不再保存stage引用；本项目的透明覆盖层仍须挂在同一DOM，不能另建舞台。

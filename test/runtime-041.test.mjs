@@ -1,3 +1,4 @@
+import {patchHelper048,patchStandalone048,preserveStandalonePolicy048} from '../scripts/prepare-runtime-048.mjs';
 import {patchStandalone047,patchHelper047} from '../scripts/prepare-runtime-047.mjs';
 import {patchStandalone046,patchHelper046,preserveStandalonePolicy046} from '../scripts/prepare-runtime-046.mjs';
 import test from 'node:test';
@@ -15,9 +16,9 @@ import {patchStandalone043,patchHelper043} from '../scripts/prepare-runtime-043.
 import {patchStandalone045,patchHelper045,preserveStandalonePolicy045} from '../scripts/prepare-runtime-045.mjs';
 import {preserveStandalonePolicy041} from '../scripts/standalone-policy-041.mjs';
 const require=createRequire(import.meta.url),Locale=require('../src/codex-runtime-locale.cjs');
-const root=resolve(process.env.CODEX_PET_UPSTREAM_FIXTURE||'node_modules/dsh-pet'),meta=JSON.parse(await readFile(join(root,'package.json'),'utf8')),supported=['0.4.1','0.4.3','0.4.5','0.4.6','0.4.7'].includes(meta.version);
-const patchStandalone041=meta.version==='0.4.7'?patchStandalone047:meta.version==='0.4.6'?patchStandalone046:meta.version==='0.4.5'?patchStandalone045:meta.version==='0.4.3'?patchStandalone043:legacyStandalone,patchHelper041=meta.version==='0.4.7'?patchHelper047:meta.version==='0.4.6'?patchHelper046:meta.version==='0.4.5'?patchHelper045:meta.version==='0.4.3'?patchHelper043:legacyHelper;
-const preservePolicy=['0.4.6','0.4.7'].includes(meta.version)?preserveStandalonePolicy046:meta.version==='0.4.5'?preserveStandalonePolicy045:preserveStandalonePolicy041;
+const root=resolve(process.env.CODEX_PET_UPSTREAM_FIXTURE||'node_modules/dsh-pet'),meta=JSON.parse(await readFile(join(root,'package.json'),'utf8')),supported=['0.4.1','0.4.3','0.4.5','0.4.6','0.4.7','0.4.8'].includes(meta.version);
+const patchStandalone041=meta.version==='0.4.8'?patchStandalone048:meta.version==='0.4.7'?patchStandalone047:meta.version==='0.4.6'?patchStandalone046:meta.version==='0.4.5'?patchStandalone045:meta.version==='0.4.3'?patchStandalone043:legacyStandalone,patchHelper041=meta.version==='0.4.8'?patchHelper048:meta.version==='0.4.7'?patchHelper047:meta.version==='0.4.6'?patchHelper046:meta.version==='0.4.5'?patchHelper045:meta.version==='0.4.3'?patchHelper043:legacyHelper;
+const preservePolicy=meta.version==='0.4.8'?preserveStandalonePolicy048:['0.4.6','0.4.7'].includes(meta.version)?preserveStandalonePolicy046:meta.version==='0.4.5'?preserveStandalonePolicy045:preserveStandalonePolicy041;
 const raw=supported?await readFile(join(root,'lib/standalone.js'),'utf8'):null,fixed=supported?patchStandalone041(raw):null;
 const options={skip:!supported};
 function region(source,name){const a=source.indexOf('//#region src/'+name),b=source.indexOf('//#endregion',a);assert.ok(a>=0&&b>a,name);return source.slice(a,b);}
@@ -102,9 +103,10 @@ test('041未接入头像/会话写和原生余额模型聊天入口在分发前�
 
 test('041原生菜单键盘/拖图只经自有主进程gate开小窗，截图和原生录音不绕过',options,async()=>{
  const names=['main.js','main/tray.js','main/bridge.js','main/ipc.js','main/dpi.js','main/user-data.js','sprite.js','sprite/motion.js','sprite/menu.js','sprite/playback.js','sprite/bubble.js','sprite/input.js','events.js','shared-core.js','index.html'];
- if(['0.4.3','0.4.5','0.4.6','0.4.7'].includes(meta.version))names.push('sprite/init.js','sprite/window-fit.js');
- if(['0.4.6','0.4.7'].includes(meta.version))names.push('main/windows.js','preload.js');
- if(meta.version==='0.4.7')names.push('renderer.js');
+ if(['0.4.3','0.4.5','0.4.6','0.4.7','0.4.8'].includes(meta.version))names.push('sprite/init.js','sprite/window-fit.js');
+ if(['0.4.6','0.4.7','0.4.8'].includes(meta.version))names.push('main/windows.js','preload.js');
+ if(['0.4.7','0.4.8'].includes(meta.version))names.push('renderer.js');
+ if(meta.version==='0.4.8')names.push('main/displays.js','pointer-target.js');
  const files=Object.fromEntries(await Promise.all(names.map(async name=>[name,await readFile(join(root,'runtime/electron-helper',name),'utf8')]))),patched=patchHelper041(files);
  assert.deepEqual(patchHelper041(patched),patched);for(const[name,source]of Object.entries(patched))if(name.endsWith('.js'))assert.doesNotThrow(()=>new vm.Script(source,{filename:name}));
  let opened=0;const scope={PetSprite:function(){},window:{codexChatPanel:{open:()=>{opened++;}}},Promise};vm.runInNewContext(patched['sprite/menu.js'].slice(patched['sprite/menu.js'].indexOf('// codex-pet-controlled-chat-041')),scope);

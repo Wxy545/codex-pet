@@ -17,12 +17,14 @@ import {prepareRuntime043} from './prepare-runtime-043.mjs';
 import {prepareRuntime045} from './prepare-runtime-045.mjs';
 import {prepareRuntime046} from './prepare-runtime-046.mjs';
 import {prepareRuntime047} from './prepare-runtime-047.mjs';
+import {prepareRuntime048} from './prepare-runtime-048.mjs';
 
 const root=resolve(dirname(fileURLToPath(import.meta.url)),'..');
 const pkg=resolve(root,'node_modules/dsh-pet');
 const meta=JSON.parse(await readFile(resolve(pkg,'package.json'),'utf8'));
-if(!['0.3.8','0.4.0','0.4.1','0.4.3','0.4.5','0.4.6','0.4.7'].includes(meta.version)) throw new Error('运行时版本必须是已验证的 dsh-pet 0.3.8、0.4.0、0.4.1、0.4.3、0.4.5、0.4.6 或 0.4.7，请按锁文件安装。');
-if(meta.version==='0.4.7')await prepareRuntime047({root,pkg});
+if(!['0.3.8','0.4.0','0.4.1','0.4.3','0.4.5','0.4.6','0.4.7','0.4.8'].includes(meta.version)) throw new Error('运行时版本必须是已验证的 dsh-pet 0.3.8、0.4.0、0.4.1、0.4.3、0.4.5、0.4.6、0.4.7 或 0.4.8，请按锁文件安装。');
+if(meta.version==='0.4.8')await prepareRuntime048({root,pkg});
+else if(meta.version==='0.4.7')await prepareRuntime047({root,pkg});
 else if(meta.version==='0.4.6')await prepareRuntime046({root,pkg});
 else if(meta.version==='0.4.5')await prepareRuntime045({root,pkg});
 else if(meta.version==='0.4.3')await prepareRuntime043({root,pkg});

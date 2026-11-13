@@ -9,9 +9,10 @@ import {prepareHarnessProfile} from '../scripts/prepare-harness-profile.mjs';
 import {readUpstream,upstreamVersion} from './support/harness-upstream.mjs';
 
 const files=['lib/client.js','lib/index.js','runtime/electron-helper/shared-core.js','runtime/electron-helper/sprite/motion.js','runtime/electron-helper/main.js','runtime/electron-helper/main/dpi.js','runtime/electron-helper/main/user-data.js','runtime/electron-helper/sprite.js','runtime/electron-helper/sprite/input.js','runtime/electron-helper/index.html'];
-if(['0.4.3','0.4.5','0.4.6','0.4.7'].includes(upstreamVersion))files.push('runtime/electron-helper/sprite/playback.js','runtime/electron-helper/sprite/window-fit.js');
-if(['0.4.6','0.4.7'].includes(upstreamVersion))files.push(...['main/windows.js','main/ipc.js','preload.js','sprite/init.js','events.js'].map(name=>'runtime/electron-helper/'+name));
-if(upstreamVersion==='0.4.7')files.push('runtime/electron-helper/renderer.js');
+if(['0.4.3','0.4.5','0.4.6','0.4.7','0.4.8'].includes(upstreamVersion))files.push('runtime/electron-helper/sprite/playback.js','runtime/electron-helper/sprite/window-fit.js');
+if(['0.4.6','0.4.7','0.4.8'].includes(upstreamVersion))files.push(...['main/windows.js','main/ipc.js','preload.js','sprite/init.js','events.js'].map(name=>'runtime/electron-helper/'+name));
+if(['0.4.7','0.4.8'].includes(upstreamVersion))files.push('runtime/electron-helper/renderer.js');
+if(upstreamVersion==='0.4.8')files.push(...['main/displays.js','pointer-target.js','sprite/menu.js'].map(name=>'runtime/electron-helper/'+name));
 function fixture(t){
  const root=mkdtempSync(join(tmpdir(),'harness-pre-import-'));t.after(()=>rmSync(root,{recursive:true,force:true}));
  const profileDir=join(root,'home','profiles','web'),pkg=join(profileDir,'node_modules','dsh-pet'),bundleDir=join(root,'bundle');mkdirSync(pkg,{recursive:true});mkdirSync(join(bundleDir,'runtime'),{recursive:true});
@@ -34,9 +35,9 @@ test('官方原件在任何宿主import前离线准备四类补丁，且不改pn
 
 test('未登记、错误bundle或未知版本在准备前拒绝，真实原件保持不变',t=>{
  const f=fixture(t),original=readFileSync(join(f.pkg,'lib/index.js'),'utf8');
- assert.throws(()=>prepareHarnessProfile({...f.options,dshVersion:'next'}),/unverified/);
+ for(const dshVersion of ['next','0.2.2-rc.2'])assert.throws(()=>prepareHarnessProfile({...f.options,dshVersion}),/unverified/);
  assert.throws(()=>prepareHarnessProfile({...f.options,bundleDir:f.root}),/bundle-mismatch/);
- for(const version of ['0.4.4','0.4.8','^0.4.5','^0.4.6','^0.4.7']){
+ for(const version of ['0.4.4','0.4.9','^0.4.5','^0.4.6','^0.4.7','^0.4.8']){
   f.manifest.dependencies['dsh-pet']=version;writeFileSync(join(f.profileDir,'package.json'),JSON.stringify(f.manifest));
   assert.throws(()=>prepareHarnessProfile(f.options),/not-registered/);
   assert.equal(readFileSync(join(f.pkg,'lib/index.js'),'utf8'),original);
@@ -53,7 +54,7 @@ test('profile祖先及后续目标文件链接在第一步写入前拒绝',t=>{
  assert.throws(()=>prepareHarnessProfile(f.options),/directory|outside-profile/);assert.equal(readFileSync(join(f.pkg,'lib/index.js'),'utf8'),original);assert.equal(readFileSync(join(outside,'input.js'),'utf8'),'not-a-pet-module');
 });
 
-test('046/047飞行协议混入旧reportFlight通道时四类补丁均不落盘',{skip:!['0.4.6','0.4.7'].includes(upstreamVersion)},t=>{
+test('046/047/048飞行协议混入旧reportFlight通道时四类补丁均不落盘',{skip:!['0.4.6','0.4.7','0.4.8'].includes(upstreamVersion)},t=>{
  const f=fixture(t),before=Object.fromEntries(files.map(name=>[name,readFileSync(join(f.pkg,name),'utf8')]));
  const name='runtime/electron-helper/main/ipc.js',mixed=before[name]+"\nipcMain.on('pet:report-flight',()=>{});\n";
  writeFileSync(join(f.pkg,name),mixed);
@@ -61,7 +62,54 @@ test('046/047飞行协议混入旧reportFlight通道时四类补丁均不落盘'
  for(const file of files)assert.equal(readFileSync(join(f.pkg,file),'utf8'),file===name?mixed:before[file],file);
 });
 
-test('047 半套语音配置或未知锚点不在 profile 落盘',{skip:upstreamVersion!=='0.4.7'},t=>{
+test('048 原生 HTTP 与 Helper 共用路由拒绝环境查询，本机时钟与内置图片保留',{skip:upstreamVersion!=='0.4.8'},async t=>{
+ const f=fixture(t);
+ prepareHarnessProfile(f.options);
+ const host=readFileSync(join(f.pkg,'lib/index.js'),'utf8');
+ const block=start=>{
+  const from=host.indexOf(start),to=host.indexOf('\n}',from);
+  assert.ok(from>=0&&to>from,start);
+  return host.slice(from,to+2);
+ };
+ const quietDeps=new Proxy({ctx:{get(name){assert.equal(name,'codexPetHarnessTasks');}}}, {
+  get(target,name){
+   assert.equal(name,'ctx');
+   return target.ctx;
+  },
+ });
+ const route=runInNewContext([
+  block('async function currentEnvironment('),
+  block('async function handleEnvironmentRoutes('),
+  block('function failureBody('),
+  block('function sleepGated('),
+  block('function createPetRouter('),
+  block('function createHttpRoute('),
+  'const HANDLERS=[handleEnvironmentRoutes]; ({currentEnvironment,route:createHttpRoute(quietDeps).handlePetRoute});',
+ ].join('\n'),{URL,quietDeps,ROUTE_SEGMENT:'/dsh-pet-7340',fetch(){throw Error('unexpected-network');}});
+ assert.equal(await route.currentEnvironment({force:true}),undefined);
+ for(const method of ['GET','HEAD','POST','PATCH','DELETE']){
+  for(const path of ['environment','%65nvironment','environment%2Fmore']){
+   const result=await route.route('/dsh-pet-7340/'+path+'?pet=example&fresh=1',method);
+   assert.equal(result.status,403);
+   assert.equal(result.obj.reason,'forbidden');
+  }
+ }
+ assert.match(host,/timeContextOf\(parts\.now, parts\.env\)/);
+ assert.match(host,/const picFile = resolveExisting\(join\(PACKAGE_ROOT, "assets", "pic"\), picRel\);/);
+ assert.doesNotMatch(host,/resolveExisting\(join\(userRoot, "pic"\), picRel\)/);
+});
+
+test('048 环境锚点未知时四类补丁均不落盘',{skip:upstreamVersion!=='0.4.8'},t=>{
+ const f=fixture(t),name='lib/index.js';
+ const originals=new Map(files.map(file=>[file,readFileSync(join(f.pkg,file),'utf8')]));
+ const modified=originals.get(name).replace('const located = await locateCity(deps);','const located = await locateCity({ ...deps });');
+ assert.notEqual(modified,originals.get(name));
+ writeFileSync(join(f.pkg,name),modified);
+ assert.throws(()=>prepareHarnessProfile(f.options),/native-host-048-anchor-mismatch/);
+ for(const [file,source] of originals)assert.equal(readFileSync(join(f.pkg,file),'utf8'),file===name?modified:source,file);
+});
+
+test('047/048 半套语音配置或未知锚点不在 profile 落盘',{skip:!['0.4.7','0.4.8'].includes(upstreamVersion)},t=>{
  const f=fixture(t),name='runtime/electron-helper/renderer.js';
  const originals=new Map(files.map(file=>[file,readFileSync(join(f.pkg,file),'utf8')]));
  for(const modified of [
@@ -75,7 +123,7 @@ test('047 半套语音配置或未知锚点不在 profile 落盘',{skip:upstream
  }
 });
 
-test('047 八套网页语言如实区分气泡总闸、分项与独立通知',{skip:upstreamVersion!=='0.4.7'},t=>{
+test('047/048 八套网页语言如实区分气泡总闸、分项与独立通知',{skip:!['0.4.7','0.4.8'].includes(upstreamVersion)},t=>{
  const f=fixture(t),name='lib/client.js',file=join(f.pkg,name);
  const original=readFileSync(file,'utf8');
  const changed=original.replace('voiceEnabled: "Speak manual whispers"','voiceEnabled: "Unreviewed copy"');
@@ -102,7 +150,7 @@ test('047 八套网页语言如实区分气泡总闸、分项与独立通知',{s
  assert.equal(prepareHarnessProfile(f.options).status,'current');
 });
 
-test('047 网页与桌面保留旧总闸，原生通知与单句点播独立，迟到配置不能重开语音',{skip:upstreamVersion!=='0.4.7'},async t=>{
+test('047/048 网页与桌面保留旧总闸，原生通知与单句点播独立，迟到配置不能重开语音',{skip:!['0.4.7','0.4.8'].includes(upstreamVersion)},async t=>{
  const f=fixture(t);prepareHarnessProfile(f.options);
  const idle=()=>new Promise(resolve=>setImmediate(resolve));
  for(const [name,surface] of [['lib/client.js','web'],['runtime/electron-helper/shared-core.js','desktop']]){

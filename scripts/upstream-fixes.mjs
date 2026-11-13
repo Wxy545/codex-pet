@@ -75,7 +75,14 @@ export function patchDesktopMotion(source) {
     "label: OPEN_TARGET === 'desktop' ? '打开软件' : '打开 AI 设置',", '独立模式设置菜单');
 }
 
-export function patchDesktopBalanceEvents(source) {
+export function patchDesktopBalanceEvents(source, {version} = {}) {
+  if (version === '0.4.8') {
+    // 每个桌面窗口只显示自己的宠物，别的宠物的手动查询也不能改这个窗口的故障去重状态。
+    source = replaceOne(source,
+      '  if (!hit) return;\n  balance = hit.state;',
+      '  if (!hit || (hit.petId !== undefined && !sprites.some(s => s.pet.id === hit.petId))) return;\n  balance = hit.state;',
+      '余额手动查询窗口范围');
+  }
   // 成功恢复会结束一轮故障；下次同类失败仍应告知，连续失败继续沿用shared去重。
   return replaceOne(source,
     'if (hit.state.ok) {\n    balanceTick++;',

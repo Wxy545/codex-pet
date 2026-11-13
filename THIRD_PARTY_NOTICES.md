@@ -1,13 +1,13 @@
 # 第三方来源与许可
 
-本文记录 codex-pet 使用的主要第三方来源与许可边界，由项目维护者随依赖和分发方式更新。适用范围为本仓库及其运行时准备流程，核对日期为 2026-11-12。
+本文记录 codex-pet 使用的主要第三方来源与许可边界，由项目维护者随依赖和分发方式更新。适用范围为本仓库及其运行时准备流程，核对日期为 2026-11-13。
 
 根目录 [LICENSE](LICENSE) 只适用于本项目自有代码与文档，不替代第三方软件、角色或素材的许可。安装依赖、公开源代码与分发成品时，都应保留所用第三方内容要求的版权和许可说明。
 
 ## dsh-pet 代码
 
 - 原仓库：[PC2005-cloud/dsh-pet](https://github.com/PC2005-cloud/dsh-pet)
-- 本项目使用版本：npm 包 `dsh-pet@0.4.7`，由 `package-lock.json` 锁定。
+- 本项目使用版本：npm 包 `dsh-pet@0.4.8`，由 `package-lock.json` 锁定。
 - 上游自有代码许可：[MIT](https://github.com/PC2005-cloud/dsh-pet/blob/main/LICENSE)。
 - 本项目保留原角色、动画播放、物理互动和菜单实现，增加 Codex 与 WorkBuddy 宿主、事件聚合、Codex 额度和 CLI 聊天、通知及兼容性检查。`scripts/prepare-runtime.mjs` 对已安装的固定版本生成适配入口和局部补丁。
 
@@ -49,7 +49,7 @@ SOFTWARE.
 
 dsh-pet 0.4.0 新增的 `@andresaya/edge-tts` 在本项目锁定为 **1.9.1**，作者为 **Andres Aya**，采用 **GPL-3.0-only**。依赖通过官方 npm 下载，源代码对应 [v1.9.1 提交 93f6dbc](https://github.com/andresayac/edge-tts/tree/93f6dbc5905293402ebf4b6dc162d31f7e61136e)；[原 LICENSE](https://github.com/andresayac/edge-tts/blob/93f6dbc5905293402ebf4b6dc162d31f7e61136e/LICENSE) 全文保留在 [licenses/edge-tts-GPL-3.0.txt](licenses/edge-tts-GPL-3.0.txt)。
 
-0.4.7 发布包继续在 `lib/dist-DpF6qLoG.js` 内联该库 1.9.1。其对应 TypeScript 源码及构建文件可从上述固定提交取得。
+0.4.8 发布包的 `lib/dist-DpF6qLoG.js` 与 0.4.7 摘要相同，仍内联该库 1.9.1。其对应 TypeScript 源码及构建文件可从上述固定提交取得。
 
 该依赖不属于本项目自有代码的 MIT 授权。当前仓库分发源代码、锁文件与安装脚本，不包含该库代码或打包运行时；语音默认关闭。若另行分发含该库的运行时或安装包，须核对 GPL 对组合程序、相应源代码及安装信息的要求，不能仅保留本页链接便按 MIT 发布整包。
 
@@ -64,6 +64,8 @@ dsh-pet 0.4.0 新增的 `@andresaya/edge-tts` 在本项目锁定为 **1.9.1**，
 固定 0.4.6 发布包的 [README](https://github.com/PC2005-cloud/dsh-pet/blob/7d0f385158877a916ce3b7da37654ca8b0f68d6b/dsh-pet/README.md) 将代码与素材分开：代码采用 MIT，素材禁止商用，公开二创须注明上游来源。本项目保留该声明，不将素材归入自有代码的 MIT 许可。
 
 0.4.7 官方发布包的 README、LICENSE 和媒体文件与 0.4.6 逐文件摘要一致，素材目录只修改了语音配置模板。[0.4.7 发布元数据](https://registry.npmjs.org/dsh-pet/0.4.7)
+
+0.4.8 的 `assets/`、README 和 LICENSE 与 0.4.7 逐文件摘要一致，本项目没有新增素材或修改角色许可。[0.4.8 发布元数据](https://registry.npmjs.org/dsh-pet/0.4.8)
 
 2026-11-08 上游 main 的 [6a5e1caf](https://github.com/PC2005-cloud/dsh-pet/commit/6a5e1caf051f3a882a510dd5b85097d085fe52f7) 将素材说明改为参照角色原型和形象的使用许可；角色 CC BY-NC-SA 4.0 与公开二创署名要求仍保留。本项目按固定发布包及各素材已有条款处理，不由这次表述变化推定商用或重新授权范围。
 

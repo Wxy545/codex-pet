@@ -14,7 +14,7 @@ const chatGuard=`\n// codex-pet-controlled-chat-041\nObject.assign(PetSprite.pro
   stopHearChat() {},
 });\n`;
 export function patchHelper041(input,{version='0.4.1'}={}){
- if(!['0.4.1','0.4.3'].includes(version))throw Error('未知受控Helper运行时版本。');
+ if(!['0.4.1','0.4.3','0.4.8'].includes(version))throw Error('未知受控Helper运行时版本。');
  const fixed=patchHelper040(input,{version}),source=fixed['sprite/menu.js'];
  const focusBefore="  ipcMain.on('pet:focus-host', () => {\n    if (openTarget !== 'desktop') return;\n    focusDesktopApp().catch((error) => {\n      console.warn('[dsh-pet-desktop-helper] focus host failed:', error && error.message);\n    });\n  });";
  const focusAfter="  ipcMain.on('pet:focus-host', () => {\n    // 独立宿主不接受新的原生DSH聚焦捷径；本项目已有入口按真实应用核验去向。\n  });";

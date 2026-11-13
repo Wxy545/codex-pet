@@ -391,7 +391,7 @@ const NATIVE_VOICE_BLOCKS_047 = [
   {file:'renderer.js', start:'async function boot() {', sha256:'a7e7e0e1a85170977cd2876a3103c83a9bad2427ea147110cd02cedaef647554'},
 ];
 
-function validateModularHelperNative(files, voiceBlocks, extraFiles = []) {
+function validateModularHelperNative(files, voiceBlocks, extraFiles = [], revisedBlocks = []) {
   validateModularHelper043(files);
   const names=['index.html','sprite.js','sprite/input.js','sprite/window-fit.js','sprite/playback.js','main/windows.js','main/ipc.js','preload.js','sprite/init.js','sprite/motion.js','events.js','shared-core.js',...extraFiles];
   const sources={};
@@ -401,7 +401,9 @@ function validateModularHelperNative(files, voiceBlocks, extraFiles = []) {
     // 046 已将完整状态并入 setBounds；不能混回旧 IPC 或 30ms 上报泵。
     if(/reportFlight|flightReportTimer|['"]pet:(?:report-flight|flight-state)['"]/.test(sources[name]))throw Error('harness-modular-runtime-anchor-mismatch');
   }
-  for(const {file,start,end='\n}',sha256}of [...NATIVE_HELPER_BLOCKS,...voiceBlocks]){
+  const commonBlocks = NATIVE_HELPER_BLOCKS.filter(block =>
+    !revisedBlocks.some(revised => revised.file === block.file && revised.start === block.start));
+  for(const {file,start,end='\n}',sha256}of [...commonBlocks,...voiceBlocks,...revisedBlocks]){
     const source=sources[file];requireOnce(source,start);
     const a=source.indexOf(start),b=source.indexOf(end,a+start.length);
     if(b<0||createHash('sha256').update(source.slice(a,b+end.length)).digest('hex')!==sha256)throw Error('harness-modular-runtime-anchor-mismatch');
@@ -470,4 +472,127 @@ export function patchModularTooltip047(files) {
 /** 047 保留原跨窗协议，并单独核对新版语音配置与播放链。 */
 export function validateModularHelper047(files) {
   return validateModularHelperNative(files, NATIVE_VOICE_BLOCKS_047, ['renderer.js']);
+}
+
+const MENU_DIGEST_048 = {
+  desktop: '17ef11d0197f03dffeafa220b50482ced04f7d2724cb2d4cbd649d3fd3b5f767',
+  web: 'daa8b526f574e4b0d0bc23d3b83cf603f62fe02b0aadf6104c0ddb725cf46664',
+};
+
+function validateMenu048(source, surface) {
+  requireOnce(source, MENU_REGION_047);
+  const start = source.indexOf(MENU_REGION_047);
+  const end = source.indexOf('//#endregion', start);
+  if (end < 0 || createHash('sha256').update(source.slice(start, end)).digest('hex') !== MENU_DIGEST_048[surface]) {
+    throw Error('harness-modular-menu-048-anchor-mismatch');
+  }
+}
+
+const ALPHA_OFF_048 = 'const PET_ALPHA_FIX_ENABLED = false;';
+const ALPHA_ON_048 = 'const PET_ALPHA_FIX_ENABLED = true; // 保留已验证的原视频透明修正。';
+const DESKTOP_WEATHER_MENU_048 = `      // 「查询天气」与余额同一类：宿主强制刷新并写 sections.env，气泡由 /state 驱动。
+      { label: '查询天气', action: 'show-environment' },`;
+const WEB_WEATHER_MENU_048 = '\t\t\t\t{\n\t\t\t\t\tlabel: "查询天气",\n\t\t\t\t\taction: "show-environment"\n\t\t\t\t},';
+const WEATHER_HIDDEN_048 = '// codex-pet-environment-disabled-048：保留菜单中已支持的本机功能。';
+const NATIVE_TOOLTIP_048 = `    // 主进程兜底：宠物自己走开、或窗口被别的窗口接走时页面收不到 mousemove，提示会一直亮着；
+    // 主进程按光标轮询判定「刚离开身体」后通知这里收起（setTip 幂等，与 mousemove 判定不冲突）。
+    if (window.petBridge && typeof window.petBridge.onPointerLeft === 'function') {
+      window.petBridge.onPointerLeft(() => this.setTip(false));
+    }`;
+const WINDOW_TOOLTIP_048 = '    // 悬浮提示由窗口页面统一订阅，避免重建角色时保留旧实例。';
+const DPI_REBUILD_048 = `      const previous = dpi.primaryScale;
+      const written = dpi.writeCachedPrimaryScale(real);
+      dpi.setPrimaryScale(real);
+      petWindows.closeAll();
+      petWindows.create();
+      console.error(
+        '[dsh-pet-desktop-helper] primary scaleFactor ' +
+          previous +
+          ' -> ' +
+          real +
+          '; rebuilt windows' +
+          (written ? '' : '（写缓存失败，下次启动会再自查）'),
+      );`;
+const DPI_CACHE_048 = `      // 下次启动使用新缓存，当前窗口沿原宿主的模式和活动守卫管理。
+      if (dpi.writeCachedPrimaryScale(real)) {
+        console.error('[dsh-pet-desktop-helper] primary scaleFactor changed; restart the desktop pet to resize');
+      }`;
+const DPI_START_TIMER_048 = '  setTimeout(verifyPrimaryScale, SCALE_VERIFY_DELAY_MS).unref?.();';
+const DPI_START_OFF_048 = '  // 缩放检查由显示器事件触发，沿用原启动流程。';
+
+function inspectExact048(source, original, patched) {
+  const after = count(source, patched);
+  const before = count(source.replaceAll(patched, ''), original);
+  if (before + after !== 1) throw Error('harness-modular-runtime-048-anchor-mismatch');
+  return after === 1;
+}
+
+const DESKTOP_CHANGES_048 = {
+  'shared-core.js': [[ALPHA_OFF_048, ALPHA_ON_048]],
+  'renderer.js': TOOLTIP_FIX_047['renderer.js'],
+  'sprite/init.js': [[NATIVE_TOOLTIP_048, WINDOW_TOOLTIP_048]],
+  'sprite/menu.js': [[DESKTOP_WEATHER_MENU_048, '      ' + WEATHER_HIDDEN_048]],
+  'main/displays.js': [[DPI_REBUILD_048, DPI_CACHE_048], [DPI_START_TIMER_048, DPI_START_OFF_048]],
+};
+
+const NATIVE_BLOCKS_048 = [
+  {file:'main/windows.js', start:"    win.on('closed', () => {", end:'\n    });', sha256:'9cf03ca3d902ae4273893f288760dc7356fb86418d1bc9d2668fff7d753c8b68'},
+  {file:'main/windows.js', start:'  function startPointerFallback(win) {', end:'\n  }', sha256:'ba6fc9839ac49216df991369ded8ffd8fffc2c514308e4fba0493fea794cc8f9'},
+  {file:'main/displays.js', start:'function createDisplaySync({ screen, petWindows, dpi }) {', sha256:'c4f4c8822e17d3ec63d2c5656b02d89ffa381ff01b5ab5f20bdf3954c2ca4c50'},
+  {file:'main/dpi.js', start:'  function probePrimaryScaleAsync() {', end:'\n  }', sha256:'813f06cc945ec559c8a99a3382a3177213ccfc7e934b8ed0a1c759e973773737'},
+  {file:'pointer-target.js', start:'function leavesBody(prevZone, zone) {', sha256:'3f7da6e595a49a62496765850efad99174cc2edef9bbf9f536e06ac780470dc5'},
+];
+
+export const validateModularOwnedElectron048 = validateModularOwnedElectron045;
+
+export function validateModularHelper048(files) {
+  const native = { ...files };
+  const modes = new Set();
+  for (const [file, edits] of Object.entries(DESKTOP_CHANGES_048)) {
+    if (typeof files?.[file] !== 'string') throw Error('harness-modular-runtime-048-anchor-mismatch');
+    let source = files[file].replaceAll('\r\n', '\n');
+    for (const [original, patched] of edits) {
+      const isPatched = inspectExact048(source, original, patched);
+      modes.add(isPatched ? 'patched' : 'original');
+      if (isPatched) source = source.replace(patched, original);
+    }
+    native[file] = source;
+  }
+  if (modes.size !== 1) throw Error('harness-modular-runtime-048-anchor-mismatch');
+  validateModularHelperNative(native, NATIVE_VOICE_BLOCKS_047, [
+    'renderer.js', 'sprite/menu.js', 'main/displays.js', 'main/dpi.js', 'pointer-target.js',
+  ], NATIVE_BLOCKS_048);
+  validateModularDpi(native['main/dpi.js']);
+  validateMenu048(native['shared-core.js'], 'desktop');
+  requireOnce(native['preload.js'], "  onPointerLeft(cb) {\n    ipcRenderer.on('pet:pointer-left', () => cb());\n  },");
+  requireOnce(native['renderer.js'], "if (S.PET_ALPHA_FIX_ENABLED) document.documentElement.classList.add('pet-alpha-fix');");
+  requireOnce(native['index.html'], '      #root {\n        position: absolute;\n        inset: 0;\n      }'.replaceAll('\n', native['index.html'].includes('\r\n') ? '\r\n' : '\n'));
+  requireOnce(native['index.html'], 'html.pet-alpha-fix video.pet-video {');
+  return files;
+}
+
+export function patchModularHelper048(files) {
+  validateModularHelper048(files);
+  const fixed = { ...files };
+  for (const [file, edits] of Object.entries(DESKTOP_CHANGES_048)) {
+    let source = files[file].replaceAll('\r\n', '\n');
+    for (const [original, patched] of edits) {
+      if (count(source, patched) === 0) source = source.replace(original, patched);
+    }
+    fixed[file] = source;
+  }
+  return fixed;
+}
+
+export function patchModularClient048(input) {
+  const source = validateModularClient043(input).replaceAll('\r\n', '\n');
+  const weatherHidden = '\t\t\t\t' + WEATHER_HIDDEN_048;
+  const alphaPatched = inspectExact048(source, ALPHA_OFF_048, ALPHA_ON_048);
+  const menuPatched = inspectExact048(source, WEB_WEATHER_MENU_048, weatherHidden);
+  if (alphaPatched !== menuPatched) throw Error('harness-modular-runtime-048-anchor-mismatch');
+  validateMenu048(menuPatched ? source.replace(weatherHidden, WEB_WEATHER_MENU_048) : source, 'web');
+  requireOnce(source, ALPHA_LAYOUT_045);
+  requireOnce(source, 'const ALPHA_FIX_FILTER = PET_ALPHA_FIX_ENABLED ? ";filter:url(#dsh-pet-alpha-fix)" : "";');
+  requireOnce(source, '\tif (PET_ALPHA_FIX_ENABLED) ensureAlphaFilter();');
+  return alphaPatched ? source : source.replace(ALPHA_OFF_048, ALPHA_ON_048).replace(WEB_WEATHER_MENU_048, weatherHidden);
 }

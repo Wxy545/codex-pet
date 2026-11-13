@@ -12,9 +12,10 @@ function fixture(kind,{pauseMemory=false}={}){
  const writes=[];const inputs=[];
  const context={CodexCharacter:{...Character,readCharacter:()=>({...character})},configPaths:{},readAllConfig:()=>({}),findPetInstance:()=>({entry:'main',pet:{id:'main',display:'desktop'},conf:{}}),petSystemPrompt:()=>character.id,configuredModel:()=>null,ctx:{},memeDirsFor:()=>[],log:{info(){},warn(){},error(){}},state:{writePet:(...args)=>writes.push(args)},withMemoryLock:fn=>fn(),memoryRounds:()=>5,sliceMemoryRounds:list=>list,readMemory:async()=>{if(pauseMemory)await new Promise(ok=>{resolveMemory=ok;});return structuredClone(disk);},writeMemory:async value=>{disk=structuredClone(value);}};
  const generate=async(...args)=>{inputs.push(args);return new Promise(ok=>{resolveGeneration=ok;});};context.generateWhisper=generate;context.generateChat=generate;
- const expression=source.match(kind==='whisper'?/const publishWhisper = ([\s\S]*?)^\t\};/m:/const chatWithPet = ([\s\S]*?)^\t\}\);/m);
+ // 048 的锁回调在 async 函数内部；结束锚点只接受两种实际编译形态。
+ const expression=source.match(kind==='whisper'?/const publishWhisper = ([\s\S]*?^\t\});/m:/const chatWithPet = ([\s\S]*?^\t\}(?:\))?);/m);
  assert.ok(expression,'prepared host closure not found');
- const code=kind==='whisper'?'('+expression[1]+'\n})':'('+expression[1]+'\n}))';
+ const code='('+expression[1]+')';
  // 新版语音落点和配图选池也执行实际辅助函数；这里只提供本fixture无素材的目录，不调用任何语音服务。
  let helpers=['displayCovers','pickVoiceSurface','voiceTargetFor','readMemePool','pickMeme','matchMeme'].map(name=>source.match(new RegExp('function '+name+'\\([^)]*\\) \\{[\\s\\S]*?^\\}','m'))?.[0]).filter(Boolean).join('\n');
  if(source.includes('//#region src/host/chat-memory-provider.ts')){
