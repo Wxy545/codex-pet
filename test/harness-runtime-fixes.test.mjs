@@ -11,10 +11,11 @@ import {prepareHarnessDependency} from '../harness/motion-fix.mjs';
 import {patchModularMain,patchModularMouseRelease,patchModularSandbox,patchModularUserData,validateModularDpi,validateModularMain,validateModularMotion} from '../harness/modular-runtime-fix.mjs';
 const files=['lib/client.js','lib/index.js','runtime/electron-helper/shared-core.js','runtime/electron-helper/sprite/motion.js','runtime/electron-helper/main.js','runtime/electron-helper/main/dpi.js','runtime/electron-helper/main/user-data.js'];
 if(upstreamVersion==='0.4.1')files.push('runtime/electron-helper/sprite/input.js','runtime/electron-helper/index.html');
-if(['0.4.3','0.4.5','0.4.6','0.4.7','0.4.8'].includes(upstreamVersion))files.push(...['sprite.js','sprite/input.js','sprite/window-fit.js','sprite/playback.js','index.html'].map(name=>'runtime/electron-helper/'+name));
-if(['0.4.6','0.4.7','0.4.8'].includes(upstreamVersion))files.push(...['events.js','preload.js','main/ipc.js','main/windows.js','sprite/init.js'].map(name=>'runtime/electron-helper/'+name));
-if(['0.4.7','0.4.8'].includes(upstreamVersion))files.push('runtime/electron-helper/renderer.js');
-if(upstreamVersion==='0.4.8')files.push(...['main/displays.js','pointer-target.js','sprite/menu.js'].map(name=>'runtime/electron-helper/'+name));
+if(['0.4.3','0.4.5','0.4.6','0.4.7','0.4.8','0.4.9'].includes(upstreamVersion))files.push(...['sprite.js','sprite/input.js','sprite/window-fit.js','sprite/playback.js','index.html'].map(name=>'runtime/electron-helper/'+name));
+if(['0.4.6','0.4.7','0.4.8','0.4.9'].includes(upstreamVersion))files.push(...['events.js','preload.js','main/ipc.js','main/windows.js','sprite/init.js'].map(name=>'runtime/electron-helper/'+name));
+if(['0.4.7','0.4.8','0.4.9'].includes(upstreamVersion))files.push('runtime/electron-helper/renderer.js');
+if(['0.4.8','0.4.9'].includes(upstreamVersion))files.push(...['main/displays.js','pointer-target.js','sprite/menu.js'].map(name=>'runtime/electron-helper/'+name));
+if(upstreamVersion==='0.4.9')files.push('runtime/electron-helper/constants.js','runtime/electron-helper/sprite/bubble.js');
 function fixture(t){
  const root=fs.mkdtempSync(join(tmpdir(),'harness-runtime-fixes-'));t.after(()=>fs.rmSync(root,{recursive:true,force:true}));const profile=join(root,'profile'),pkg=join(profile,'node_modules/dsh-pet');fs.mkdirSync(pkg,{recursive:true});fs.writeFileSync(join(profile,'package.json'),'{}');fs.writeFileSync(join(pkg,'package.json'),JSON.stringify({name:'dsh-pet',version:upstreamVersion,exports:{'./package.json':'./package.json'}}));const original={};for(const name of files){fs.mkdirSync(dirname(join(pkg,name)),{recursive:true});original[name]=readUpstream(name);fs.writeFileSync(join(pkg,name),original[name]);}return{root,profile,pkg,original};
 }

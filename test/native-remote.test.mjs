@@ -53,11 +53,11 @@ for(const harnessVersion of ['0.2.1-rc.2','0.2.1-rc.5','0.2.2-rc.1'])test('Harne
   const record={schemaVersion:1,...native};
   put('project/data/harness-link.json',JSON.stringify(record));
   put('harness-home/profiles/web/node_modules/codex-pet-harness/package.json',JSON.stringify({name:'codex-pet-harness'}));
-  for(const version of ['0.4.0','0.4.1','0.4.3','0.4.5','0.4.6','0.4.7','0.4.8']){
+  for(const version of ['0.4.0','0.4.1','0.4.3','0.4.5','0.4.6','0.4.7','0.4.8','0.4.9']){
     put('harness-home/profiles/web/package.json',JSON.stringify({dependencies:{'dsh-pet':version},dsh:{profile:{bundles:['codex-pet-harness']}}}));
     assert.equal(resolveHarnessNative({dataRoot,projectRoot}).version,native.version,version);
   }
-  for(const version of ['^0.4.3','^0.4.5','^0.4.6','^0.4.7','^0.4.8','0.4.2','0.4.4','0.4.9','latest']){
+  for(const version of ['^0.4.3','^0.4.5','^0.4.6','^0.4.7','^0.4.8','0.4.2','0.4.4','0.4.10','latest']){
     put('harness-home/profiles/web/package.json',JSON.stringify({dependencies:{'dsh-pet':version},dsh:{profile:{bundles:['codex-pet-harness']}}}));
     assert.throws(()=>resolveHarnessNative({dataRoot,projectRoot}),{code:'not_installed'},version);
   }

@@ -10,8 +10,8 @@ const expected={chatMemoryRounds:5,chatImageLimit:10,clickSoundEnabled:false,cha
 const flags=['petCollision','hapticEnabled','tiltGravity','shakeThrow'];
 const installed=resolve(process.env.CODEX_PET_UPSTREAM_FIXTURE||'node_modules/dsh-pet');
 const meta=JSON.parse(await readFile(join(installed,'package.json'),'utf8'));
-if(!['0.3.8','0.4.0','0.4.1','0.4.3','0.4.5','0.4.6','0.4.7','0.4.8'].includes(meta.version))throw Error('unreviewed-upstream-version');
-const real040=['0.4.0','0.4.1','0.4.3','0.4.5','0.4.6','0.4.7','0.4.8'].includes(meta.version);
+if(!['0.3.8','0.4.0','0.4.1','0.4.3','0.4.5','0.4.6','0.4.7','0.4.8','0.4.9'].includes(meta.version))throw Error('unreviewed-upstream-version');
+const real040=['0.4.0','0.4.1','0.4.3','0.4.5','0.4.6','0.4.7','0.4.8','0.4.9'].includes(meta.version);
 const previous=process.env.CODEX_PET_PREVIOUS_UPSTREAM_FIXTURE;
 function declaration(source,name){const value=source.match(new RegExp('function '+name+'\\([^)]*\\) \\{[\\s\\S]*?^\\}','m'))?.[0];assert.ok(value,name);return value;}
 async function actualConfig(){

@@ -7,6 +7,7 @@ import { patchPhysicsDefaults040 } from './physics-defaults-fix.mjs';
 import { patchNativeAvatar041 } from './avatar-fix.mjs';
 import {patchDrag041,patchAlpha041,patchTurn041} from './main-fixes-041.mjs';
 import {patchModularCanvas047,patchModularMenu047,patchModularTooltip047,patchModularClient048,patchModularHelper048,validateModularOwnedElectron048} from './modular-runtime-fix.mjs';
+import {patchModularClient049,patchModularHelper049,validateModularOwnedElectron049} from './modular-runtime-fix.mjs';
 
 const staysWithin = (root, file) => { const rel = relative(root, file); return !isAbsolute(rel) && rel !== '..' && !rel.startsWith('..' + sep); };
 
@@ -145,11 +146,112 @@ const hostLines048 = [
   ],
 ];
 
-function patchNativeHost048(input) {
+const hostFunctions049 = [
+  [hostFunctions048[0][0], '637163c921607db7cad40752b5573b275c4fe05c4aa884c39ec2b0faf4a95fbd', hostFunctions048[0][2]],
+  [hostFunctions048[1][0], 'abe6cf6722ff9917f28ee4fa1225d9e2ee465228ff9ff5e958f2914203edec77', hostFunctions048[1][2]],
+  ['function registerVoiceProvider(', '45c60e6980b520f6870670857a553ec9798511e1692841f1a8e5cc8b5f7c0981', `function registerVoiceProvider(def) {
+	// 只允许受核验的原有语音来源，避免新 provider 接收对话内容。
+	if (def !== EDGE_PROVIDER) throw new TypeError("unsupported pet voice provider");
+	validateVoiceProvider(def);
+	if (providers$1.has(def.id)) throw new TypeError("pet voice provider already registered");
+	providers$1.set(def.id, def);
+	return () => { if (providers$1.get(def.id) === def) providers$1.delete(def.id); };
+}`],
+  ['function registerSpeechProvider(', '93e16bb19e300b0d93335f498f3a8e77de55960fc8a319da987988766e1866b3', `function registerSpeechProvider(def) {
+	if (!def || def !== codexPetDshProvider) throw new TypeError("unsupported pet speech provider");
+	validateSpeechProvider(def);
+	if (providers.has(def.id)) throw new TypeError("pet speech provider already registered");
+	providers.set(def.id, def);
+	return () => { if (providers.get(def.id) === def) providers.delete(def.id); };
+}`],
+  ['function resolveVoice(', '92911a27a5cda34193bb121066a4905d6811ed35d15d4ce4f1e157df62e38c6b', `function resolveVoice(value) {
+	// 旧配置存的是 Edge 音色名，仅在目录中精确匹配后增加命名空间。
+	const voice = codexPetEdgeVoice(value);
+	const provider = providers$1.get(EDGE_PROVIDER_ID);
+	if (!provider || !voice) return void 0;
+	return { provider, voice, limitedId: limitedVoiceId(EDGE_PROVIDER_ID, voice.id) };
+}`],
+];
+const nativeSpeechInit049 = '\tensureDshSpeechProvider({ speechToText: () => setup.optionalService("speechToText") });';
+const deepseekSpeech049 = `	const resolveDeepseekKey = async () => {
+		const dedicated = setup.standaloneDeepseekKey();
+		if (dedicated) return dedicated;
+		const standalone = setup.standaloneAiBalance();
+		if (standalone?.provider === DEEPSEEK_OFFICIAL_PROVIDER_ID && standalone.apiKey) return standalone.apiKey;
+		const resolved = await ctx.credentials.resolve(credentialRef("DEEPSEEK_API_KEY"));
+		return resolved?.value;
+	};
+	ensureDeepseekTtsProvider({ resolveKey: resolveDeepseekKey });
+	ensureDeepseekAsrProvider({ resolveKey: resolveDeepseekKey });`;
+const builtInSpeech049 = `	if (resolveSpeechProvider(DSH_SPEECH_PROVIDER_ID)) return;
+	registerSpeechProvider(createDshSpeechProvider(deps));`;
+const builtInSpeechMarker049 = `	if (resolveSpeechProvider(DSH_SPEECH_PROVIDER_ID)) return;
+	codexPetDshProvider = createDshSpeechProvider(deps);
+	registerSpeechProvider(codexPetDshProvider);`;
+const hostLines049 = [
+  [hostLines048[0][0].replace('"broadcast"', '"broadcast" || rest === "bubble/clear"'), hostLines048[0][1]],
+  hostLines048[1],
+  [
+    '\tsetCityProvider(() => {\n\t\tconst city = readAllConfig(configPaths).main?.environmentCity;\n\t\treturn typeof city === "string" && city.trim() !== "" ? city.trim() : void 0;\n\t});',
+    '\t// 不向天气或公网定位注入用户配置。',
+  ],
+  [
+    '\t\tenvironment: (opts) => currentEnvironment({\n\t\t\tforce: opts?.fresh === true,\n\t\t\t...opts?.city === void 0 ? {} : { city: opts.city }\n\t\t}),',
+    '\t\tenvironment: currentEnvironment,',
+  ],
+  [
+    '\tconst standaloneDeepseekKey = () => {\n\t\tconst service = optionalService("standaloneAi");\n\t\tconst key = service?.deepseekKey?.();\n\t\treturn key ? key : void 0;\n\t};',
+    '\t// 语音不请求本机或余额凭据。',
+  ],
+  ['\t\tstandaloneDeepseekKey,', '\t\t// 原生的账户额度来源单独保留。'],
+  [nativeSpeechInit049+'\n'+deepseekSpeech049, nativeSpeechInit049+'\n\t// 继续沿用已配置的原生录音能力和 Edge 播报。'],
+  ['function ensureDshSpeechProvider(deps) {\n'+builtInSpeech049, 'let codexPetDshProvider;\nfunction ensureDshSpeechProvider(deps) {\n'+builtInSpeechMarker049],
+  ['const EDGE_PROVIDER_ID = "edge";', `const EDGE_PROVIDER_ID = "edge";
+function codexPetEdgeVoice(value) {
+	if (typeof value !== "string") return void 0;
+	const id = value.startsWith("edge/") ? value.slice(5) : value;
+	return EDGE_PROVIDER.voices.find(voice => voice.id === id);
+}`],
+  ['\t\tcase "voiceName": return typeof value === "string" && VOICE_ID_PATTERN.test(value);', '\t\tcase "voiceName": return typeof value === "string"; // 未知值保留到运行时明确拒绝。'],
+  ['\tconst vn = o.voiceName;\n\tif (vn !== void 0 && !topFieldValid("voiceName", vn)) return null;', '\tconst vn = o.voiceName === existing?.voiceName ? void 0 : o.voiceName;\n\tif (vn !== void 0 && !codexPetEdgeVoice(vn)) return null;'],
+  ['\tconst nwf = o.notifyWhenFocused;\n\tif (nwf !== void 0 && typeof nwf !== "boolean") return null;', '\t// 保存宠物设置时沿用原前台通知规则。'],
+  ['\tconst sp = o.speechProvider;\n\tif (sp !== void 0 && !topFieldValid("speechProvider", sp)) return null;\n\tconst ec = o.environmentCity;\n\tif (ec !== void 0 && !topFieldValid("environmentCity", ec)) return null;', '\t// 原有字段通过 existing 循环保留，避免改写用户配置。'],
+  ['\tif (nwf !== void 0) outConfig.notifyWhenFocused = nwf;', '\t// 不新增前台提醒配置。'],
+  ['\tif (sp !== void 0) outConfig.speechProvider = sp;\n\tif (ec !== void 0) outConfig.environmentCity = String(ec).trim();', '\t// 不通过此接口写入语音提供方或城市。'],
+  ['\tif (nwf !== void 0) bodyOwned.add("notifyWhenFocused");', '\t// 已保存的前台提醒字段仍由 existing 保留。'],
+  ['\tif (sp !== void 0) bodyOwned.add("speechProvider");\n\tif (ec !== void 0) bodyOwned.add("environmentCity");', '\t// 已保存的识别服务和城市字段仍由 existing 保留。'],
+  ['const MAX_BODY_BYTES = 10 * 1024 * 1024;', 'const MAX_BODY_BYTES = 1024 * 1024; // 保留原请求体上限。'],
+  ['const MAX_AUDIO_BYTES = 7 * 1024 * 1024;', 'const MAX_AUDIO_BYTES = 768 * 1024; // 保留原识别字节上限。'],
+  ['\t\tconst run = () => dispatchPetRoute(url, rest, method, body, signal);', `		// Helper 管道与 HTTP 共用同一请求上限。
+		if (typeof body === "string" && Buffer.byteLength(body) > MAX_BODY_BYTES) {
+			return { kind: "json", status: 413, obj: failureBody("payload-too-large", "request body too large") };
+		}
+		if (rest === "bubble/clear" || rest.startsWith("bubble/clear/")) {
+			return { kind: "json", status: 403, obj: failureBody("forbidden", "dsh-pet: feature is disabled") };
+		}
+		const run = () => dispatchPetRoute(url, rest, method, body, signal);`],
+  ['\t\tconst limitedId = parsed.value.voice ?? configuredVoice?.();', '\t\tconst limitedId = parsed.value.voice ?? configuredVoice?.() ?? DEFAULT_VOICE;'],
+  ['return typeof name$1 === "string" && name$1 ? name$1 : void 0;', 'return typeof name$1 === "string" ? name$1 : void 0;'],
+  ['message: \`voice not found: \${limitedId}\`', 'message: "voice unavailable"'],
+  ['cacheKey(limitedId, rate, text), format)', 'cacheKey(resolved.voice.id, rate, text), format)'],
+  ['createHash("sha1").update(\`${voiceId}\\n${rate}\\n${text}\`).digest("hex")', 'createHash("sha1").update(\`edge\\n${voiceId}\\n${rate >= 0 ? "+" : ""}${rate}%\\n${text}\`).digest("hex")'],
+  ['\t\tconst run = await withDeadline(signal, timeoutMs, (inner) => provider.transcribe({\n\t\t\t\taudio: parsed.value.audio,\n\t\t\t\tsignal: inner\n\t\t\t}));', '\t\tconst run = await withDeadline(signal, timeoutMs, (inner) => provider.transcribe({\n\t\t\t\taudio: parsed.value.audio,\n\t\t\t\tlanguage: parsed.value.language,\n\t\t\t\tsignal: inner\n\t\t\t}));'],
+  ['async transcribe({ audio, signal }) {\n\t\t\tconst speech = deps.speechToText();', 'async transcribe({ audio, language, signal }) {\n\t\t\tconst speech = deps.speechToText();'],
+  ['speech.transcribe(speech.resolve({ audio }), signal ?? NEVER_ABORT)', 'speech.transcribe(speech.resolve({ audio, ...language === void 0 ? {} : { language } }), signal ?? NEVER_ABORT)'],
+  ['\tconst provider = body.provider;\n', '\tconst language = body.language;\n\tif (language !== void 0 && (typeof language !== "string" || language.trim() === "")) return { ok: false, message: "language must be a non-empty string" };\n\tconst provider = body.provider;\n'],
+  ['\t\t\taudio,\n\t\t\t...provider === void 0 ? {} : { provider: provider.trim() }', '\t\t\taudio,\n\t\t\t...language === void 0 ? {} : { language: language.trim() },\n\t\t\t...provider === void 0 ? {} : { provider: provider.trim() }'],
+  ['const providerId = parsed.value.provider ?? options.configuredProvider?.();', 'const providerId = parsed.value.provider ?? options.configuredProvider?.() ?? DSH_SPEECH_PROVIDER_ID;'],
+  ['\t\t\tif (!providerId) return {\n\t\t\t\tok: false,\n\t\t\t\treason: "bad-request",\n\t\t\t\tmessage: "provider is required"\n\t\t\t};', '\t\t\tif (providerId !== DSH_SPEECH_PROVIDER_ID) return { ok: false, reason: "unsupported", message: "speech provider unavailable" };'],
+  ['message: \`provider not found: \${providerId}\`', 'message: "native speech provider unavailable"'],
+  ['\ttry {\n\t\treturn {\n\t\t\tok: true,\n\t\t\tvalue: await Promise.race([task(controller.signal), deadline])', '\ttry {\n\t\tif (signal?.aborted) return { ok: false, message: "speech transcription aborted" };\n\t\treturn {\n\t\t\tok: true,\n\t\t\tvalue: await Promise.race([task(controller.signal), deadline])'],
+];
+
+function patchNativeHost(input, version) {
   let source = input.replaceAll('\r\n', '\n');
   const modes = new Set();
-  const fail = () => { throw Error('harness-native-host-048-anchor-mismatch'); };
-  for (const [start, digest, replacement] of hostFunctions048) {
+  const is049 = version === '0.4.9';
+  const fail = () => { throw Error(`harness-native-host-${is049 ? '049' : '048'}-anchor-mismatch`); };
+  for (const [start, digest, replacement] of is049 ? hostFunctions049 : hostFunctions048) {
     const begin = source.indexOf(start);
     const end = source.indexOf('\n}', begin);
     if (begin < 0 || end < 0 || source.indexOf(start, begin + start.length) >= 0) fail();
@@ -162,8 +264,8 @@ function patchNativeHost048(input) {
       source = source.slice(0, begin) + replacement + source.slice(end + 2);
     }
   }
-  for (const [before, after] of hostLines048) {
-    const oldCount = source.split(before).length - 1;
+  for (const [before, after] of is049 ? hostLines049 : hostLines048) {
+    const oldCount = source.replaceAll(after, '').split(before).length - 1;
     const newCount = source.split(after).length - 1;
     if (oldCount + newCount !== 1) fail();
     modes.add(oldCount ? 'native' : 'patched');
@@ -181,15 +283,18 @@ export function prepareHarnessDependency({ profileDir }) {
   const profileRoot = realpathSync(profileDir), rel = relative(profileRoot, packageRoot);
   if (isAbsolute(rel) || rel === '..' || rel.startsWith('..' + sep)) throw new Error('harness-dsh-pet-outside-selected-profile');
   const meta = JSON.parse(readFileSync(join(packageRoot, 'package.json'), 'utf8'));
-  if (meta.name !== 'dsh-pet' || !['0.4.0', '0.4.1', '0.4.3', '0.4.5', '0.4.6', '0.4.7', '0.4.8'].includes(meta.version)) throw new Error('harness-dsh-pet-0.4.0-or-0.4.1-or-0.4.3-or-0.4.5-or-0.4.6-or-0.4.7-or-0.4.8-required');
+  if (meta.name !== 'dsh-pet' || !['0.4.0', '0.4.1', '0.4.3', '0.4.5', '0.4.6', '0.4.7', '0.4.8', '0.4.9'].includes(meta.version)) throw new Error('harness-dsh-pet-0.4.0-or-0.4.1-or-0.4.3-or-0.4.5-or-0.4.6-or-0.4.7-or-0.4.8-or-0.4.9-required');
   const version = meta.version;
   const is048 = version === '0.4.8';
-  const hasVoiceConfig = version === '0.4.7' || is048;
+  const is049 = version === '0.4.9';
+  const nativeDesktop = is048 || is049;
+  const hasVoiceConfig = version === '0.4.7' || nativeDesktop;
   const voiceModes = new Set();
   const transforms = [
     ['lib/client.js', source => {
       let native = source;
-      if (is048) native = patchModularClient048(source);
+      if (is049) native = patchModularClient049(source);
+      else if (is048) native = patchModularClient048(source);
       else if (['0.4.5', '0.4.6', '0.4.7'].includes(version)) native = validateModularAlphaLayout045(source);
       else if (version === '0.4.3') native = patchModularAlphaLayout043(validateModularClient043(source));
       const base = patchPhysicsDefaults040(patchModularMouseRelease(validateModularMotion(native, { browser: true })));
@@ -197,7 +302,8 @@ export function prepareHarnessDependency({ profileDir }) {
     }],
     ['lib/index.js', source => {
       let native = source;
-      if (is048) native = patchNativeHost048(validateModularOwnedElectron048(source));
+      if (is049) native = patchNativeHost(validateModularOwnedElectron049(source), version);
+      else if (is048) native = patchNativeHost(validateModularOwnedElectron048(source), version);
       else if (['0.4.5', '0.4.6', '0.4.7'].includes(version)) native = validateModularOwnedElectron045(source);
       else if (version === '0.4.3') native = patchModularOwnedElectron043(source);
       return patchModularSandbox(version === '0.4.0' ? native : patchNativeAvatar041(native));
@@ -209,11 +315,12 @@ export function prepareHarnessDependency({ profileDir }) {
     ['runtime/electron-helper/main/user-data.js', patchModularUserData],
   ];
   if(version==='0.4.1')transforms.push(['runtime/electron-helper/sprite/input.js',patchDrag041],['runtime/electron-helper/index.html',patchAlpha041]);
-  if(['0.4.3','0.4.5','0.4.6','0.4.7','0.4.8'].includes(version))transforms.push(['runtime/electron-helper/sprite/playback.js',patchModularPlayback043],...['sprite.js','sprite/input.js','sprite/window-fit.js','index.html'].map(name=>['runtime/electron-helper/'+name,source=>source]));
+  if(['0.4.3','0.4.5','0.4.6','0.4.7','0.4.8','0.4.9'].includes(version))transforms.push(['runtime/electron-helper/sprite/playback.js',patchModularPlayback043],...['sprite.js','sprite/input.js','sprite/window-fit.js','index.html'].map(name=>['runtime/electron-helper/'+name,source=>source]));
   // 046 起广播、preload 与 renderer 协议须作为同一组核验，不能只认旧的窗口落位片段。
-  if(['0.4.6','0.4.7','0.4.8'].includes(version))transforms.push(...['main/windows.js','main/ipc.js','preload.js','sprite/init.js','events.js'].map(name=>['runtime/electron-helper/'+name,source=>source]));
+  if(['0.4.6','0.4.7','0.4.8','0.4.9'].includes(version))transforms.push(...['main/windows.js','main/ipc.js','preload.js','sprite/init.js','events.js'].map(name=>['runtime/electron-helper/'+name,source=>source]));
   if(hasVoiceConfig)transforms.push(['runtime/electron-helper/renderer.js',source=>source]);
-  if(is048)transforms.push(...['main/displays.js','pointer-target.js','sprite/menu.js'].map(name=>['runtime/electron-helper/'+name,source=>source]));
+  if(nativeDesktop)transforms.push(...['main/displays.js','pointer-target.js','sprite/menu.js'].map(name=>['runtime/electron-helper/'+name,source=>source]));
+  if(is049)transforms.push(...['constants.js','sprite/bubble.js'].map(name=>['runtime/electron-helper/'+name,source=>source]));
   const planned = transforms.map(([name, transform]) => {
     const file = join(packageRoot, name), stat = lstatSync(file);
     if (!stat.isFile() || stat.isSymbolicLink()) throw new Error('unsafe-harness-upstream-file');
@@ -227,8 +334,8 @@ export function prepareHarnessDependency({ profileDir }) {
   const helperEntries = planned.filter(item => item.name.startsWith(helperPrefix));
   const helperFiles=Object.fromEntries(helperEntries.map(item=>[item.name.slice(helperPrefix.length),hasVoiceConfig?item.native:item.after]));
   if(hasVoiceConfig && voiceModes.size!==1)throw Error('harness-native-voice-047-anchor-mismatch');
-  if(is048){
-    const prepared = patchModularHelper048(helperFiles);
+  if(nativeDesktop){
+    const prepared = is049 ? patchModularHelper049(helperFiles) : patchModularHelper048(helperFiles);
     for (const item of helperEntries) {
       let source = prepared[item.name.slice(helperPrefix.length)];
       if (voiceFiles047[item.name]) source = planVoice047(source, voiceFiles047[item.name], new Set()).patched;

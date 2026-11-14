@@ -520,10 +520,10 @@ const DPI_CACHE_048 = `      // 下次启动使用新缓存，当前窗口沿原
 const DPI_START_TIMER_048 = '  setTimeout(verifyPrimaryScale, SCALE_VERIFY_DELAY_MS).unref?.();';
 const DPI_START_OFF_048 = '  // 缩放检查由显示器事件触发，沿用原启动流程。';
 
-function inspectExact048(source, original, patched) {
+function inspectExact048(source, original, patched, version = '048') {
   const after = count(source, patched);
   const before = count(source.replaceAll(patched, ''), original);
-  if (before + after !== 1) throw Error('harness-modular-runtime-048-anchor-mismatch');
+  if (before + after !== 1) throw Error(`harness-modular-runtime-${version}-anchor-mismatch`);
   return after === 1;
 }
 
@@ -545,23 +545,24 @@ const NATIVE_BLOCKS_048 = [
 
 export const validateModularOwnedElectron048 = validateModularOwnedElectron045;
 
-export function validateModularHelper048(files) {
+function validateModularHelperWith048Policy(files, changes, extraFiles = [], extraBlocks = [], version = '048') {
   const native = { ...files };
   const modes = new Set();
-  for (const [file, edits] of Object.entries(DESKTOP_CHANGES_048)) {
-    if (typeof files?.[file] !== 'string') throw Error('harness-modular-runtime-048-anchor-mismatch');
+  const fail = () => { throw Error(`harness-modular-runtime-${version}-anchor-mismatch`); };
+  for (const [file, edits] of Object.entries(changes)) {
+    if (typeof files?.[file] !== 'string') fail();
     let source = files[file].replaceAll('\r\n', '\n');
     for (const [original, patched] of edits) {
-      const isPatched = inspectExact048(source, original, patched);
+      const isPatched = inspectExact048(source, original, patched, version);
       modes.add(isPatched ? 'patched' : 'original');
       if (isPatched) source = source.replace(patched, original);
     }
     native[file] = source;
   }
-  if (modes.size !== 1) throw Error('harness-modular-runtime-048-anchor-mismatch');
+  if (modes.size !== 1) fail();
   validateModularHelperNative(native, NATIVE_VOICE_BLOCKS_047, [
-    'renderer.js', 'sprite/menu.js', 'main/displays.js', 'main/dpi.js', 'pointer-target.js',
-  ], NATIVE_BLOCKS_048);
+    'renderer.js', 'sprite/menu.js', 'main/displays.js', 'main/dpi.js', 'pointer-target.js', ...extraFiles,
+  ], [...NATIVE_BLOCKS_048, ...extraBlocks]);
   validateModularDpi(native['main/dpi.js']);
   validateMenu048(native['shared-core.js'], 'desktop');
   requireOnce(native['preload.js'], "  onPointerLeft(cb) {\n    ipcRenderer.on('pet:pointer-left', () => cb());\n  },");
@@ -571,10 +572,13 @@ export function validateModularHelper048(files) {
   return files;
 }
 
-export function patchModularHelper048(files) {
-  validateModularHelper048(files);
+export function validateModularHelper048(files) {
+  return validateModularHelperWith048Policy(files, DESKTOP_CHANGES_048);
+}
+
+function applyDesktopChanges(files, changes) {
   const fixed = { ...files };
-  for (const [file, edits] of Object.entries(DESKTOP_CHANGES_048)) {
+  for (const [file, edits] of Object.entries(changes)) {
     let source = files[file].replaceAll('\r\n', '\n');
     for (const [original, patched] of edits) {
       if (count(source, patched) === 0) source = source.replace(original, patched);
@@ -582,6 +586,11 @@ export function patchModularHelper048(files) {
     fixed[file] = source;
   }
   return fixed;
+}
+
+export function patchModularHelper048(files) {
+  validateModularHelper048(files);
+  return applyDesktopChanges(files, DESKTOP_CHANGES_048);
 }
 
 export function patchModularClient048(input) {
@@ -595,4 +604,175 @@ export function patchModularClient048(input) {
   requireOnce(source, 'const ALPHA_FIX_FILTER = PET_ALPHA_FIX_ENABLED ? ";filter:url(#dsh-pet-alpha-fix)" : "";');
   requireOnce(source, '\tif (PET_ALPHA_FIX_ENABLED) ensureAlphaFilter();');
   return alphaPatched ? source : source.replace(ALPHA_OFF_048, ALPHA_ON_048).replace(WEB_WEATHER_MENU_048, weatherHidden);
+}
+
+// 049 的气泡点击会留下可能清掉后续台词的定时器。三个命中入口一起保留原来的处理方式。
+const DESKTOP_CHANGES_049 = {
+  ...DESKTOP_CHANGES_048,
+  'sprite/init.js': [
+    ...DESKTOP_CHANGES_048['sprite/init.js'],
+    [`    // 气泡点击按当前槽位分流：说话气泡戳破、工作气泡跳会话、余额气泡切页。都就地吞掉事件，别落到下面的本体命中层。
+    this.bubble.addEventListener('click', (e) => {
+      if (this.whisperClickable()) {
+        e.stopPropagation();
+        e.preventDefault();
+        this.popWhisper();
+        return;
+      }`, `    // 工作气泡跳会话，余额气泡切页，碎碎念不占鼠标输入。
+    this.bubble.addEventListener('click', (e) => {`],
+  ],
+  'sprite/input.js': [[
+    '      this.workClickable() ||\n      this.whisperClickable()',
+    '      this.workClickable() // 碎碎念保持鼠标穿透。',
+  ]],
+  'sprite/bubble.js': [[
+    `    // 说话气泡同样可点：点下去就是戳破（分流在 init.js，动作是 popWhisper）。
+    const clickable = (slot === 'balance' && this.balanceClickable()) || workClickable || this.whisperClickable();`,
+    `    // 只有余额和工作气泡保留原来的点击动作。
+    const clickable = (slot === 'balance' && this.balanceClickable()) || workClickable;`,
+  ]],
+  'shared-core.js': [
+    ...DESKTOP_CHANGES_048['shared-core.js'],
+    ['const MAX_RECORD_MS = 2e5;', 'const MAX_RECORD_MS = 24e3; // 保留原生录音体积与时长上限。'],
+  ],
+};
+
+const NATIVE_BLOCKS_049 = [
+  {file:'sprite/init.js', start:"    this.bubble.addEventListener('click', (e) => {", end:'\n    });', sha256:'546043eca105fd89c957461a2e1343ac888b388e760e50eccb92da77b10ee525'},
+  {file:'sprite/input.js', start:'  inputBusy() {', end:'\n  },', sha256:'cbeda4d6a1d6988c1f7451d51f6ff0a674ca2845e67f2bc87c2804f4bdcddda6'},
+  {file:'sprite/input.js', start:'  whisperClickable() {', end:'\n  },', sha256:'d1012e3cca5ca1cd2ac66df240f0ef94e1882405235f77b79bdda013e551daa3'},
+  {file:'sprite/bubble.js', start:'  renderBubble() {', end:'\n  },', sha256:'b040904809aa53c392bbdb7567645f82281482f8a29399ce1e317045f501371c'},
+  {file:'events.js', start:'PetSprite.prototype.popWhisper = function popWhisper() {', end:'\n};', sha256:'81141da946ca2557ba35a0f0d4c7f829a44c237edd3cfc059a839b75e37c6014'},
+  {file:'events.js', start:'PetSprite.prototype.clearWhisper = function clearWhisper() {', end:'\n};', sha256:'71b0ec06ba1e8f0359254d9dc8ce54bd8b0f7cd16b06fb23ca2b014d8cd85e58'},
+];
+
+export function validateModularHelper049(files) {
+  // 独立版脚下状态条只增加 DOM 槽标记，核验时还原这一行；输出仍保留调用方的装饰器。
+  const bubble = files['sprite/bubble.js']?.replace('\n    this.bubble.dataset.slot=slot;', '');
+  const native = { ...files, 'sprite/bubble.js': bubble };
+  validateModularHelperWith048Policy(native, DESKTOP_CHANGES_049, ['constants.js', 'sprite/bubble.js'], NATIVE_BLOCKS_049, '049');
+  requireOnce(files['constants.js'], 'const WHISPER_POP_MS = 420;');
+  requireOnce(files['index.html'], 'animation: popOut 0.42s cubic-bezier(0.2, 0.72, 0.3, 1) forwards;');
+  return files;
+}
+
+export function patchModularHelper049(files) {
+  validateModularHelper049(files);
+  return applyDesktopChanges(files, DESKTOP_CHANGES_049);
+}
+
+export function validateModularOwnedElectron049(input) {
+  validateModularOwnedElectron045(input);
+  const source = input.replaceAll('\r\n', '\n');
+  const start = 'function resolveDesktopSiteUrl(ctx, origin) {';
+  validateSourceScope049(source, start, '\n}', '8ebcb907fd2a153a2e2f7ef50dcc82e75fad21a1755447e5ef7942791ad1c93e');
+  requireOnce(source, 'const ENTRY_URL_EVENT = "webserver/entry-url";');
+  requireOnce(source, 'const siteUrl = resolveDesktopSiteUrl(ctx, origin);');
+  return input;
+}
+
+function validateSourceScope049(source, start, end, sha256) {
+  requireOnce(source, start);
+  const a = source.indexOf(start);
+  const b = source.indexOf(end, a + start.length);
+  if (b < 0 || createHash('sha256').update(source.slice(a, b + end.length)).digest('hex') !== sha256) {
+    throw Error('harness-modular-runtime-049-anchor-mismatch');
+  }
+}
+
+const CLIENT_CHANGES_049 = [
+  [ALPHA_OFF_048, ALPHA_ON_048],
+  [WEB_WEATHER_MENU_048, '\t\t\t\t' + WEATHER_HIDDEN_048],
+  ['const MAX_RECORD_MS = 2e5;', 'const MAX_RECORD_MS = 24e3; // 保留原生录音体积与时长上限。'],
+  ['return whenFocused || !pageActive;', 'return !pageActive; // 前台通知继续使用原来的聚焦规则。'],
+  ['whenFocused: main?.notifyWhenFocused === true', 'whenFocused: false // 不消费新增的前台提醒设置。'],
+  [`\t{
+\t\tkey: "notifyWhenFocused",
+\t\tlabel: "notifyWhenFocusedToggle"
+\t},`, '\t// 前台提醒继续由原聚焦规则控制。'],
+  ['\t\t\t\tvoiceState: voiceState$1,\n\t\t\t\tonPop: clearWhisper', '\t\t\t\tvoiceState: voiceState$1 // 说话气泡保持原鼠标行为。'],
+  ['\tconst EnvironmentCard = makeEnvironmentCard(rt);', '\t// 天气设置没有接入当前插件。'],
+  [`\t\t\t\th(EnvironmentCard, {
+\t\t\t\t\tbusy,
+\t\t\t\t\tcity: environmentCity,
+\t\t\t\t\tonChange: setEnvironmentCity
+\t\t\t\t}),`, '\t\t\t\t// 不显示天气查询设置。'],
+  [`\t\tuseEffect(() => {
+\t\t\tlet alive = true;
+\t\t\tfetch(ROUTE_PATH + "/voice/hear-providers").then((response) => response.ok ? response.json() : null).then((body) => {
+\t\t\t\tif (!alive || !body || !Array.isArray(body.providers)) return;
+\t\t\t\tsetSpeechProviders(body.providers);
+\t\t\t}).catch(() => void 0);
+\t\t\treturn () => {
+\t\t\t\talive = false;
+\t\t\t};
+\t\t}, []);`, '\t\t// 保留原生语音输入，不查询新增识别服务商目录。'],
+  [`\t\t\t\t}),
+\t\t\t\th("div", {
+\t\t\t\t\tclassName: "dsh-pet-cfg__grid2",
+\t\t\t\t\tchildren: [field(t("speechProviderLabel"), h(Select, {
+\t\t\t\t\t\tlabel: t("speechProviderLabel"),
+\t\t\t\t\t\tvalue: props.speechProvider,
+\t\t\t\t\t\toptions: props.speechProviders.map((item) => ({
+\t\t\t\t\t\t\tid: item.id,
+\t\t\t\t\t\t\tlabel: item.name
+\t\t\t\t\t\t})),
+\t\t\t\t\t\tdisabled: props.busy,
+\t\t\t\t\t\tonChange: props.onSpeechProviderChange
+\t\t\t\t\t}), t("speechProviderHint"))]
+\t\t\t\t})`, '\t\t\t\t}) // 不显示新增识别服务商选择。'],
+  [`\t\t\t\tsetVoiceOptions(body.providers.flatMap((group) => (Array.isArray(group.voices) ? group.voices : []).map((voice) => ({
+\t\t\t\t\t...voice,
+\t\t\t\t\t...group.name === void 0 ? {} : { providerName: group.name }
+\t\t\t\t}))));`, `\t\t\t\t// 只展示原 Edge 音色，目录缺失时继续显示已保存的值。
+\t\t\t\tconst edge = body.providers.find((group) => group?.id === "edge");
+\t\t\t\tsetVoiceOptions(Array.isArray(edge?.voices) ? edge.voices.filter((voice) => typeof voice?.id === "string" && voice.id.startsWith("edge/")) : []);`],
+  [`\treturn function VoicePicker(props) {
+\t\treturn h(Select, {
+\t\t\tlabel: props.label,
+\t\t\tvalue: props.value,`, `\treturn function VoicePicker(props) {
+\t\t// 旧音色只在选项确有对应项时做显示映射，保存仍用原配置值。
+\t\tconst legacy = "edge/" + props.value;
+\t\tconst value = props.options.some((option) => option.id === legacy) ? legacy : props.value;
+\t\treturn h(Select, {
+\t\t\tlabel: props.label,
+\t\t\tvalue,`],
+  [`\t\tnotifyWhenFocused: fields.notifyWhenFocused,
+`, '\t\t// 前台提醒选项不写入用户配置。\n'],
+  [`\t\tspeechProvider: fields.speechProvider,
+\t\tenvironmentCity: fields.environmentCity,
+`, '\t\t// 保留用户配置已有的语音服务商和城市字段。\n'],
+];
+
+const CLIENT_SCOPES_049 = [
+  ['function makeWhisperBubble(rt) {', '\n}', 'b1d6ef67ecfd27713883006693b3c7c916f95cc876eb2de3a2f2ba0da4c71c72'],
+  ['function createBubbleSlots(rt, components) {', '\n}', '041b54264646b8fec4cfc7f010f1a77274c13d4441d6123bcda74cc7541215b9'],
+  ['function makeVoiceCard(rt, picker) {', '\n}', '6c621d70d523ce45efd391d981cf2bf5ce12f28f440612d71e2917853893e67a'],
+  ['function makeVoicePicker(rt) {', '\n}', 'a8b2f164548bf0716133a10bad355ab25e56ccadaa1f6a2a66b12124f47bc80c'],
+  ['function buildSaveBody(fields) {', '\n}', '04f74351ef3643fcd37b82922f90d923809f3c36070850bbf141047860d8960f'],
+  ['function makePetConfigSection(rt, ctx) {', '\n}', '52685ee30d02e7de6752ec6a2d9904929d864d8f8fd98d7131fc408c9b82d2d4'],
+  ['async function readNotifySettings() {', '\n}', '20214c6eb62d2a7c97e4e807c154c5ea12ece190adb1d0701bb9f6e950d1379c'],
+  ['//#region src/client/settings/global-card.ts', '\n//#endregion', '238ece25323eacd9f4fb9e5a966e5cd75185722371bb005293a5b7dc022fb0d1'],
+];
+
+const WEB_BALANCE_SLOT = 'if (input.balanceOn && input.balanceAvailable && (input.balanceEnabled || input.balanceManual)) return "balance";';
+const OWN_BALANCE_SLOT = 'if (!input.balanceEnabled && input.balanceOn && input.balanceAvailable && input.balanceManual) return "balance";';
+
+export function patchModularClient049(input) {
+  const source = validateModularClient043(input).replaceAll('\r\n', '\n');
+  let native = source;
+  const modes = new Set();
+  for (const [before, after] of CLIENT_CHANGES_049) {
+    const patched = inspectExact048(native, before, after, '049');
+    modes.add(patched);
+    if (patched) native = native.replace(after, () => before);
+  }
+  if (modes.size !== 1) throw Error('harness-modular-runtime-049-anchor-mismatch');
+  const fixed = patchModularClient048(native);
+  // 已准备的 Harness 客户端可另有脚下额度条，核验时只还原其槽位判定。
+  const verification = native.replace(OWN_BALANCE_SLOT, WEB_BALANCE_SLOT);
+  for (const [start, end, digest] of CLIENT_SCOPES_049) validateSourceScope049(verification, start, end, digest);
+  requireOnce(native, 'function shouldRemind(whenFocused, pageActive) {\n\treturn whenFocused || !pageActive;\n}');
+  if (modes.has(true)) return source;
+  return CLIENT_CHANGES_049.slice(2).reduce((current, [before, after]) => current.replace(before, () => after), fixed);
 }

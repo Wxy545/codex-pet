@@ -9,7 +9,7 @@ import { ensureHelperProfile, patchHelperStartup } from '../harness/helper-start
 import {patchModularMain,patchModularUserData,validateModularDpi,validateModularMain} from '../harness/modular-runtime-fix.mjs';
 import {readUpstream,upstreamVersion} from './support/harness-upstream.mjs';
 
-const modular=['0.4.0','0.4.1','0.4.3','0.4.5','0.4.6','0.4.7','0.4.8'].includes(upstreamVersion);
+const modular=['0.4.0','0.4.1','0.4.3','0.4.5','0.4.6','0.4.7','0.4.8','0.4.9'].includes(upstreamVersion);
 assert.ok(modular||upstreamVersion==='0.3.8','测试只接受已审核的dsh-pet版本');
 // 独立宿主准备时显式选择app-profile；测试共享函数前仅还原这个已知参数，保留实际函数体。
 const actualMain = () => readUpstream('runtime/electron-helper/main.js').replace(/(const userDataDecision = resolveUserDataDir\(\{[\s\S]*?\n  appMode:) true,(\n\}\);)/,'$1 APP_MODE,$2');

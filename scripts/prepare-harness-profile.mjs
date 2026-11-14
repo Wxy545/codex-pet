@@ -8,7 +8,7 @@ import {prepareHarnessRemoteState} from '../harness/native-remote-state.mjs';
 import {prepareHarnessTasks} from '../harness/native-tasks.mjs';
 
 const releases=new Set(['0.2.1-rc.2','0.2.1-rc.5','0.2.2-rc.1']);
-const petReleases=new Set(['0.4.0','0.4.1','0.4.3','0.4.5','0.4.6','0.4.7','0.4.8']);
+const petReleases=new Set(['0.4.0','0.4.1','0.4.3','0.4.5','0.4.6','0.4.7','0.4.8','0.4.9']);
 const same=(a,b)=>process.platform==='win32'?a.toLowerCase()===b.toLowerCase():a===b;
 const inside=(root,file)=>{const value=relative(root,file);return value===''||!isAbsolute(value)&&value!=='..'&&!value.startsWith('..'+sep);};
 function checkedDirectory(file){
@@ -40,11 +40,12 @@ export function prepareHarnessProfile({profileDir,bundleDir,dshVersion}={}){
  if(pet.name!=='dsh-pet'||pet.version!==manifest.dependencies['dsh-pet'])throw Error('harness-preparation-pet-mismatch');
  // 四个准备步骤共用目标：先检查所有现有文件与父目录，不能第一步写后才发现下一步越界。
  const files=['lib/client.js','lib/index.js','runtime/electron-helper/shared-core.js','runtime/electron-helper/sprite/motion.js','runtime/electron-helper/main.js','runtime/electron-helper/main/dpi.js','runtime/electron-helper/main/user-data.js','runtime/electron-helper/sprite.js','runtime/electron-helper/sprite/input.js','runtime/electron-helper/index.html'];
- if(['0.4.3','0.4.5','0.4.6','0.4.7','0.4.8'].includes(pet.version))files.push('runtime/electron-helper/sprite/playback.js','runtime/electron-helper/sprite/window-fit.js');
+ if(['0.4.3','0.4.5','0.4.6','0.4.7','0.4.8','0.4.9'].includes(pet.version))files.push('runtime/electron-helper/sprite/playback.js','runtime/electron-helper/sprite/window-fit.js');
  // 046 起飞行状态随 setBounds 提交，写入任一补丁前先检查整个协议文件边界。
- if(['0.4.6','0.4.7','0.4.8'].includes(pet.version))files.push(...['main/windows.js','main/ipc.js','preload.js','sprite/init.js','events.js'].map(name=>'runtime/electron-helper/'+name));
- if(['0.4.7','0.4.8'].includes(pet.version))files.push('runtime/electron-helper/renderer.js');
- if(pet.version==='0.4.8')files.push(...['main/displays.js','pointer-target.js','sprite/menu.js'].map(name=>'runtime/electron-helper/'+name));
+ if(['0.4.6','0.4.7','0.4.8','0.4.9'].includes(pet.version))files.push(...['main/windows.js','main/ipc.js','preload.js','sprite/init.js','events.js'].map(name=>'runtime/electron-helper/'+name));
+ if(['0.4.7','0.4.8','0.4.9'].includes(pet.version))files.push('runtime/electron-helper/renderer.js');
+ if(['0.4.8','0.4.9'].includes(pet.version))files.push(...['main/displays.js','pointer-target.js','sprite/menu.js'].map(name=>'runtime/electron-helper/'+name));
+ if(pet.version==='0.4.9')files.push(...['constants.js','sprite/bubble.js'].map(name=>'runtime/electron-helper/'+name));
  const generated=['runtime/electron-helper/codex-pet-status-strip.js','runtime/electron-helper/codex-pet-status-strip.css'];
  for(const name of [...files,...generated]){
   const file=join(petRoot,name),parent=checkedDirectory(dirname(file));if(!inside(petRoot,parent)||!inside(profile,parent))throw Error('harness-preparation-file-outside-profile');

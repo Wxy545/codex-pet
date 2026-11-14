@@ -76,7 +76,7 @@ export function patchDesktopMotion(source) {
 }
 
 export function patchDesktopBalanceEvents(source, {version} = {}) {
-  if (version === '0.4.8') {
+  if (version === '0.4.8' || version === '0.4.9') {
     // 每个桌面窗口只显示自己的宠物，别的宠物的手动查询也不能改这个窗口的故障去重状态。
     source = replaceOne(source,
       '  if (!hit) return;\n  balance = hit.state;',

@@ -31,7 +31,7 @@ function upstreamCapabilityResult040(rest, method) {
 
 /** 只适配0.4.0实际宿主；Range和调度使用新包原生实现，核验失败即停止。 */
 export function patchStandalone040(input,{version='0.4.0'}={}){
- if(!['0.4.0','0.4.1','0.4.3','0.4.5','0.4.6','0.4.7','0.4.8'].includes(version))throw Error('未知独立运行时版本。');
+ if(!['0.4.0','0.4.1','0.4.3','0.4.5','0.4.6','0.4.7','0.4.8','0.4.9'].includes(version))throw Error('未知独立运行时版本。');
  let source=input.replaceAll('\r\n','\n');
  verify(source,['const decision = parseRange(req.headers.range, totalBytes);','if (!isDisplayed(display)) {','else sendFile(req, res, result.file, result.contentType);'],'原生Range及隐藏碎念');
  source=patchModularSandbox(source);
@@ -60,7 +60,7 @@ export function patchStandalone040(input,{version='0.4.0'}={}){
  const system='const system = petSystemPrompt(found);',expected=version==='0.4.0'?3:2;
  if(source.split(system).length-1!==expected)throw Error(version+' 三路角色快照锚点不匹配。');
  source=source.replaceAll(system,'const characterAtStart = CodexCharacter.readCharacter();\n\t\t'+system);
- const chatIndent=version==='0.4.8'?'\t\t\t':'\t\t';
+ const chatIndent=['0.4.8','0.4.9'].includes(version)?'\t\t\t':'\t\t';
  if(version!=='0.4.0'){
   verify(source,['const system = petSystemPrompt(found, { historyTimes: list.length > 0 });'],'聊天历史人设');
   // 新版先读取记忆再组装人设；角色快照必须位于首次异步读取和分桶之前。
@@ -151,7 +151,7 @@ export function patchPlayback040(input){
 }
 
 export function patchHelper040(input,{version='0.4.0'}={}){
- if(!['0.4.0','0.4.1','0.4.3','0.4.8'].includes(version))throw Error('未知Helper运行时版本。');
+ if(!['0.4.0','0.4.1','0.4.3','0.4.8','0.4.9'].includes(version))throw Error('未知Helper运行时版本。');
  const files=Object.fromEntries(Object.entries(input).map(([name,text])=>[name,text.replaceAll('\r\n','\n')]));
  verify(files['main/bridge.js'],["const decision = parseRange(request.headers.get('range'), data.length);"],'原生bridge Range');
  validateModularMotion(files['sprite/motion.js']);
@@ -172,7 +172,7 @@ export function patchHelper040(input,{version='0.4.0'}={}){
  files['main/ipc.js']=patchHostOpenTarget(files['main/ipc.js'],{startupModule:'../codex-startup.cjs'});
  files['main/user-data.js']=patchModularUserData(files['main/user-data.js']);
  files['sprite.js']=once(files['sprite.js'],'      b: m,','      b: Math.max(m,184),','脚下状态余量');
- const bubbleSlot=version==='0.4.8'?'    this.bubbleSlot = slot;':"workTerminal && workOn ? 'work' : whisperOn ? 'whisper' : balanceOn ? 'balance' : workOn ? 'work' : 'none';";
+ const bubbleSlot=['0.4.8','0.4.9'].includes(version)?'    this.bubbleSlot = slot;':"workTerminal && workOn ? 'work' : whisperOn ? 'whisper' : balanceOn ? 'balance' : workOn ? 'work' : 'none';";
  files['sprite/bubble.js']=once(files['sprite/bubble.js'],bubbleSlot,bubbleSlot+'\n    this.bubble.dataset.slot=slot;','气泡槽标记');
  files['sprite/input.js']=once(files['sprite/input.js'],'.dsh-pet-menu-column, .dsh-pet-chat, .dsh-pet-todo, .pet-bubble.is-clickable','.dsh-pet-menu-column, .dsh-pet-chat, .dsh-pet-todo, .pet-bubble.is-clickable, .pet-status-quota.is-interactive','脚下控件命中');
  files['events.js']=localizeEvents(patchDesktopWorkEvents(patchDesktopBalanceEvents(files['events.js'],{version})));
@@ -183,9 +183,9 @@ export function patchHelper040(input,{version='0.4.0'}={}){
 }
 
 export async function prepareRuntime040({root,pkg,version='0.4.0',capture=captureUpstreamSnapshot040,patchHost=patchStandalone040,patchHelper=patchHelper040}={}){
- if(!['0.4.0','0.4.1','0.4.3','0.4.5','0.4.6','0.4.7','0.4.8'].includes(version)||JSON.parse(await readFile(join(pkg,'package.json'),'utf8')).version!==version)throw Error('独立运行时版本不匹配。');
+ if(!['0.4.0','0.4.1','0.4.3','0.4.5','0.4.6','0.4.7','0.4.8','0.4.9'].includes(version)||JSON.parse(await readFile(join(pkg,'package.json'),'utf8')).version!==version)throw Error('独立运行时版本不匹配。');
  await capture({pkg});
- const helper=join(pkg,'runtime/electron-helper'),names=['main.js','main/tray.js','main/bridge.js','main/ipc.js','main/dpi.js','main/user-data.js','sprite.js','sprite/motion.js','sprite/menu.js','sprite/playback.js','sprite/bubble.js','sprite/input.js','events.js','shared-core.js','index.html',...(['0.4.3','0.4.5','0.4.6','0.4.7','0.4.8'].includes(version)?['sprite/init.js','sprite/window-fit.js']:[]),...(['0.4.6','0.4.7','0.4.8'].includes(version)?['main/windows.js','preload.js']:[]),...(['0.4.7','0.4.8'].includes(version)?['renderer.js']:[]),...(version==='0.4.8'?['main/displays.js','pointer-target.js']:[])];
+ const helper=join(pkg,'runtime/electron-helper'),names=['main.js','main/tray.js','main/bridge.js','main/ipc.js','main/dpi.js','main/user-data.js','sprite.js','sprite/motion.js','sprite/menu.js','sprite/playback.js','sprite/bubble.js','sprite/input.js','events.js','shared-core.js','index.html',...(['0.4.3','0.4.5','0.4.6','0.4.7','0.4.8','0.4.9'].includes(version)?['sprite/init.js','sprite/window-fit.js']:[]),...(['0.4.6','0.4.7','0.4.8','0.4.9'].includes(version)?['main/windows.js','preload.js']:[]),...(['0.4.7','0.4.8','0.4.9'].includes(version)?['renderer.js']:[]),...(['0.4.8','0.4.9'].includes(version)?['main/displays.js','pointer-target.js']:[]),...(version==='0.4.9'?['constants.js']:[])];
  // 直接核验当前已安装文件；未知改动不使用旧快照掩盖，也不覆盖成旧整份runtime。
  const originals=Object.fromEntries(await Promise.all(names.map(async name=>[name,await readFile(join(helper,name),'utf8')])));originals['standalone.js']=await readFile(join(pkg,'lib/standalone.js'),'utf8');originals['preload.js']=await readFile(join(helper,'preload.js'),'utf8');
  const fixed=patchHelper(Object.fromEntries(names.map(name=>[name,originals[name]]))),host=patchHost(originals['standalone.js'],{version});

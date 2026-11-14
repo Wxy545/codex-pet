@@ -1,3 +1,4 @@
+import {readVerifiedUpstream049} from '../../scripts/upstream-snapshot-049.mjs';
 import {readVerifiedUpstream048} from '../../scripts/upstream-snapshot-048.mjs';
 import {readVerifiedUpstream047} from '../../scripts/upstream-snapshot-047.mjs';
 import {readVerifiedUpstream046} from '../../scripts/upstream-snapshot-046.mjs';
@@ -12,6 +13,7 @@ import {readVerifiedUpstream045} from '../../scripts/upstream-snapshot-045.mjs';
 export const upstreamRoot=process.env.CODEX_PET_TEST_UPSTREAM?resolve(process.env.CODEX_PET_TEST_UPSTREAM):fileURLToPath(new URL('../../node_modules/dsh-pet/',import.meta.url));
 export const upstreamVersion=JSON.parse(readFileSync(resolve(upstreamRoot,'package.json'),'utf8')).version;
 export const readUpstream=name=>{
+ if(upstreamVersion==='0.4.9')return readVerifiedUpstream049(upstreamRoot,name);
  if(upstreamVersion==='0.4.8')return readVerifiedUpstream048(upstreamRoot,name);
  if(upstreamVersion==='0.4.7')return readVerifiedUpstream047(upstreamRoot,name);
  if(upstreamVersion==='0.4.6')return readVerifiedUpstream046(upstreamRoot,name);

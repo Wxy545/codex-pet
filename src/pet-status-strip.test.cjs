@@ -4,7 +4,7 @@ const {readFileSync}=require('node:fs');
 const {join,resolve}=require('node:path');
 const upstreamRoot=process.env.CODEX_PET_UPSTREAM_FIXTURE?resolve(process.env.CODEX_PET_UPSTREAM_FIXTURE):join(__dirname,'../node_modules/dsh-pet');
 const upstreamVersion=JSON.parse(readFileSync(join(upstreamRoot,'package.json'),'utf8')).version;
-if(!['0.3.8','0.4.0','0.4.1','0.4.3','0.4.5','0.4.6','0.4.7','0.4.8'].includes(upstreamVersion))throw Error('unreviewed-upstream-version');
+if(!['0.3.8','0.4.0','0.4.1','0.4.3','0.4.5','0.4.6','0.4.7','0.4.8','0.4.9'].includes(upstreamVersion))throw Error('unreviewed-upstream-version');
 const source=readFileSync(require('node:path').join(__dirname,'pet-status-strip.js'),'utf8');
 function load({areas=[]}={}){const module={exports:{}};vm.runInNewContext(source,{module,structuredClone,console,Promise,WORK_AREAS:areas});return module.exports;}
 const json=value=>JSON.parse(JSON.stringify(value));
@@ -24,11 +24,12 @@ test('额度使用实际已用百分比推剩余，缺少读数未知，窗口�
 
 test('真实上游窗口摘要同时显示5小时、周、月，详情同名，进度仍取最紧窗口',async()=>{
  let core=readFileSync(join(upstreamRoot,'runtime/electron-helper/shared-core.js'),'utf8');
- if(['0.4.3','0.4.5','0.4.6','0.4.7','0.4.8'].includes(upstreamVersion)){
+ if(['0.4.3','0.4.5','0.4.6','0.4.7','0.4.8','0.4.9'].includes(upstreamVersion)){
   // 原件仍要求月窗；执行实际准备补丁后再核对Codex单窗口，不在fixture另写解析规则。
-  const patchHelper=upstreamVersion==='0.4.8'?(await import('../scripts/prepare-runtime-048.mjs')).patchHelper048:upstreamVersion==='0.4.5'?(await import('../scripts/prepare-runtime-045.mjs')).patchHelper045:(await import('../scripts/prepare-runtime-043.mjs')).patchHelper043;
+  const patchHelper=upstreamVersion==='0.4.9'?(await import('../scripts/prepare-runtime-049.mjs')).patchHelper049:upstreamVersion==='0.4.8'?(await import('../scripts/prepare-runtime-048.mjs')).patchHelper048:upstreamVersion==='0.4.5'?(await import('../scripts/prepare-runtime-045.mjs')).patchHelper045:(await import('../scripts/prepare-runtime-043.mjs')).patchHelper043;
   const names=['main.js','main/tray.js','main/bridge.js','main/ipc.js','main/dpi.js','main/user-data.js','sprite.js','sprite/motion.js','sprite/menu.js','sprite/playback.js','sprite/bubble.js','sprite/input.js','events.js','shared-core.js','index.html','sprite/init.js','sprite/window-fit.js'];
-  if(upstreamVersion==='0.4.8')names.push('main/displays.js','main/windows.js','pointer-target.js','preload.js','renderer.js');
+  if(['0.4.8','0.4.9'].includes(upstreamVersion))names.push('main/displays.js','main/windows.js','pointer-target.js','preload.js','renderer.js');
+  if(upstreamVersion==='0.4.9')names.push('constants.js');
   core=patchHelper(Object.fromEntries(names.map(name=>[name,readFileSync(join(upstreamRoot,'runtime/electron-helper',name),'utf8')])) )['shared-core.js'];
  }
  const context={};vm.runInNewContext(core,context);const shared=context.PetShared,{quotaView}=load();
@@ -69,7 +70,7 @@ function fixture({actualBubble=false,telemetry=true}={}){
  const window={CodexLocale:{getLocale:()=>locale},PetShared:{balanceDetailView:state=>state.rows||[]},petTelemetry:{getState:()=>new Promise(resolve=>{initialResolve=resolve;}),onState:fn=>{push=fn;return()=>{unsubscribed++;};}},addEventListener:(name,fn)=>events.set(name,fn)};
  if(!telemetry)delete window.petTelemetry;
  const document={createElement:tag=>new Element(tag)};
- if(actualBubble){window.__dshPetDebug={};const actual=require('../test/support/upstream-sprite.cjs')({window,document,navigator:{platform:'Win32'},S:{...window.PetShared,MEME_BUBBLE_CLASS:'has-img'}});Sprite.prototype.renderBubble=actual.renderBubble;Sprite.prototype.balanceClickable=actual.balanceClickable;if(typeof actual.workClickable==='function')Sprite.prototype.workClickable=actual.workClickable;}
+ if(actualBubble){window.__dshPetDebug={};const actual=require('../test/support/upstream-sprite.cjs')({window,document,navigator:{platform:'Win32'},S:{...window.PetShared,MEME_BUBBLE_CLASS:'has-img'}});for(const name of ['renderBubble','balanceClickable','workClickable','whisperClickable'])if(typeof actual[name]==='function')Sprite.prototype[name]=actual[name];}
  const installed=install({window,document,PetSprite:Sprite});
  return{Sprite,window,push:value=>push(value),initial:value=>initialResolve(value),setLocale:value=>{locale=value;},unsubscribed:()=>unsubscribed,close:()=>{events.get('beforeunload')?.();installed.dispose();}};
 }
@@ -99,7 +100,7 @@ test('常驻footer余额不占头顶槽，真实上游renderBubble仍显示普�
  const f=fixture({actualBubble:true}),p=new f.Sprite();p.position();Object.assign(p,{bubbleOn:true,balanceView:[{role:'label',text:'5h usage'}],balanceState:{ok:true,shape:'windows',rows:[{role:'quota',label:'5h',percent:20}]},workOn:true,workText:'Working fixture',workState:'working',whisperOn:false});p.renderBubble();assert.equal(p.bubble.textContent,'Working fixture');assert.equal(p.bubbleOn,true);f.close();
 });
 
-test('043真实window-fit与脚下条共用本体偏移，屏幕四边的上报命中区不再按固定margin推断',{skip:!['0.4.3','0.4.5','0.4.6','0.4.7','0.4.8'].includes(upstreamVersion)},()=>{
+test('043真实window-fit与脚下条共用本体偏移，屏幕四边的上报命中区不再按固定margin推断',{skip:!['0.4.3','0.4.5','0.4.6','0.4.7','0.4.8','0.4.9'].includes(upstreamVersion)},()=>{
  const area={x:0,y:0,width:1000,height:600};
  for(const clamped of [false,true]){
   const reports=[],window={__dshPetDebug:{},PetShared:{},CodexLocale:{getLocale:()=> 'en'},petBridge:{setBounds:(...args)=>reports.push(args)},addEventListener(){}};

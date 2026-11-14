@@ -1,8 +1,9 @@
+import * as newest049 from '../scripts/upstream-snapshot-049.mjs';
 import * as newest048 from '../scripts/upstream-snapshot-048.mjs';
 import * as newest047 from '../scripts/upstream-snapshot-047.mjs';
 import * as newest from '../scripts/upstream-snapshot-046.mjs';
 import test from 'node:test';import assert from'node:assert/strict';import fs from'node:fs';import{join,dirname}from'node:path';import{tmpdir}from'node:os';import * as previous from '../scripts/upstream-snapshot-040.mjs';import * as prior from '../scripts/upstream-snapshot-041.mjs';import * as current from '../scripts/upstream-snapshot-043.mjs';import * as latest from '../scripts/upstream-snapshot-045.mjs';import{readUpstream,upstreamVersion}from'./support/harness-upstream.mjs';
-const selected=({'0.4.0':previous,'0.4.1':prior,'0.4.3':current,'0.4.5':latest,'0.4.6':newest,'0.4.7':newest047,'0.4.8':newest048})[upstreamVersion];
+const selected=({'0.4.0':previous,'0.4.1':prior,'0.4.3':current,'0.4.5':latest,'0.4.6':newest,'0.4.7':newest047,'0.4.8':newest048,'0.4.9':newest049})[upstreamVersion];
 if(!selected)throw Error('unreviewed-upstream-version');
 const suffix=upstreamVersion.replaceAll('.','');
 const captureUpstreamSnapshot040=selected['captureUpstreamSnapshot'+suffix],readVerifiedUpstream040=selected['readVerifiedUpstream'+suffix],UPSTREAM_SHA256_040=selected['UPSTREAM_SHA256_'+suffix],UPSTREAM_SNAPSHOT_DIRECTORY=selected.UPSTREAM_SNAPSHOT_DIRECTORY;

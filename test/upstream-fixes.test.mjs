@@ -1,3 +1,4 @@
+import {patchHelper049,patchStandalone049,patchPlayback049} from '../scripts/prepare-runtime-049.mjs';
 import {patchHelper048,patchStandalone048,patchPlayback048} from '../scripts/prepare-runtime-048.mjs';
 import {patchStandalone047,patchHelper047,patchPlayback047} from '../scripts/prepare-runtime-047.mjs';
 import {patchStandalone046,patchHelper046,patchPlayback046} from '../scripts/prepare-runtime-046.mjs';
@@ -19,12 +20,12 @@ import {patchStandalone043,patchHelper043,patchPlayback043} from '../scripts/pre
 import {patchStandalone045,patchHelper045,patchPlayback045} from '../scripts/prepare-runtime-045.mjs';
 import {validateModularMotion} from '../harness/modular-runtime-fix.mjs';
 
-const packageRoot=resolve(process.env.CODEX_PET_UPSTREAM_FIXTURE||'node_modules/dsh-pet'),meta=JSON.parse(readFileSync(join(packageRoot,'package.json'),'utf8')),modern=['0.4.0','0.4.1','0.4.3','0.4.5','0.4.6','0.4.7','0.4.8'].includes(meta.version);
+const packageRoot=resolve(process.env.CODEX_PET_UPSTREAM_FIXTURE||'node_modules/dsh-pet'),meta=JSON.parse(readFileSync(join(packageRoot,'package.json'),'utf8')),modern=['0.4.0','0.4.1','0.4.3','0.4.5','0.4.6','0.4.7','0.4.8','0.4.9'].includes(meta.version);
 const actual=name=>readFileSync(join(packageRoot,name),'utf8').replaceAll('\r\n','\n');
 const host=actual('lib/standalone.js'),bridge=actual('runtime/electron-helper/'+(modern?'main/bridge.js':'main.js')),sprite=actual('runtime/electron-helper/'+(modern?'sprite/motion.js':'sprite.js')),playback=modern?actual('runtime/electron-helper/sprite/playback.js'):sprite,events=actual('runtime/electron-helper/events.js');
-const hostPatch=modern?({'0.4.0':patchStandalone040,'0.4.1':patchStandalone041,'0.4.3':patchStandalone043,'0.4.8':patchStandalone048,'0.4.7':patchStandalone047,'0.4.6':patchStandalone046,'0.4.5':patchStandalone045}[meta.version]):patchHostAssets,motionPatch=modern?validateModularMotion:patchDesktopMotion,resumePatch=modern?(meta.version==='0.4.8'?patchPlayback048:meta.version==='0.4.7'?patchPlayback047:meta.version==='0.4.6'?patchPlayback046:meta.version==='0.4.5'?patchPlayback045:meta.version==='0.4.3'?patchPlayback043:patchPlayback040):patchDesktopWorkResume;
+const hostPatch=modern?({'0.4.0':patchStandalone040,'0.4.1':patchStandalone041,'0.4.3':patchStandalone043,'0.4.9':patchStandalone049,'0.4.8':patchStandalone048,'0.4.7':patchStandalone047,'0.4.6':patchStandalone046,'0.4.5':patchStandalone045}[meta.version]):patchHostAssets,motionPatch=modern?validateModularMotion:patchDesktopMotion,resumePatch=modern?(meta.version==='0.4.9'?patchPlayback049:meta.version==='0.4.8'?patchPlayback048:meta.version==='0.4.7'?patchPlayback047:meta.version==='0.4.6'?patchPlayback046:meta.version==='0.4.5'?patchPlayback045:meta.version==='0.4.3'?patchPlayback043:patchPlayback040):patchDesktopWorkResume;
 const bridgePatch=modern?source=>{assert.equal(source.split("const decision = parseRange(request.headers.get('range'), data.length);").length,2,'原生Range锚点');return source;}:patchBridgeAssets;
-const modernHelper=modern?({'0.4.0':patchHelper040,'0.4.1':patchHelper041,'0.4.3':patchHelper043,'0.4.8':patchHelper048,'0.4.7':patchHelper047,'0.4.6':patchHelper046,'0.4.5':patchHelper045}[meta.version])(Object.fromEntries(['main.js','main/tray.js','main/bridge.js','main/ipc.js','main/dpi.js','main/user-data.js','sprite.js','sprite/motion.js','sprite/menu.js','sprite/playback.js','sprite/bubble.js','sprite/input.js','events.js','shared-core.js','index.html',...(['0.4.3','0.4.5','0.4.6','0.4.7','0.4.8'].includes(meta.version)?['sprite/init.js','sprite/window-fit.js']:[]),...(['0.4.6','0.4.7','0.4.8'].includes(meta.version)?['main/windows.js','preload.js']:[]),...(['0.4.7','0.4.8'].includes(meta.version)?['renderer.js']:[]),...(meta.version==='0.4.8'?['main/displays.js','pointer-target.js']:[])].map(name=>[name,actual('runtime/electron-helper/'+name)]))):null;
+const modernHelper=modern?({'0.4.0':patchHelper040,'0.4.1':patchHelper041,'0.4.3':patchHelper043,'0.4.9':patchHelper049,'0.4.8':patchHelper048,'0.4.7':patchHelper047,'0.4.6':patchHelper046,'0.4.5':patchHelper045}[meta.version])(Object.fromEntries(['main.js','main/tray.js','main/bridge.js','main/ipc.js','main/dpi.js','main/user-data.js','sprite.js','sprite/motion.js','sprite/menu.js','sprite/playback.js','sprite/bubble.js','sprite/input.js','events.js','shared-core.js','index.html',...(['0.4.3','0.4.5','0.4.6','0.4.7','0.4.8','0.4.9'].includes(meta.version)?['sprite/init.js','sprite/window-fit.js']:[]),...(['0.4.6','0.4.7','0.4.8','0.4.9'].includes(meta.version)?['main/windows.js','preload.js']:[]),...(['0.4.7','0.4.8','0.4.9'].includes(meta.version)?['renderer.js']:[]),...(['0.4.8','0.4.9'].includes(meta.version)?['main/displays.js','pointer-target.js']:[]),...(meta.version==='0.4.9'?['constants.js']:[])].map(name=>[name,actual('runtime/electron-helper/'+name)]))):null;
 const sharedSource=modern?modernHelper['shared-core.js']:actual('runtime/electron-helper/shared-core.js');
 
 test('固定上游运行时修复及新原生锚点严格校验，缺失或重复时停止', () => {
@@ -42,7 +43,7 @@ async function whisperPoll(config, policy) {
   const end = fixed.indexOf('}, "dsh-pet: whisper poll");');
   const start = fixed.lastIndexOf('ctx.effect(() => {', end);
   assert.ok(start >= 0 && end > start);
-  const helpers = ['flattenPetList', 'findPetInstance', 'automaticWhisperSchedule', 'displayCovers',...(modern?['isDisplayed']:[])].map(name => {
+  const helpers = ['flattenPetList', 'findPetInstance', 'automaticWhisperSchedule', 'displayCovers',...(modern?['isDisplayed']:[]),...(meta.version==='0.4.9'?['clampPeriodSec']:[])].map(name => {
     const declaration = fixed.match(new RegExp('function ' + name + '\\([^)]*\\) \\{[\\s\\S]*?^\\}', 'm'))?.[0];
     assert.ok(declaration, name);
     return declaration;
@@ -59,7 +60,9 @@ async function whisperPoll(config, policy) {
     Date: { now: () => now }, setTimeout: (callback, ms) => { if(modern&&ms===10000)drain={callback,ms};else pending = { callback, ms }; return 1; },
     clearTimeout() {},
   };
-  vm.runInNewContext(helpers + '\n' + period + '\n' + fixed.slice(start, end) + '}, "dsh-pet: whisper poll");', scope);
+  const cap=meta.version==='0.4.9'?fixed.match(/const MAX_TIMEOUT_MS = [^\n]+;\nconst MAX_PERIOD_SEC = [^\n]+;/)?.[0]:'';
+  assert.equal(typeof cap,'string');
+  vm.runInNewContext(cap+'\n'+helpers + '\n' + period + '\n' + fixed.slice(start, end) + '}, "dsh-pet: whisper poll");', scope);
   const flush=async()=>{await new Promise(setImmediate);while(drain){const next=drain;drain=null;next.callback();await new Promise(setImmediate);}};await flush();
   return { generated, lastWhisperAt, delay: () => pending.ms, tick: async(advanceMs = 0) => { now += advanceMs; pending.callback();await flush(); } };
 }

@@ -79,12 +79,24 @@ const voiceConfigChanges=[
 
 export function protectStandaloneVoice047(input,{version='0.4.7'}={}){
  // 手动碎念和聊天回复已在047宿主以总闸判定，确认这两个原生门控完整后再适配其它来源。
- const chatIndent=version==='0.4.8'?'\t\t\t':'\t\t';
+ const chatIndent=['0.4.8','0.4.9'].includes(version)?'\t\t\t':'\t\t';
  for(const anchor of [
   '\t\tconst manualVoiceOn = cfg.main?.voiceEnabled === true;\n\t\tconst voiceOff = kind === "whisper" ? !whisperVoiceOn : !manualVoiceOn;\n\t\tconst target = voiceOff ? void 0 : voiceTo ?? voiceTargetFor(found.pet);',
   chatIndent+'const replyVoiceTo = cfg.main?.voiceEnabled === true ? voiceTargetFor(found.pet) : void 0;\n'+chatIndent+'if (generated.text !== "") state.writePet(petId, "say", {'
  ])if(typeof input!=='string'||input.replaceAll('\r\n','\n').split(anchor).length!==2)throw Error(version+' 原生手动播报锚点不匹配。');
- return exactBlocks(input,voiceConfigChanges,'独立语音来源',version).fixed;
+ const changes=version==='0.4.9'?voiceConfigChanges.map(([before,after])=>{
+  before=before.replace('音色与音量共用。','音色、识别实现与音量共用。')
+   .replace('    voiceNotifyEnabled: state.globals.voiceNotifyEnabled,\n    physics: physicsBody(),','    voiceNotifyEnabled: state.globals.voiceNotifyEnabled,\n    // 新语音和环境设置不属于独立宿主。\n    physics: physicsBody(),');
+  for(const [anchor,added] of [
+   ['\n\tif (te !== void 0) outConfig.trayEnabled = te;','\n\tif (sp !== void 0) outConfig.speechProvider = sp;\n\tif (ec !== void 0) outConfig.environmentCity = String(ec).trim();'],
+   ['\n\tif (te !== void 0) bodyOwned.add("trayEnabled");','\n\tif (sp !== void 0) bodyOwned.add("speechProvider");\n\tif (ec !== void 0) bodyOwned.add("environmentCity");'],
+  ]){
+   before=before.replace(anchor,added+anchor);
+   after=after.replace(anchor,added+anchor);
+  }
+  return [before,after];
+ }):voiceConfigChanges;
+ return exactBlocks(input,changes,'独立语音来源',version).fixed;
 }
 
 export function patchStandalone047(input){

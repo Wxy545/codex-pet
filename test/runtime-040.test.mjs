@@ -9,11 +9,12 @@ import {createDesktopChangeGuard} from '../src/control-config.mjs';
 import {localizeIndexHtml} from '../scripts/runtime-locale-patches.mjs';
 let Module={};try{Module=await import('../scripts/prepare-runtime-040.mjs');}catch(error){if(error.code!=='ERR_MODULE_NOT_FOUND')throw error;}
 const root=resolve(process.env.CODEX_PET_UPSTREAM_FIXTURE||'node_modules/dsh-pet'),meta=JSON.parse(await readFile(join(root,'package.json'),'utf8'));
-const supported=['0.4.0','0.4.1','0.4.3','0.4.5','0.4.6','0.4.7','0.4.8'].includes(meta.version),read=name=>readFile(join(root,name),'utf8');
+const supported=['0.4.0','0.4.1','0.4.3','0.4.5','0.4.6','0.4.7','0.4.8','0.4.9'].includes(meta.version),read=name=>readFile(join(root,name),'utf8');
 if(meta.version==='0.4.1'){const current=await import('../scripts/prepare-runtime-041.mjs');Module={...Module,patchStandalone040:current.patchStandalone041,patchHelper040:current.patchHelper041};}
 if(meta.version==='0.4.3'){const current=await import('../scripts/prepare-runtime-043.mjs');Module={...Module,patchStandalone040:current.patchStandalone043,patchHelper040:current.patchHelper043,patchPlayback040:current.patchPlayback043};}
 if(meta.version==='0.4.6'){const current=await import('../scripts/prepare-runtime-046.mjs');Module={...Module,patchStandalone040:current.patchStandalone046,patchHelper040:current.patchHelper046,patchPlayback040:current.patchPlayback046};}
 if(meta.version==='0.4.8'){const current=await import('../scripts/prepare-runtime-048.mjs');Module={...Module,patchStandalone040:current.patchStandalone048,patchHelper040:current.patchHelper048,patchPlayback040:current.patchPlayback048};}
+if(meta.version==='0.4.9'){const current=await import('../scripts/prepare-runtime-049.mjs');Module={...Module,patchStandalone040:current.patchStandalone049,patchHelper040:current.patchHelper049,patchPlayback040:current.patchPlayback049};}
 if(meta.version==='0.4.7'){const current=await import('../scripts/prepare-runtime-047.mjs');Module={...Module,patchStandalone040:current.patchStandalone047,patchHelper040:current.patchHelper047,patchPlayback040:current.patchPlayback047};}
 if(meta.version==='0.4.5'){const current=await import('../scripts/prepare-runtime-045.mjs');Module={...Module,patchStandalone040:current.patchStandalone045,patchHelper040:current.patchHelper045,patchPlayback040:current.patchPlayback045};}
 
@@ -26,7 +27,7 @@ test('0.4宿主保留原生Range与隐藏门控，角色记忆和用途在新生
 });
 
 test('0.4拆分helper只接原生模块，不还原旧main或sprite，启动和托盘使用对象控制器',{skip:!supported},async()=>{
- assert.equal(typeof Module.patchHelper040,'function');const files=Object.fromEntries(await Promise.all(['main.js','main/tray.js','main/bridge.js','main/ipc.js','main/dpi.js','main/user-data.js','sprite.js','sprite/motion.js','sprite/menu.js','sprite/playback.js','sprite/bubble.js','sprite/input.js','events.js','shared-core.js','index.html',...(['0.4.3','0.4.5','0.4.6','0.4.7','0.4.8'].includes(meta.version)?['sprite/init.js','sprite/window-fit.js']:[]),...(['0.4.6','0.4.7','0.4.8'].includes(meta.version)?['main/windows.js','preload.js']:[]),...(['0.4.7','0.4.8'].includes(meta.version)?['renderer.js']:[]),...(meta.version==='0.4.8'?['main/displays.js','pointer-target.js']:[])].map(async name=>[name,await read('runtime/electron-helper/'+name)]))),fixed=Module.patchHelper040(files);
+ assert.equal(typeof Module.patchHelper040,'function');const files=Object.fromEntries(await Promise.all(['main.js','main/tray.js','main/bridge.js','main/ipc.js','main/dpi.js','main/user-data.js','sprite.js','sprite/motion.js','sprite/menu.js','sprite/playback.js','sprite/bubble.js','sprite/input.js','events.js','shared-core.js','index.html',...(['0.4.3','0.4.5','0.4.6','0.4.7','0.4.8','0.4.9'].includes(meta.version)?['sprite/init.js','sprite/window-fit.js']:[]),...(['0.4.6','0.4.7','0.4.8','0.4.9'].includes(meta.version)?['main/windows.js','preload.js']:[]),...(['0.4.7','0.4.8','0.4.9'].includes(meta.version)?['renderer.js']:[]),...(['0.4.8','0.4.9'].includes(meta.version)?['main/displays.js','pointer-target.js']:[]),...(meta.version==='0.4.9'?['constants.js']:[])].map(async name=>[name,await read('runtime/electron-helper/'+name)]))),fixed=Module.patchHelper040(files);
  for(const[name,source]of Object.entries(fixed))if(name.endsWith('.js'))assert.doesNotThrow(()=>new vm.Script(source,{filename:name}));
  assert.match(fixed['main.js'],/const petWindows = createWindows/);assert.match(fixed['main.js'],/petWindows\.create\(\)/);assert.match(fixed['main.js'],/codexWorkbench/);assert.match(fixed['main.js'],/codexConnections/);
  assert.match(fixed['main/tray.js'],/extraItems\(\)/);assert.match(fixed['main/ipc.js'],/require\('\.\.\/codex-startup\.cjs'\)/);assert.match(fixed['sprite/input.js'],/pet-status-quota\.is-interactive/);
@@ -38,13 +39,13 @@ test('0.4拆分helper只接原生模块，不还原旧main或sprite，启动和�
 
 test('0.4自有装饰器排在全部sprite方法模块之后，语言先于装饰且原模块顺序不变',{skip:!supported},async()=>{
  const original=await read('runtime/electron-helper/index.html'),fixed=localizeIndexHtml(original),scripts=[...fixed.matchAll(/<script src="(?:\.\/)?([^"]+)"/g)].map(row=>row[1]);
- const modules=['sprite.js',...(['0.4.3','0.4.5','0.4.6','0.4.7','0.4.8'].includes(meta.version)?['sprite/window-fit.js']:[]),'sprite/init.js','sprite/playback.js','sprite/motion.js','sprite/input.js','sprite/bubble.js','sprite/menu.js'];for(const name of modules){assert.ok(scripts.indexOf(name)>=0,name);assert.ok(scripts.indexOf(name)<scripts.indexOf('codex-skin-renderer.js'),name);}for(let i=1;i<modules.length;i++)assert.ok(scripts.indexOf(modules[i-1])<scripts.indexOf(modules[i]),modules[i]);
+ const modules=['sprite.js',...(['0.4.3','0.4.5','0.4.6','0.4.7','0.4.8','0.4.9'].includes(meta.version)?['sprite/window-fit.js']:[]),'sprite/init.js','sprite/playback.js','sprite/motion.js','sprite/input.js','sprite/bubble.js','sprite/menu.js'];for(const name of modules){assert.ok(scripts.indexOf(name)>=0,name);assert.ok(scripts.indexOf(name)<scripts.indexOf('codex-skin-renderer.js'),name);}for(let i=1;i<modules.length;i++)assert.ok(scripts.indexOf(modules[i-1])<scripts.indexOf(modules[i]),modules[i]);
  assert.ok(scripts.indexOf('codex-locale.cjs')<scripts.indexOf('codex-skin-renderer.js'));assert.ok(scripts.indexOf('codex-skin-renderer.js')<scripts.indexOf('events.js'));assert.equal(localizeIndexHtml(fixed),fixed);
 });
 
 test('0.4梦话遵循既有自动开关和最小周期，未知策略及隐藏不发模型，醒睡共用频率预算',{skip:!supported},async()=>{
  const fixed=Module.patchStandalone040(await read('lib/standalone.js')),end=fixed.indexOf('}, "dsh-pet: sleep talk poll");'),start=fixed.lastIndexOf('ctx.effect(() => {',end);assert.ok(start>=0&&end>start);
- const declarations=['automaticWhisperSchedule','displayCovers','isDisplayed'].map(name=>{const value=fixed.match(new RegExp('function '+name+'\\([^)]*\\) \\{[\\s\\S]*?^\\}','m'))?.[0];assert.ok(value,name);return value;}).join('\n');
+ const declarations=['automaticWhisperSchedule','displayCovers','isDisplayed',...(meta.version==='0.4.9'?['shouldSleepTalk']:[])].map(name=>{const value=fixed.match(new RegExp('function '+name+'\\([^)]*\\) \\{[\\s\\S]*?^\\}','m'))?.[0];assert.ok(value,name);return value;}).join('\n');
  let now=1000000,pending,enabled=false,policyKnown=true,period=600;const calls=[],lastWhisperAt=new Map(),pet={id:'synthetic-pet',display:'desktop',whisperEnabled:true},found={pet,conf:{eventsRefreshSec:{whisper:600,sleepTalk:60}}},policy={isReady:()=>true,canWhisper:()=>enabled,whisperIntervalSec:()=>period};
  const scope={ctx:{effect:fn=>fn()},Date:{now:()=>now},SLEEP_TALK_DEFAULT_SEC:60,readAllConfig:()=>({}),configPaths:[],sleep:{ids:()=>[pet.id]},findPetInstance:()=>found,standaloneAiPolicy:()=>policyKnown?policy:undefined,whisperPeriodSec:()=>600,sleepTalkPeriodSec:()=>60,lastWhisperAt,publishSleepTalk:async id=>calls.push(id),setTimeout:(callback,ms)=>{pending={callback,ms};return 1;},clearTimeout(){},log:{warn:message=>{throw Error(message);}}};
  vm.runInNewContext(declarations+'\n'+fixed.slice(start,end)+'}, "dsh-pet: sleep talk poll");',scope);assert.deepEqual(calls,[]);
@@ -99,12 +100,17 @@ test('0.4原生语音入口按真实宿主门控，缺gate和移交均拒绝，�
  let voice=0,speech=0;const deps={voice:{speak:async()=>{voice++;return{ok:true,file:'synthetic-speech.mp3'};}},speech:{hear:async()=>{speech++;return{ok:true,text:'synthetic transcription'};}}},scope={URL,ROUTE_SEGMENT:'/dsh-pet-7340',createDesktopChangeGuard:({run})=>run,desktopSyncQueue:Promise.resolve(),okResult:obj=>({kind:'json',status:200,obj}),methodNotAllowed:()=>({kind:'json',status:405}),failResult:()=>({kind:'json',status:500}),sleepGated:()=>false};
  const helpers=['setUpstreamCapabilityGate','upstreamCapabilityResult040','handleVoiceRoutes','createPetRouter','createHttpRoute'].map(declaration).join('\n');vm.runInNewContext('let codexUpstreamCapabilityGate;\n'+helpers+'\nconst HANDLERS=[handleVoiceRoutes];globalThis.make=createHttpRoute;globalThis.setGate=setUpstreamCapabilityGate;',scope);
  const route=scope.make(deps).handlePetRoute,body=JSON.stringify({text:'synthetic only'}),paths=['voice/speak','voice%2Fspeak','%76oice/speak','voice/hear','voice%2Fhear','%76oice/hear'];
- for(const path of paths){const result=await route('/dsh-pet-7340/'+path,'POST',body);assert.equal(result.status,409,path);}assert.equal(voice+speech,0);
+ const hearing=path=>decodeURIComponent(path)==='voice/hear';
+ const deniedStatus=(path,status)=>meta.version==='0.4.9'&&hearing(path)?403:status;
+ for(const path of paths){const result=await route('/dsh-pet-7340/'+path,'POST',body);assert.equal(result.status,deniedStatus(path,409),path);}assert.equal(voice+speech,0);
  for(const state of [{host:'workbuddy',available:true},{host:'codex',available:false},{host:'harness',available:true}]){
-  scope.setGate(()=>state);for(const path of paths){const result=await route('/dsh-pet-7340/'+path,'POST',body);assert.equal(result.status,state.host==='workbuddy'?403:409,path);}assert.equal(voice+speech,0);
+  scope.setGate(()=>state);for(const path of paths){const result=await route('/dsh-pet-7340/'+path,'POST',body);assert.equal(result.status,deniedStatus(path,state.host==='workbuddy'?403:409),path);}assert.equal(voice+speech,0);
  }
  scope.setGate(()=>{throw Error('unknown handoff state');});assert.equal((await route('/dsh-pet-7340/voice/speak','POST',body)).status,409);assert.equal(voice,0);
- scope.setGate(()=>({host:'codex',available:true}));assert.equal((await route('/dsh-pet-7340/voice%2Fspeak','POST',body)).kind,'file');assert.equal((await route('/dsh-pet-7340/voice%2Fhear','POST',body)).obj.text,'synthetic transcription');assert.equal(voice,1);assert.equal(speech,1);
+ scope.setGate(()=>({host:'codex',available:true}));assert.equal((await route('/dsh-pet-7340/voice%2Fspeak','POST',body)).kind,'file');assert.equal(voice,1);
+ const hear=await route('/dsh-pet-7340/voice%2Fhear','POST',body);
+ if(meta.version==='0.4.9'){assert.equal(hear.status,403);assert.equal(speech,0);}
+ else{assert.equal(hear.obj.text,'synthetic transcription');assert.equal(speech,1);}
 });
 
 test('0.4配置锁等实际拆分Helper重建队列完成再释放，局部队列不越作用域引用',{skip:!supported},async()=>{

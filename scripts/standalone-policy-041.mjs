@@ -3,8 +3,8 @@ const region=(source,name,run)=>{const start='//#region src/'+name,a=source.inde
 
 /** 新版运行时保留原模块，仅恢复本项目已授权的启用、自动周期和调用上限。 */
 export function preserveStandalonePolicy041(input,{version='0.4.1'}={}){
- if(!['0.4.1','0.4.3','0.4.5','0.4.6'].includes(version))throw Error('未知独立宿主策略版本。');
- const connectionVariable=['0.4.5','0.4.6'].includes(version)?'current$3':'current$2';
+ if(!['0.4.1','0.4.3','0.4.5','0.4.6','0.4.9'].includes(version))throw Error('未知独立宿主策略版本。');
+ const connectionVariable=version==='0.4.9'?'current$1':['0.4.5','0.4.6'].includes(version)?'current$3':'current$2';
  let source=input.replaceAll('\r\n','\n');
  source=region(source,'standalone/settings.ts',block=>{
   block=one(block,'\tclearApiKey: z.boolean().optional(),','\tclearApiKey: z.boolean().optional(),\n\tenabled: z.boolean().optional(),','设置启用位');
@@ -12,9 +12,12 @@ export function preserveStandalonePolicy041(input,{version='0.4.1'}={}){
  });
  source=region(source,'standalone/ai-config.ts',block=>{
   block=one(block,'\tenabled: true,','\tenabled: false,','默认模型关闭');
-  block=one(block,'\t\t\tapiKey,\n\t\t\tenabled: true','\t\t\tapiKey: apiKey','尊重已保存启用位');
-  block=one(block,'\t\tif (patch.clearApiKey && patch.apiKey) throw new Error("Conflicting key changes");','\t\tif (patch.clearApiKey && patch.apiKey) throw new Error("Conflicting key changes");\n\t\t// 已保存凭据仅属于原端点，换地址不能默默带走本机桥接令牌。\n\t\tif(previous.apiKey&&patch.baseUrl!==undefined&&patch.baseUrl!==previous.baseUrl&&!patch.apiKey&&!patch.clearApiKey)throw new Error("Endpoint changes require a new API key.");','保存凭据端点隔离');
-  return one(block,'const { apiKey, enabled,...publicFields } = settings;','const { apiKey,...publicFields } = settings;','启用位脱敏投影');
+  if(version==='0.4.9')block=one(block,'\t\t\tapiKey,\n\t\t\tdeepseekApiKey,\n\t\t\tenabled: true','\t\t\tapiKey,\n\t\t\tdeepseekApiKey: deepseekApiKey','尊重已保存启用位');
+  else block=one(block,'\t\t\tapiKey,\n\t\t\tenabled: true','\t\t\tapiKey: apiKey','尊重已保存启用位');
+  const conflict=version==='0.4.9'?'\t\tif (patch.clearApiKey && patch.apiKey || patch.clearDeepseekKey && patch.deepseekApiKey) throw new Error("Conflicting key changes");':'\t\tif (patch.clearApiKey && patch.apiKey) throw new Error("Conflicting key changes");';
+  block=one(block,conflict,conflict+'\n\t\t// 已保存凭据仅属于原端点，换地址不能默默带走本机桥接令牌。\n\t\tif(previous.apiKey&&patch.baseUrl!==undefined&&patch.baseUrl!==previous.baseUrl&&!patch.apiKey&&!patch.clearApiKey)throw new Error("Endpoint changes require a new API key.");','保存凭据端点隔离');
+  const redact=version==='0.4.9'?'apiKey, deepseekApiKey':'apiKey';
+  return one(block,`const { ${redact}, enabled,...publicFields } = settings;`,`const { ${redact},...publicFields } = settings;`,'启用位脱敏投影');
  });
  source=region(source,'host/whisper-policy.ts',block=>{
   block=one(block,'\treturn {\n\t\tenabled: petEnabled && policy.isReady(),\n\t\tperiodSec: configuredPeriodSec\n\t};','\tconst period = policy.whisperIntervalSec();\n\treturn {\n\t\tenabled: petEnabled && policy.isReady() && policy.canWhisper(),\n\t\tperiodSec: Number.isFinite(period) ? Math.max(60, period) : 300\n\t};','自动碎念授权');
