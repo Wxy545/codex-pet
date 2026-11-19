@@ -12,7 +12,7 @@ $taskRoot = Split-Path $PSScriptRoot -Parent
 if (-not $NodeCommand) { $NodeCommand = (Get-Command node -ErrorAction Stop).Source }
 if (-not $DshCommand) {
     $taskDshExecutable = Get-Command dsh -ErrorAction SilentlyContinue
-    if (-not $taskDshExecutable) { throw 'Install DeepSeek Harness first: npm install -g @deepseek-ai/dsh@0.2.2-rc.1 (Node.js 24.9+)' }
+    if (-not $taskDshExecutable) { throw 'Install DeepSeek Harness first: npm install -g @deepseek-ai/dsh@0.2.2-rc.5 (Node.js 24.9+)' }
     $DshCommand = $taskDshExecutable.Source
 }
 $taskBundledCli = $DshCommand -match '[\\/]resources[\\/]runtime[\\/]cli[\\/]bin[\\/]dsh(?:\.cmd)?$'

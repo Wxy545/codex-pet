@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync, spawnSync } from 'node:child_process';
-import { mkdtempSync, writeFileSync, readFileSync, rmSync, realpathSync } from 'node:fs';
+import { mkdtempSync, writeFileSync, readFileSync, rmSync, realpathSync, readdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -131,9 +131,21 @@ test('PATH 中有多个 Node 时启动入口只选择首个可执行文件', win
 });
 
 test('所有 PowerShell 入口可由 Windows PowerShell 5.1 解析', windowsOnly, () => {
-  const script = `$ErrorActionPreference='Stop'; $count=0; Get-ChildItem -LiteralPath $env:PET_SCRIPT_ROOT -Recurse -Filter *.ps1 | Where-Object { $_.FullName -notmatch '[\\\\/](node_modules|data)[\\\\/]' } | ForEach-Object { $errors=$null; [Management.Automation.Language.Parser]::ParseFile($_.FullName,[ref]$null,[ref]$errors) | Out-Null; if($errors.Count){ throw ($_.FullName + ': ' + ($errors | Out-String)) }; $count++ }; if($count -lt 4){throw '未找到预期脚本'}`;
+  const scripts = [], pending = [root];
+  // 在进入目录前排除本机依赖和验收材料，仍解析仓库内所有源码脚本。
+  while (pending.length) {
+    const directory = pending.pop();
+    for (const item of readdirSync(directory, { withFileTypes: true })) {
+      if (['data', 'node_modules', '.git'].includes(item.name)) continue;
+      const file = join(directory, item.name);
+      if (item.isDirectory()) pending.push(file);
+      else if (item.isFile() && item.name.endsWith('.ps1')) scripts.push(file);
+    }
+  }
+  assert.ok(scripts.length >= 4, '未找到预期脚本');
+  const script = `$ErrorActionPreference='Stop'; foreach($file in (ConvertFrom-Json $env:PET_SCRIPT_FILES)) { $errors=$null; [Management.Automation.Language.Parser]::ParseFile($file,[ref]$null,[ref]$errors) | Out-Null; if($errors.Count){ throw ($file + ': ' + ($errors | Out-String)) } }`;
   execFileSync(powershell, ['-NoProfile', '-NonInteractive', '-Command', script], {
-    env: { ...process.env, PET_SCRIPT_ROOT: root }, windowsHide: true, timeout: 20000,
+    env: { ...process.env, PET_SCRIPT_FILES: JSON.stringify(scripts) }, windowsHide: true, timeout: 20000,
   });
 });
 

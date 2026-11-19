@@ -52,13 +52,15 @@ function workBuddySpec(native){
  return{command:native.nodePath,args:[native.cliPath,'--serve','--acp','--acp-transport','stdio','--host','127.0.0.1','--port','0','--auth','password','--permission-mode','plan','--setting-sources','none','--tools','','--strict-mcp-config','--mcp-config','{"mcpServers":{}}','--settings',JSON.stringify(settings)],env:{...process.env,CODEBUDDY_CONFIG_DIR:native.configDir,WORKBUDDY_CONFIG_DIR:native.configDir,CODEBUDDY_FORCE_LITE_WB_BUNDLE:'1',CODEBUDDY_GATEWAY_PASSWORD:randomBytes(32).toString('base64url'),DISABLE_TELEMETRY:'1',NODE_OPTIONS:'',NODE_PATH:''}};
 }
 async function ownHarnessProfile(native,cwd,signal){
- if(!native||!isAbsolute(native.command??'')||!file(native.command)||!/^dsh(?:\.cmd|\.exe)?$/i.test(basename(native.command))||!isAbsolute(native.home??'')||!['0.2.1-rc.2','0.2.1-rc.5','0.2.2-rc.1'].includes(native.version)||!field(native.profile)||!file(join(native.home,'profiles',native.profile,'package.json')))fail('not_installed');
+ if(!native||!isAbsolute(native.command??'')||!file(native.command)||!/^dsh(?:\.cmd|\.exe)?$/i.test(basename(native.command))||!isAbsolute(native.home??'')||!['0.2.1-rc.2','0.2.1-rc.5','0.2.2-rc.1','0.2.2-rc.5'].includes(native.version)||!field(native.profile)||!file(join(native.home,'profiles',native.profile,'package.json')))fail('not_installed');
  const parent=directory(join(native.home,'profiles'),{create:false});
  const digest=createHash('sha256').update(cwd+'\0'+native.version+'\0role-chat-v1').digest('hex').slice(0,18),profile='codex-pet-chat-'+digest,root=directory(join(parent,profile));
  const guard=`import {createRoleChatGuard} from ${JSON.stringify(new URL('./role-generator.mjs',import.meta.url).href)};\nexport const name='codex-pet-chat-guard';\nexport const inject=['tools'];\nexport function apply(ctx){createRoleChatGuard(ctx);}\n`;
+ // 新版原生团队工具不进入无工具聊天，旧版专用profile的内容保持可核对。
+ const disabled=native.version==='0.2.2-rc.5'?[...DENY_HARNESS,'agent-team','tool-agent-team']:DENY_HARNESS;
  const files={
   'package.json':JSON.stringify({name:profile,private:true,dependencies:{'@deepseek-ai/dsh-base':native.version,'@deepseek-ai/dsh-acp-app':native.version},dsh:{profile:{bundles:['@deepseek-ai/dsh-base','@deepseek-ai/dsh-acp-app']}}},null,2)+'\n',
-  'cordis.patch.yml':JSON.stringify([...DENY_HARNESS.map(id=>({id,disabled:true})),{id:'sandbox-policy',config:{mode:'read-only',workspaceRoot:cwd}},{id:'approval',config:{policy:'ask'}},{id:'permission',config:{presets:{'read-only':{sandbox:'read-only',approval:'ask'}},defaultPreset:'read-only'}},{insert:[{id:'codex-pet-chat-guard',name:join(root,'chat-guard.mjs')}]}],null,2)+'\n',
+  'cordis.patch.yml':JSON.stringify([...disabled.map(id=>({id,disabled:true})),{id:'sandbox-policy',config:{mode:'read-only',workspaceRoot:cwd}},{id:'approval',config:{policy:'ask'}},{id:'permission',config:{presets:{'read-only':{sandbox:'read-only',approval:'ask'}},defaultPreset:'read-only'}},{insert:[{id:'codex-pet-chat-guard',name:join(root,'chat-guard.mjs')}]}],null,2)+'\n',
   'chat-guard.mjs':guard,
   '.codex-pet-chat.json':JSON.stringify({schemaVersion:1,version:native.version,cwd,tools:false})+'\n'
  };

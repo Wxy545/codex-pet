@@ -8,7 +8,7 @@ You can ask Codex: **Install White Dragon Girl from https://github.com/Wxy545/co
 
 ## Install
 
-On Windows, use DeepSeek Harness **0.2.2-rc.1** with Node.js **24.9 or newer**, and `dsh-pet` **0.4.9**. Existing Harness **0.2.1-rc.2 and 0.2.1-rc.5** installations remain supported with Node.js **22.12 or newer**. The npm Harness CLI also needs `pnpm` on PATH. From the Codex Pet checkout, run:
+On Windows, use DeepSeek Harness **0.2.2-rc.5** with Node.js **24.9 or newer**, and `dsh-pet` **0.4.9**. Harness **0.2.2-rc.1** also remains supported. Existing Harness **0.2.1-rc.2 and 0.2.1-rc.5** installations use Node.js **22.12 or newer**. The npm Harness CLI also needs `pnpm` on PATH. From the Codex Pet checkout, run:
 
 ```powershell
 powershell -File scripts/install-harness.ps1 -Profile web
@@ -27,7 +27,7 @@ Restart the selected profile. Dragon Girl appears in the web overlay and desktop
 Already have a prebuilt bundle? Install `dsh-pet@0.4.9` first, then run `dsh plugin --profile web add <bundle-folder-or-tarball>`. Before opening the profile, run the following from this checkout, using the installed bundle's real folder and the version returned by your selected `dsh --version`:
 
 ```powershell
-node scripts/prepare-harness-profile.mjs --profile-dir '<Harness-home>/profiles/web' --bundle-dir '<installed-bundle-folder>' --dsh-version 0.2.2-rc.1
+node scripts/prepare-harness-profile.mjs --profile-dir '<Harness-home>/profiles/web' --bundle-dir '<installed-bundle-folder>' --dsh-version 0.2.2-rc.5
 ```
 
 Keep both bundles enabled. The source `harness/` folder is not a built bundle; use the build script or installer first.
@@ -48,7 +48,7 @@ The bundle checks the playback, motion, input, window, and voice modules before 
 
 也可以直接对 Codex 说：**把 https://github.com/Wxy545/codex-pet 的白龙娘插件装到我正在用的 DeepSeek Harness，按 harness/README.md 选择对应的官方 CLI，保留现有宠物设置。**
 
-Windows 上支持 DeepSeek Harness **0.2.2-rc.1**，该版本需要 Node.js **24.9 或更新版**，配合 `dsh-pet` **0.4.9**。旧版 Harness **0.2.1-rc.2、0.2.1-rc.5** 仍可使用，Node.js 要求保持 **22.12 或更新版**。普通 npm 版 Harness CLI 还需要 PATH 中有 `pnpm`。在 Codex Pet 项目目录运行：
+Windows 上支持 DeepSeek Harness **0.2.2-rc.5 和 0.2.2-rc.1**，这两版需要 Node.js **24.9 或更新版**，配合 `dsh-pet` **0.4.9**。旧版 Harness **0.2.1-rc.2、0.2.1-rc.5** 使用 Node.js **22.12 或更新版**。普通 npm 版 Harness CLI 还需要 PATH 中有 `pnpm`。在 Codex Pet 项目目录运行：
 
 ```powershell
 powershell -File scripts/install-harness.ps1 -Profile web

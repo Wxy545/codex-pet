@@ -29,15 +29,15 @@ function fixture(t){
 
 test('官方原件在任何宿主import前离线准备四类补丁，且不改pnpm共享原件',t=>{
  const f=fixture(t),shared=join(f.root,'shared-original.js');linkSync(join(f.pkg,'lib/index.js'),shared);
- const result=prepareHarnessProfile(f.options);assert.equal(result.status,'updated');assert.equal(result.petVersion,upstreamVersion);
+ const result=prepareHarnessProfile({...f.options,dshVersion:'0.2.2-rc.5'});assert.equal(result.status,'updated');assert.equal(result.petVersion,upstreamVersion);assert.equal(result.dshVersion,'0.2.2-rc.5');
  const host=readFileSync(join(f.pkg,'lib/index.js'),'utf8');assert.ok(host.includes('ctx.provide("codexPetQQState"'));assert.ok(host.includes('codexPetNativeTasks?.transition(session,event,next)'));
  assert.ok(readFileSync(join(f.pkg,'lib/client.js'),'utf8').includes('CodexNativeBalanceFooter'));assert.equal(readFileSync(shared,'utf8'),readUpstream('lib/index.js'));
- for(const dshVersion of ['0.2.1-rc.2','0.2.1-rc.5','0.2.2-rc.1'])assert.equal(prepareHarnessProfile({...f.options,dshVersion}).status,'current');
+ for(const dshVersion of ['0.2.1-rc.2','0.2.1-rc.5','0.2.2-rc.1','0.2.2-rc.5'])assert.equal(prepareHarnessProfile({...f.options,dshVersion}).status,'current');
 });
 
 test('未登记、错误bundle或未知版本在准备前拒绝，真实原件保持不变',t=>{
  const f=fixture(t),original=readFileSync(join(f.pkg,'lib/index.js'),'utf8');
- for(const dshVersion of ['next','0.2.2-rc.2','0.2.2-rc.3'])assert.throws(()=>prepareHarnessProfile({...f.options,dshVersion}),/unverified/);
+ for(const dshVersion of ['next','0.2.2-rc.2','0.2.2-rc.3','0.2.2-rc.4','^0.2.2-rc.5'])assert.throws(()=>prepareHarnessProfile({...f.options,dshVersion}),/unverified/);
  assert.throws(()=>prepareHarnessProfile({...f.options,bundleDir:f.root}),/bundle-mismatch/);
  for(const version of ['0.4.4','0.4.10','^0.4.5','^0.4.6','^0.4.7','^0.4.8','^0.4.9']){
   f.manifest.dependencies['dsh-pet']=version;writeFileSync(join(f.profileDir,'package.json'),JSON.stringify(f.manifest));

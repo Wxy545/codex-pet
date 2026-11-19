@@ -244,7 +244,7 @@ Codex 和 dsh-pet 的更新检查、源码运行及故障排查见[维护文档]
 
 在控制中心或托盘选择「联动应用 → DeepSeek Harness（原生插件）」，选择已安装的 Harness 和 profile，即可将龙娘的 23 段动画接入原生 dsh-pet。桌面版先启动一次以初始化配置，再从托盘完全退出后安装；装好后重新打开该 profile。
 
-Harness 0.2.2-rc.1 需要 Node.js 24.9 或更新版。安装器单独核对所选 Harness CLI 的运行环境，Codex 和 WorkBuddy 的要求不变；旧版 Harness 0.2.1-rc.2、rc.5 仍可使用。
+Harness 0.2.2-rc.5 和 0.2.2-rc.1 需要 Node.js 24.9 或更新版。安装器单独核对所选 Harness CLI 的运行环境，旧版 Harness 0.2.1-rc.2、0.2.1-rc.5 仍可使用。
 
 Harness 使用自己的账号、会话、余额和聊天。脚下额度条显示服务商实际返回的 API 金额、积分或用量窗口，点击窗口摘要可看重置时间。托盘或控制中心切回 Codex、WorkBuddy 后，恢复独立桌宠和原有角色选择。启动主题与导入视频目前用于独立桌宠，尚不控制 Harness 原生启动页。兼容版本与手动安装见[插件说明](harness/README.md)。
 

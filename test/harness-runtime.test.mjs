@@ -18,8 +18,19 @@ test('Harness运行时与构建Node分离，版本检查成功和失败均恢复
  const run=version=>{writeFileSync(versionFile,version);const result=spawnSync('powershell.exe',['-NoProfile','-File',runner,'-Cli',cli,'-Helper',helper,'-Node',process.execPath],{encoding:'utf8',windowsHide:true,timeout:15000});assert.equal(result.status,0,result.stderr);return JSON.parse(result.stdout.trim());};
  const legacy=run('0.2.1-rc.5');assert.equal(legacy.ok,true);assert.equal(legacy.restored,true);assert.equal(legacy.runtime.Version,'0.2.1-rc.5');assert.equal(readFileSync(observed,'utf8').length>0,true);
  assert.equal(legacy.runtime.NodeCommand.toLowerCase(),process.execPath.toLowerCase());
- const [major,minor]=process.versions.node.split('.').map(Number),modern=run('0.2.2-rc.1');
- assert.equal(modern.restored,true);assert.equal(modern.ok,major>24||major===24&&minor>=9);
- if(!modern.ok)assert.match(modern.message,/24\.9/);
- const unknown=run('0.2.2-rc.2');assert.equal(unknown.ok,false);assert.equal(unknown.restored,true);assert.match(unknown.message,/Other versions have not been verified/);
+ const [major,minor]=process.versions.node.split('.').map(Number);
+ for(const version of ['0.2.2-rc.1','0.2.2-rc.5']){
+  const modern=run(version);
+  assert.equal(modern.restored,true);assert.equal(modern.ok,major>24||major===24&&minor>=9,version);
+  if(!modern.ok)assert.match(modern.message,/24\.9/);
+ }
+ for(const version of ['0.2.2-rc.2','0.2.2-rc.3','0.2.2-rc.4','^0.2.2-rc.5']){
+  const unknown=run(version);assert.equal(unknown.ok,false,version);assert.equal(unknown.restored,true);assert.match(unknown.message,/Other versions have not been verified/);
+ }
+ // 桌面启动器自带运行时，传入外部Node也不能使其被选择。
+ const bundled=join(root,'Desktop','resources','runtime','cli','bin','dsh.cmd');mkdirSync(join(bundled,'..'),{recursive:true});
+ writeFileSync(bundled,'@echo off\r\n@echo 0.2.2-rc.5\r\n');
+ const desktop=spawnSync('powershell.exe',['-NoProfile','-File',runner,'-Cli',bundled,'-Helper',helper,'-Node',process.execPath],{encoding:'utf8',windowsHide:true,timeout:15000});
+ assert.equal(desktop.status,0,desktop.stderr);const value=JSON.parse(desktop.stdout.trim());
+ assert.equal(value.ok,true);assert.equal(value.restored,true);assert.equal(value.runtime.Bundled,true);assert.equal(value.runtime.NodeCommand,null);assert.equal(value.runtime.NodeVersion,null);
 });

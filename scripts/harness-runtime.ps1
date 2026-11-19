@@ -31,8 +31,8 @@ function Get-HarnessCliRuntime {
         # 桌面版保留自己的启动器与内置运行时，不用项目的便携 Node 接管它。
         $taskVersion = (& $DshCommand --version | Out-String).Trim()
         if ($LASTEXITCODE -ne 0) { throw 'Harness could not start. Check its own runtime; Harness 0.2.2 requires Node.js 24.9 or later.' }
-        if ($taskVersion -notin @('0.2.1-rc.2','0.2.1-rc.5','0.2.2-rc.1')) { throw 'Other versions have not been verified. Use Harness 0.2.1-rc.2, 0.2.1-rc.5 or 0.2.2-rc.1.' }
-        if (-not $taskBundled -and $taskVersion -eq '0.2.2-rc.1' -and $taskNodeVersion -lt [version]'24.9.0') { throw 'Harness 0.2.2-rc.1 requires Node.js 24.9 or later. The selected CLI runtime is older; the pet and its settings were kept.' }
+        if ($taskVersion -notin @('0.2.1-rc.2','0.2.1-rc.5','0.2.2-rc.1','0.2.2-rc.5')) { throw 'Other versions have not been verified. Use Harness 0.2.1-rc.2, 0.2.1-rc.5, 0.2.2-rc.1 or 0.2.2-rc.5.' }
+        if (-not $taskBundled -and $taskVersion -in @('0.2.2-rc.1','0.2.2-rc.5') -and $taskNodeVersion -lt [version]'24.9.0') { throw 'Harness 0.2.2 requires Node.js 24.9 or later. The selected CLI runtime is older; the pet and its settings were kept.' }
         return [pscustomobject]@{ Version=$taskVersion; NodeCommand=$taskNode; NodeVersion=if($taskNodeVersion){$taskNodeVersion.ToString()}else{$null}; Bundled=$taskBundled }
     } finally {
         [Environment]::SetEnvironmentVariable('PATH', $taskPreviousPath, 'Process')

@@ -77,15 +77,16 @@ test('纯聊天拒绝原生任何工具调用、权限与文件回调，即使�
  }
 });
 
-for(const harnessVersion of ['0.2.1-rc.2','0.2.1-rc.5','0.2.2-rc.1'])test('Harness '+harnessVersion+'纯聊天创建独立固定版本profile，全工具双重拒绝，用户profile不改',async t=>{
+for(const harnessVersion of ['0.2.1-rc.2','0.2.1-rc.5','0.2.2-rc.1','0.2.2-rc.5'])test('Harness '+harnessVersion+'纯聊天创建独立固定版本profile，全工具双重拒绝，用户profile不改',async t=>{
  const f=fixture(t),native=harness(f),peer=acpPeer(),old=readFileSync(join(native.home,'profiles/web/package.json'),'utf8');
  native.version=harnessVersion;
- if(harnessVersion==='0.2.2-rc.1')native.command=f.put('Desktop/resources/runtime/cli/bin/dsh.cmd');
+ if(['0.2.2-rc.1','0.2.2-rc.5'].includes(harnessVersion))native.command=f.put('Desktop/resources/runtime/cli/bin/dsh.cmd');
  const service=generator(t,f,{getNative:async()=>native,spawnImpl:peer.spawnImpl});await service.generate(request('harness'));
  const[command,args]=peer.launch;const wrapped=process.platform==='win32'&&native.command.endsWith('.cmd'),source=wrapped?Buffer.from(args[args.indexOf('-EncodedCommand')+1],'base64').toString('utf16le'):'';
  if(wrapped)assert.ok(source.includes(native.command));else assert.equal(command,native.command);
  const profile=wrapped?source.match(/'--profile' '([^']+)'/)[1]:args[args.indexOf('--profile')+1];assert.match(profile,/^codex-pet-chat-/);assert.notEqual(profile,'web');const directory=join(native.home,'profiles',profile),pkg=JSON.parse(readFileSync(join(directory,'package.json'),'utf8')),patch=JSON.parse(readFileSync(join(directory,'cordis.patch.yml'),'utf8'));
  assert.deepEqual(pkg.dsh.profile.bundles,['@deepseek-ai/dsh-base','@deepseek-ai/dsh-acp-app']);assert.equal(pkg.dependencies['@deepseek-ai/dsh-base'],native.version);for(const key of ['tool-fs','tool-bash','tool-pwsh','tool-web','mcp-client','plugin-manager'])assert.equal(patch.find(x=>x.id===key).disabled,true);
+ for(const id of ['agent-team','tool-agent-team'])assert.equal(patch.find(item=>item.id===id)?.disabled,harnessVersion==='0.2.2-rc.5'?true:undefined);
  assert.equal(readFileSync(join(native.home,'profiles/web/package.json'),'utf8'),old);const hooks=new Map();Module.createRoleChatGuard({on:(name,callback)=>hooks.set(name,callback)});assert.equal((await hooks.get('tools/pre-execute')({name:'future-tool'},()=>true)).kind,'deny');await assert.rejects(hooks.get('tools/execute')({name:'read'},()=>true),{code:'role_generator_tools_forbidden'});
 });
 
@@ -99,6 +100,10 @@ test('原生宿主未安装、版本不支持或强行传模型时拒绝，不�
  await assert.rejects(service.generate(request('harness')),{code:'not_installed'});assert.deepEqual(hosts,['harness']);
  await assert.rejects(service.generate(request('workbuddy',{execution:{model:'cannot-override',effort:'high'}})),{code:'model_selection_unavailable'});
  const native=wb(f),wrong=generator(t,f,{getNative:async()=>({...native,version:'wrong'}),spawnImpl:()=>{throw Error('must not spawn');}});f.put('native/cli/package.json',JSON.stringify({name:'@genie/agent-cli',version:'9.9.9'}));await assert.rejects(wrong.generate(request('workbuddy')),{code:'native_version_unverified'});
+ for(const version of ['0.2.2-rc.2','0.2.2-rc.3','0.2.2-rc.4','next','^0.2.2-rc.5']){
+  const candidate=harness(f),unverified=generator(t,f,{getNative:async()=>({...candidate,version}),spawnImpl:()=>{throw Error('must not spawn');}});
+  await assert.rejects(unverified.generate(request('harness')),{code:'not_installed'});
+ }
 });
 
 test('取消、超时及释放只终止本次原生子进程，迟到正文不返回',async t=>{

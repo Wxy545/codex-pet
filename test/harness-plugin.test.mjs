@@ -232,7 +232,8 @@ test('Windows installer accepts verified releases in Chinese spaced paths and re
   writeFileSync(join(root,'pnpm.cmd'),'@echo 10.20.0\r\n');
   const env={...process.env,PATH:root+';'+process.env.PATH};
   const args=['-NoProfile','-ExecutionPolicy','Bypass','-File',installer,'-Profile','web','-DshHome',join(temp,'isolated-home'),'-DshCommand',stub,'-NodeCommand',process.execPath];
-  for(const version of ['0.2.1-rc.2','0.2.1-rc.5',...(Number(process.versions.node.split('.')[0])>=24?['0.2.2-rc.1']:[])]){
+  const [nodeMajor,nodeMinor]=process.versions.node.split('.').map(Number);
+  for(const version of ['0.2.1-rc.2','0.2.1-rc.5',...(nodeMajor>24||nodeMajor===24&&nodeMinor>=9?['0.2.2-rc.1','0.2.2-rc.5']:[])]){
     writeFileSync(versionFile,version);writeFileSync(log,'');
     const run=spawnSync('powershell.exe',args,{encoding:'utf8',env,windowsHide:true,timeout:15000});
     assert.equal(run.status,0,run.stderr||run.stdout);
@@ -262,7 +263,7 @@ test('Windows installer accepts verified releases in Chinese spaced paths and re
     assert.notEqual(unverifiedPet.status,0);assert.match(unverifiedPet.stderr,/Kept the existing version/);
     assert.equal(readFileSync(existingPackage,'utf8'),unknownPackage);assert.equal(readFileSync(log,'utf8'),'');assert.throws(()=>readFileSync(join(root,'built.txt')),/ENOENT/);
   }
-  for(const version of ['0.2.1-rc.3','0.2.1-rc.6','0.2.1','0.2.2-rc.2']){
+  for(const version of ['0.2.1-rc.3','0.2.1-rc.6','0.2.1','0.2.2-rc.2','0.2.2-rc.3','0.2.2-rc.4','^0.2.2-rc.5']){
     writeFileSync(versionFile,version);writeFileSync(log,'');
     const denied=spawnSync('powershell.exe',args,{encoding:'utf8',env,windowsHide:true,timeout:15000});
     assert.notEqual(denied.status,0);assert.match(denied.stderr,/Other versions have not been verified/);

@@ -33,21 +33,25 @@ test('WorkBuddy resolver reads the managed install stamp, not credential files',
   assert.equal(resolveWorkBuddyNative({dataRoot,projectRoot,nodePath:native.nodePath}).cliPath,native.cliPath);assert.throws(()=>resolveWorkBuddyNative({dataRoot:join(root,'absent'),projectRoot}),{code:'not_installed'});
 });
 
-test('Harness prepare creates only an owned permission-isolated profile and preserves original profile',async t=>{
-  const {native,cwd}=harness(t),original=readFileSync(join(native.home,'profiles/web/package.json'),'utf8');
+for(const harnessVersion of ['0.2.1-rc.5','0.2.2-rc.5'])test('Harness '+harnessVersion+' prepare creates only an owned permission-isolated profile and preserves original profile',async t=>{
+  const {native,cwd,put}=harness(t),original=readFileSync(join(native.home,'profiles/web/package.json'),'utf8');
+  native.version=harnessVersion;
+  if(harnessVersion==='0.2.2-rc.5')native.command=put('Desktop/resources/runtime/cli/bin/dsh.cmd');
   const readonly=await prepareHarnessRemoteProfile({native,cwd,permission:'read-only',runtimeAvailable:()=>true}),writable=await prepareHarnessRemoteProfile({native,cwd,permission:'workspace-write',runtimeAvailable:()=>true});
   assert.notEqual(readonly.profile,writable.profile);assert.equal(readFileSync(join(native.home,'profiles/web/package.json'),'utf8'),original);
   const profile=join(native.home,'profiles',readonly.profile),pkg=JSON.parse(readFileSync(join(profile,'package.json'),'utf8')),patch=JSON.parse(readFileSync(join(profile,'cordis.patch.yml'),'utf8'));
   assert.equal(pkg.dependencies['@deepseek-ai/dsh-acp-app'],native.version);assert.deepEqual(pkg.dsh.profile.bundles,['@deepseek-ai/dsh-base','@deepseek-ai/dsh-acp-app']);assert.equal(patch.find(item=>item.id==='sandbox-policy').config.mode,'read-only');assert.equal(patch.find(item=>item.id==='tool-pwsh').disabled,true);assert.equal(patch.find(item=>item.id==='tool-web').disabled,true);
+  for(const id of ['agent-team','tool-agent-team'])assert.equal(patch.find(item=>item.id===id)?.disabled,harnessVersion==='0.2.2-rc.5'?true:undefined);
   writeFileSync(join(profile,'remote-guard.mjs'),'user edit');await assert.rejects(prepareHarnessRemoteProfile({native,cwd,permission:'read-only',runtimeAvailable:()=>true}),{code:'remote_profile_modified'});
 });
 
 test('Harness rejects missing native installation or absent managed preparation',async t=>{
   const {native,cwd}=harness(t);assert.throws(()=>createHarnessRemote({cwd,native:{...native,command:join(cwd,'missing')}}),{code:'not_installed'});
+  for(const version of ['0.2.2-rc.2','0.2.2-rc.3','0.2.2-rc.4','next','^0.2.2-rc.5'])assert.throws(()=>createHarnessRemote({cwd,native:{...native,version}}),{code:'not_installed'},version);
   const adapter=createHarnessRemote({cwd,native});t.after(()=>adapter.close());assert.equal((await adapter.probe()).reason,'remote_profile_unavailable');assert.throws(()=>resolveHarnessNative({dataRoot:cwd,projectRoot:cwd}),{code:'not_installed'});
 });
 
-for(const harnessVersion of ['0.2.1-rc.2','0.2.1-rc.5','0.2.2-rc.1'])test('Harness '+harnessVersion+'正式注册接受精确已验证的原生桌宠依赖，043/045/046/047/048不能被旧版本条件误拒',t=>{
+for(const harnessVersion of ['0.2.1-rc.2','0.2.1-rc.5','0.2.2-rc.1','0.2.2-rc.5'])test('Harness '+harnessVersion+'正式注册接受精确已验证的原生桌宠依赖，043/045/046/047/048不能被旧版本条件误拒',t=>{
   const {root,put,native}=harness(t),projectRoot=join(root,'project'),dataRoot=join(projectRoot,'data');
   native.version=harnessVersion;
   const record={schemaVersion:1,...native};
@@ -77,11 +81,15 @@ test('Harness选定Node只进入自有子进程PATH，每次核对实际版本�
   };
   const env=await harnessChildEnvironment({...native,nodeCommand},'read-only',{spawnImpl:probe('v22.12.0')}),pathKey=Object.keys(env).find(key=>key.toLowerCase()==='path');
   assert.ok(env[pathKey].startsWith(join(nodeCommand,'..')));assert.equal(env.DSH_HOME,native.home);assert.equal(env.DSH_PERMISSION_MODE,'read-only');assert.equal(process.env.PATH??process.env.Path,originalPath);
-  await assert.rejects(harnessChildEnvironment({...native,nodeCommand,version:'0.2.2-rc.1',nodeVersion:'24.18.0'},'read-only',{spawnImpl:probe('v22.12.0')}),{code:'native_runtime_incompatible'});
-  await harnessChildEnvironment({...native,nodeCommand,version:'0.2.2-rc.1'},'read-only',{spawnImpl:probe('v24.9.0')});
+  for(const version of ['0.2.2-rc.1','0.2.2-rc.5']){
+    // 登记里的版本文字不能代替本次Node实际探针，24.9以下始终拒绝。
+    await assert.rejects(harnessChildEnvironment({...native,nodeCommand,version,nodeVersion:'24.18.0'},'read-only',{spawnImpl:probe('v22.12.0')}),{code:'native_runtime_incompatible'});
+    await assert.rejects(harnessChildEnvironment({...native,nodeCommand,version},'read-only',{spawnImpl:probe('v24.8.0')}),{code:'native_runtime_incompatible'});
+    await harnessChildEnvironment({...native,nodeCommand,version},'read-only',{spawnImpl:probe('v24.9.0')});
+  }
   await assert.rejects(harnessChildEnvironment({...native,nodeCommand},'read-only',{spawnImpl:probe('not-a-version')}),{code:'native_runtime_unavailable'});
   await assert.rejects(harnessChildEnvironment({...native,nodeCommand:put('chosen/not-node.exe')},'read-only',{spawnImpl:()=>{throw Error('must not start');}}),{code:'native_runtime_unavailable'});
-  assert.equal(calls,4);
+  assert.equal(calls,8);assert.equal(process.env.PATH??process.env.Path,originalPath);
 });
 
 test('Harness运行时探针取消只结束自有子进程，原桌宠与正式会话不受影响',async t=>{
@@ -90,12 +98,12 @@ test('Harness运行时探针取消只结束自有子进程，原桌宠与正式�
   controller.abort();await assert.rejects(pending,{code:'profile_prepare_aborted'});assert.equal(killed,1);
 });
 
-test('Harness rc1普通npm缺运行时登记要求重新绑定，旧版与桌面内置启动器不借外部Node',async t=>{
+for(const harnessVersion of ['0.2.2-rc.1','0.2.2-rc.5'])test('Harness '+harnessVersion+'普通npm缺运行时登记要求重新绑定，旧版与桌面内置启动器不借外部Node',async t=>{
   const {native,put}=harness(t);
-  await assert.rejects(harnessChildEnvironment({...native,version:'0.2.2-rc.1'},'read-only'),{code:'native_runtime_rebind_required'});
-  await assert.rejects(harnessChildEnvironment({...native,command:put('standalone/dsh.exe'),version:'0.2.2-rc.1'},'read-only'),{code:'native_runtime_rebind_required'});
+  await assert.rejects(harnessChildEnvironment({...native,version:harnessVersion},'read-only'),{code:'native_runtime_rebind_required'});
+  await assert.rejects(harnessChildEnvironment({...native,command:put('standalone/dsh.exe'),version:harnessVersion},'read-only'),{code:'native_runtime_rebind_required'});
   assert.equal((await harnessChildEnvironment(native,'read-only')).DSH_HOME,native.home);
-  const bundled={...native,version:'0.2.2-rc.1',command:put('Desktop/resources/runtime/cli/bin/dsh.cmd')};
+  const bundled={...native,version:harnessVersion,command:put('Desktop/resources/runtime/cli/bin/dsh.cmd')};
   assert.equal((await harnessChildEnvironment(bundled,'read-only')).DSH_HOME,native.home);
   await assert.rejects(harnessChildEnvironment({...bundled,nodeCommand:put('chosen/node.exe')},'read-only'),{code:'native_runtime_unavailable'});
 });
@@ -146,8 +154,12 @@ test('MCP仅公开元数据、中文名映射稳定ASCII ID，选定版本改变
   assert.equal(readNativeMcpCatalog({host:'workbuddy',native,cwd:root,sourcePath:put('auth.json','not JSON')}).state,'unknown');
 });
 
-test('Harness Shell和MCP按scope另建profile，真实工具执行围栏每条先ask',async t=>{
-  const {native,cwd,put}=harness(t),sourcePath=put('harness-home/profiles/web/mcp.json',JSON.stringify({mcpServers:{docs:{type:'http',url:'http://127.0.0.1:18800/mcp'}}})),catalog=readNativeMcpCatalog({host:'harness',native,cwd,sourcePath});assert.equal(catalog.state,'ready');
+for(const harnessVersion of ['0.2.1-rc.5','0.2.2-rc.5'])test('Harness '+harnessVersion+' Shell和MCP按scope另建profile，真实工具执行围栏每条先ask',async t=>{
+  const {native,cwd,put}=harness(t);
+  native.version=harnessVersion;
+  if(harnessVersion==='0.2.2-rc.5')native.command=put('Desktop/resources/runtime/cli/bin/dsh.cmd');
+  const sourcePath=put('harness-home/profiles/web/mcp.json',JSON.stringify({mcpServers:{docs:{type:'http',url:'http://127.0.0.1:18800/mcp'}}}));
+  const catalog=readNativeMcpCatalog({host:'harness',native,cwd,sourcePath});assert.equal(catalog.state,'ready');
   const toolPolicy={shell:true,mcp:true,mcpServerIds:['docs']},toolScope=remoteToolScope(toolPolicy,catalog.revision),options={native,cwd,permission:'read-only',toolPolicy,mcpSourcePath:sourcePath,mcpRevision:catalog.revision,toolScope,runtimeAvailable:()=>true};
   const prepared=await prepareHarnessRemoteProfile(options),files=await prepareHarnessRemoteProfile({native,cwd,runtimeAvailable:()=>true});assert.notEqual(prepared.profile,files.profile);
   const patch=JSON.parse(readFileSync(join(native.home,'profiles',prepared.profile,'cordis.patch.yml'),'utf8'));assert.equal(patch.find(item=>item.id==='tool-pwsh').disabled,process.platform!=='win32');assert.equal(patch.find(item=>item.id==='tool-pwsh').config.promoteOnTimeout,false);

@@ -6,7 +6,7 @@ const {randomUUID}=require('node:crypto');
 const {execFile}=require('node:child_process');
 const L=require('./codex-locale.cjs');
 const OFFICIAL_URL='https://deepseek.com/harness/';
-const VERSIONS=['0.2.1-rc.2','0.2.1-rc.5','0.2.2-rc.1'];
+const VERSIONS=['0.2.1-rc.2','0.2.1-rc.5','0.2.2-rc.1','0.2.2-rc.5'];
 const PROFILE=/^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
 const text=(zh,en)=>L.getLocale()==='zh-CN'?zh:en;
 const inside=(file,root)=>{const relative=path.relative(root,file);return relative===''||!relative.startsWith('..'+path.sep)&&relative!=='..'&&!path.isAbsolute(relative);};
@@ -117,7 +117,7 @@ function createController({electron,projectRoot=path.resolve(__dirname,'../../..
  async function open(){
   available();if(opening)return opening;
   opening=flow().catch(async error=>{
-   if(!disposed)await dialog.showMessageBox({type:'error',message:text('Harness 尚未接入，当前桌宠保持原样。','Harness was not connected. Your current pet is unchanged.'),detail:error.message==='unsupported-version'?text('当前插件兼容 Harness 0.2.1-rc.2、0.2.1-rc.5 和 0.2.2-rc.1；0.2.2 需要 Node.js 24.9 或更新版。请检查正式安装。','This plugin supports Harness 0.2.1-rc.2, 0.2.1-rc.5 and 0.2.2-rc.1. Harness 0.2.2 needs Node.js 24.9 or later. Check your installation.'):text('请检查安装位置、数据目录、Node.js 版本和 profile；桌面版需先完全退出。原配置和账户不会被替换。','Check the installation, data folder, Node.js version and profile. Fully quit Desktop first. Existing configuration and account settings are kept.'),buttons:[text('确定','OK')]});
+   if(!disposed)await dialog.showMessageBox({type:'error',message:text('Harness 尚未接入，当前桌宠保持原样。','Harness was not connected. Your current pet is unchanged.'),detail:error.message==='unsupported-version'?text('当前插件兼容 Harness 0.2.1-rc.2、0.2.1-rc.5、0.2.2-rc.1 和 0.2.2-rc.5；0.2.2 需要 Node.js 24.9 或更新版。请检查正式安装。','This plugin supports Harness 0.2.1-rc.2, 0.2.1-rc.5, 0.2.2-rc.1 and 0.2.2-rc.5. Harness 0.2.2 needs Node.js 24.9 or later. Check your installation.'):text('请检查安装位置、数据目录、Node.js 版本和 profile；桌面版需先完全退出。原配置和账户不会被替换。','Check the installation, data folder, Node.js version and profile. Fully quit Desktop first. Existing configuration and account settings are kept.'),buttons:[text('确定','OK')]});
    throw Error('harness-unavailable');
   });try{return await opening;}finally{opening=null;}
  }

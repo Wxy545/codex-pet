@@ -7,7 +7,7 @@ import {createAcpRemote,remoteError,reviewRemoteTool as reviewGuard,terminateRem
 import {normalizeRemoteToolPolicy,remoteToolScope} from './remote-tool-policy.mjs';
 import {selectNativeMcp} from './native-mcp.mjs';
 
-const VERSIONS=new Set(['0.2.1-rc.2','0.2.1-rc.5','0.2.2-rc.1']);
+const VERSIONS=new Set(['0.2.1-rc.2','0.2.1-rc.5','0.2.2-rc.1','0.2.2-rc.5']);
 const PET_VERSIONS=new Set(['0.4.0','0.4.1','0.4.3','0.4.5','0.4.6','0.4.7','0.4.8','0.4.9']);
 const profileName=/^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
 const file=path=>{try{const s=lstatSync(path);return s.isFile()&&!s.isSymbolicLink();}catch{return false;}};
@@ -25,7 +25,7 @@ function validateNative(native){
 export async function harnessChildEnvironment(native,permission,{spawnImpl=spawn,signal}={}){
   const env={...process.env,DSH_HOME:native.home,DSH_PERMISSION_MODE:permission,DSH_TELEMETRY_DISABLED:'1',NODE_OPTIONS:'',NODE_PATH:''};
   if(native.nodeCommand===undefined){
-    if(native.version==='0.2.2-rc.1'&&!/[\\/]resources[\\/]runtime[\\/]cli[\\/]bin[\\/]dsh(?:\.cmd)?$/i.test(native.command))throw remoteError('native_runtime_rebind_required');
+    if(['0.2.2-rc.1','0.2.2-rc.5'].includes(native.version)&&!/[\\/]resources[\\/]runtime[\\/]cli[\\/]bin[\\/]dsh(?:\.cmd)?$/i.test(native.command))throw remoteError('native_runtime_rebind_required');
     return env;
   }
   if(typeof native.nodeCommand!=='string'||!isAbsolute(native.nodeCommand)||!/^node(?:\.exe)?$/i.test(basename(native.nodeCommand))||!file(native.nodeCommand)||/[\\/]resources[\\/]runtime[\\/]cli[\\/]bin[\\/]dsh(?:\.cmd)?$/i.test(native.command))throw remoteError('native_runtime_unavailable');
@@ -42,7 +42,7 @@ export async function harnessChildEnvironment(native,permission,{spawnImpl=spawn
     child.stdout.on('data',chunk=>{output+=chunk.toString();if(output.length>128){finish('native_runtime_unavailable');terminateRemoteChild(child);}});child.stderr.on('data',()=>{});
     child.once('error',()=>finish('native_runtime_unavailable'));child.once('close',code=>finish(code===0?undefined:'native_runtime_unavailable'));
   });
-  const match=/^v(\d+)\.(\d+)\.(\d+)$/.exec(version),minimum=native.version==='0.2.2-rc.1'?[24,9,0]:[22,12,0];
+  const match=/^v(\d+)\.(\d+)\.(\d+)$/.exec(version),minimum=['0.2.2-rc.1','0.2.2-rc.5'].includes(native.version)?[24,9,0]:[22,12,0];
   if(!match||match.slice(1).some(value=>!Number.isSafeInteger(Number(value))))throw remoteError('native_runtime_unavailable');
   const parts=match.slice(1).map(Number),difference=parts.findIndex((value,index)=>value!==minimum[index]);
   if(difference!==-1&&parts[difference]<minimum[difference])throw remoteError('native_runtime_incompatible');
@@ -81,7 +81,9 @@ function profileFiles(native,where,permission,policy,mcpContext){
   const guardPath=join(where.directory,'remote-guard.mjs');
   // 中间件既在审批前检查，又在实际文件工具执行前检查，拒绝旧权限事实和越界路径。
   const guard=`import {createRemoteGuard} from ${JSON.stringify(new URL('./harness-remote.mjs',import.meta.url).href)};\nexport const name='codex-pet-remote-guard';\nexport const inject=['tools'];\nexport function apply(ctx){createRemoteGuard(ctx,${JSON.stringify({root:where.root,permission,toolPolicy:policy,...mcpContext})});}\n`;
-  const patch=[...disabled.filter(id=>!policy.shell||!['tool-bash','tool-pwsh'].includes(id)).map(id=>({id,disabled:true})),...(policy.shell?[{id:'tool-bash',disabled:process.platform==='win32',config:{enableRunInBackground:false,promoteOnTimeout:false}},{id:'tool-pwsh',disabled:process.platform!=='win32',config:{enableRunInBackground:false,promoteOnTimeout:false}}]:[]),{id:'sandbox-policy',config:{mode:permission,workspaceRoot:where.root}},{id:'approval',config:{policy:'ask'}},{id:'permission',config:{presets:{[permission]:{sandbox:permission,approval:'ask'}},defaultPreset:permission}},{insert:[{id:'codex-pet-remote-guard',name:guardPath}]}];
+  // 只在新版自有profile关闭新增团队工具，旧profile的逐字完整性校验继续使用原内容。
+  const blocked=native.version==='0.2.2-rc.5'?[...disabled,'agent-team','tool-agent-team']:disabled;
+  const patch=[...blocked.filter(id=>!policy.shell||!['tool-bash','tool-pwsh'].includes(id)).map(id=>({id,disabled:true})),...(policy.shell?[{id:'tool-bash',disabled:process.platform==='win32',config:{enableRunInBackground:false,promoteOnTimeout:false}},{id:'tool-pwsh',disabled:process.platform!=='win32',config:{enableRunInBackground:false,promoteOnTimeout:false}}]:[]),{id:'sandbox-policy',config:{mode:permission,workspaceRoot:where.root}},{id:'approval',config:{policy:'ask'}},{id:'permission',config:{presets:{[permission]:{sandbox:permission,approval:'ask'}},defaultPreset:permission}},{insert:[{id:'codex-pet-remote-guard',name:guardPath}]}];
   return{
     'package.json':JSON.stringify({name:where.profile,private:true,dependencies:{'@deepseek-ai/dsh-base':native.version,'@deepseek-ai/dsh-acp-app':native.version},dsh:{profile:{bundles:['@deepseek-ai/dsh-base','@deepseek-ai/dsh-acp-app']}}},null,2)+'\n',
     'cordis.patch.yml':JSON.stringify(patch,null,2)+'\n','remote-guard.mjs':guard,

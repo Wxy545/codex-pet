@@ -84,19 +84,23 @@ test('已验证4.0/4.1/4.3/4.5/4.6/4.7/4.8/4.9原生profile可移交，未知依
  }
 });
 
-test('0.2.2-rc.1正式安装可独立保存移交，next或未知候选不按版本范围放行',async t=>{
- const f=fixture(t,{version:'0.2.2-rc.1'});await f.controller.open();
- assert.equal(JSON.parse(readFileSync(join(f.dataRoot,'harness-link.json'),'utf8')).version,'0.2.2-rc.1');
- assert.equal(Harness.isActive({dataRoot:f.dataRoot,projectRoot:f.projectRoot}),true);
- for(const version of ['next','0.2.2-rc.2','^0.2.2-rc.1']){
+test('0.2.2-rc.1与rc.5正式安装可保存移交，next或未知候选不按版本范围放行',async t=>{
+ for(const version of ['0.2.2-rc.1','0.2.2-rc.5']){
+  const f=fixture(t,{version});await f.controller.open();
+  assert.equal(JSON.parse(readFileSync(join(f.dataRoot,'harness-link.json'),'utf8')).version,version);
+  assert.equal(Harness.isActive({dataRoot:f.dataRoot,projectRoot:f.projectRoot}),true);
+ }
+ for(const version of ['next','0.2.2-rc.2','0.2.2-rc.3','0.2.2-rc.4','^0.2.2-rc.1','^0.2.2-rc.5']){
   const unknown=fixture(t,{version});await assert.rejects(unknown.controller.open(),/harness-unavailable/);assert.equal(unknown.handoffs.length,0);
  }
 });
 
 test('正式CLI所选Node单独保存，旧记录无运行时字段仍兼容',{skip:process.platform!=='win32'},async t=>{
- const f=fixture(t,{runCommand:async(action,args,{install})=>{if(action==='install')install(args.profile);return{ok:true,version:'0.2.2-rc.1',nodeCommand:process.execPath};}});
- await f.controller.open();const saved=JSON.parse(readFileSync(join(f.dataRoot,'harness-link.json'),'utf8'));
- assert.equal(saved.nodeCommand,process.execPath);assert.equal(Harness.isActive({dataRoot:f.dataRoot,projectRoot:f.projectRoot}),true);
- writeFileSync(join(f.dataRoot,'harness-link.json'),JSON.stringify({...saved,nodeCommand:join(f.projectRoot,'not-node.exe')}));
- assert.equal(Harness.isActive({dataRoot:f.dataRoot,projectRoot:f.projectRoot}),false);
+ for(const version of ['0.2.2-rc.1','0.2.2-rc.5']){
+  const f=fixture(t,{runCommand:async(action,args,{install})=>{if(action==='install')install(args.profile);return{ok:true,version,nodeCommand:process.execPath};}});
+  await f.controller.open();const saved=JSON.parse(readFileSync(join(f.dataRoot,'harness-link.json'),'utf8'));
+  assert.equal(saved.nodeCommand,process.execPath);assert.equal(Harness.isActive({dataRoot:f.dataRoot,projectRoot:f.projectRoot}),true);
+  writeFileSync(join(f.dataRoot,'harness-link.json'),JSON.stringify({...saved,nodeCommand:join(f.projectRoot,'not-node.exe')}));
+  assert.equal(Harness.isActive({dataRoot:f.dataRoot,projectRoot:f.projectRoot}),false);
+ }
 });

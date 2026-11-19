@@ -7,7 +7,7 @@ import {prepareHarnessBalance} from '../harness/native-balance.mjs';
 import {prepareHarnessRemoteState} from '../harness/native-remote-state.mjs';
 import {prepareHarnessTasks} from '../harness/native-tasks.mjs';
 
-const releases=new Set(['0.2.1-rc.2','0.2.1-rc.5','0.2.2-rc.1']);
+const releases=new Set(['0.2.1-rc.2','0.2.1-rc.5','0.2.2-rc.1','0.2.2-rc.5']);
 const petReleases=new Set(['0.4.0','0.4.1','0.4.3','0.4.5','0.4.6','0.4.7','0.4.8','0.4.9']);
 const same=(a,b)=>process.platform==='win32'?a.toLowerCase()===b.toLowerCase():a===b;
 const inside=(root,file)=>{const value=relative(root,file);return value===''||!isAbsolute(value)&&value!=='..'&&!value.startsWith('..'+sep);};
