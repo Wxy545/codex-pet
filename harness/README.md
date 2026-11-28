@@ -20,6 +20,8 @@ The installer checks the Node runtime used by the selected npm CLI. If a suitabl
 
 Keep the checkout in a permanent folder, such as `%LOCALAPPDATA%\codex-pet`. A local install links to its `data/harness-plugin` directory; moving or deleting the checkout breaks that link.
 
+With dsh-pet 0.4.9, peak/off-peak balance rows use the upstream left-aligned layout and a wider bubble on small pets. Other bubbles keep their existing layout. Updates reject partial patches and retain the selected profile's balance provider.
+
 For Harness Desktop, launch it once, then fully quit it. Use `-Profile desktop` with its bundled CLI, for example `-DshCommand '<app-folder>/resources/runtime/cli/bin/dsh.cmd'`. The npm CLI cannot manage the reserved desktop profile. The installer checks this before building or adding packages. The desktop carrier itself has not been tested in this project.
 
 Restart the selected profile. Dragon Girl appears in the web overlay and desktop pet window; `/pet` lists her as `codex-white-dragon`. Use the original pet's display setting if you want only one character. The installation keeps the whale maid and its saved settings.
@@ -61,6 +63,8 @@ powershell -File scripts/install-harness.ps1 -Profile web
 安装器会核对所选 npm CLI 实际使用的 Node。有合适的已安装运行时时，仅在本次 Harness 命令中使用；退出后恢复 PATH，不安装全局软件。龙娘插件仍可用项目的 Node 22 构建，Codex 与 WorkBuddy 的要求不变。
 
 项目需放在并保留于固定目录，例如 `%LOCALAPPDATA%\codex-pet`。本地安装链接的是其中的 `data/harness-plugin`；移动或删除项目目录会断开插件。
+
+dsh-pet 0.4.9 的峰/谷余额行沿用上游修复，单独左对齐，小尺寸宠物的气泡使用更宽的可用区域。其他气泡保持原有布局。更新时拒绝未完整应用的补丁，余额仍来自所选 profile 的原生服务商。
 
 Harness 桌面版需要先启动一次、再完全退出，用 `-Profile desktop -DshCommand '<安装目录>/resources/runtime/cli/bin/dsh.cmd'` 指定桌面版自带命令。npm 安装的普通 dsh 不能管理 desktop profile；脚本会在构建和安装前检查。当前项目尚未实测 Harness 桌面应用载体。
 

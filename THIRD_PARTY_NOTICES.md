@@ -19,6 +19,8 @@
 
 2026-11-12 适配上游的子菜单收起、桌面画布定位和悬浮提示修复。代码沿用上游 MIT 许可和署名。素材及其许可见下文。[子菜单 b7abd740](https://github.com/PC2005-cloud/dsh-pet/commit/b7abd740fd09a6def0428c797941026cc822aaa6) · [画布 7f6cc57c](https://github.com/PC2005-cloud/dsh-pet/commit/7f6cc57c68e2106f5aaf08dfd51dace6559b32c6) · [悬浮提示 c7ea8b28](https://github.com/PC2005-cloud/dsh-pet/commit/c7ea8b28e2a8b04a495a3b472a871dff6969ccca)
 
+2026-11-28 从上游 [6d2dc949](https://github.com/PC2005-cloud/dsh-pet/commit/6d2dc949b2dc78c0a73247112971f90359a91c69) 移植峰/谷余额气泡的左对齐与宽度修复，应用于固定 0.4.9 的网页和桌面渲染。代码沿用上游 MIT 与版权署名；本次提交没有素材或依赖许可变更。
+
 上游 MIT 许可全文如下，版权归属保持原样：
 
 ```text

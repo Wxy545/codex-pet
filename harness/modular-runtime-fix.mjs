@@ -646,10 +646,57 @@ const NATIVE_BLOCKS_049 = [
   {file:'events.js', start:'PetSprite.prototype.clearWhisper = function clearWhisper() {', end:'\n};', sha256:'71b0ec06ba1e8f0359254d9dc8ce54bd8b0f7cd16b06fb23ca2b014d8cd85e58'},
 ];
 
+// 择取 6d2dc949：只放宽真实余额档位行，工作、碎碎念与其他余额行仍用原布局。
+const TIER_SPANS_DESKTOP_049 = `      .pet-bub-row > span {
+        white-space: nowrap;
+      }`;
+const TIER_SPANS_WEB_049 = '\t".dsh-pet-bubble .pet-bub-row>span{white-space:nowrap}",';
+const BALANCE_TIER_DESKTOP_049 = {
+  'index.html': [[TIER_SPANS_DESKTOP_049, `${TIER_SPANS_DESKTOP_049}
+      .pet-bub-tier-line {
+        justify-content: flex-start;
+      }
+      .pet-bubble.is-tier {
+        max-width: min(calc(var(--f) * 16), calc(var(--pet-size, 462px) * 2 - var(--f) * 0.6593 * 2));
+      }`]],
+  'sprite/bubble.js': [
+    ['  renderBubble() {', "  renderBubble() {\n    // 档位样式仅属于本次余额渲染，待办或隐藏分支提前返回前也清理。\n    this.bubble.classList.remove('is-tier');"],
+    ["      if (hasTier) {\n        // deepseek 余额单行：余额（峰/谷）¥x — 档位字着色\n        const line = document.createElement('div');\n        line.className = 'pet-bub-row';", "      if (hasTier) {\n        // deepseek 余额单行：余额（峰/谷）¥x — 档位字着色\n        this.bubble.classList.add('is-tier');\n        const line = document.createElement('div');\n        line.className = 'pet-bub-row pet-bub-tier-line';"],
+  ],
+};
+const BALANCE_TIER_WEB_049 = {
+  'lib/client.js': [
+    [TIER_SPANS_WEB_049, `${TIER_SPANS_WEB_049}
+\t".dsh-pet-bubble .pet-bub-tier-line{justify-content:flex-start}",
+\t".dsh-pet-bubble.is-tier{max-width:min(calc(var(--f)*16),calc(var(--dsh-pet-size)*2 - var(--f)*0.6593*2))}",`],
+    ['if (rows.some((r) => r.role === "tier")) return h("div", {\n\t\tclassName: "pet-bub-row",', 'if (rows.some((r) => r.role === "tier")) return h("div", {\n\t\tclassName: "pet-bub-row pet-bub-tier-line",'],
+    ['className: "dsh-pet-bubble" + wrap + (on ? " is-on" : "") + (clickable ? " is-clickable" : "") + (!isCustom && shown > 0 ? " is-expanded" : "") + (fading ? " is-fading" : ""),', 'className: "dsh-pet-bubble" + wrap + (rows.some((r) => r.role === "tier") ? " is-tier" : "") + (on ? " is-on" : "") + (clickable ? " is-clickable" : "") + (!isCustom && shown > 0 ? " is-expanded" : "") + (fading ? " is-fading" : ""),'],
+  ],
+};
+
+/** 新档位补丁独立成组，旧完整 049 补丁可升级；反向还原仅供原函数摘要核验。 */
+function normalizeBalanceTier049(files, changes) {
+  const native = { ...files }, modes = new Set();
+  for (const [file, edits] of Object.entries(changes)) {
+    if (typeof files?.[file] !== 'string') throw Error('harness-modular-runtime-049-anchor-mismatch');
+    let source = files[file].replaceAll('\r\n', '\n');
+    for (const [before, after] of edits) {
+      const patched = inspectExact048(source, before, after, '049');
+      modes.add(patched);
+      if (patched) source = source.replace(after, before);
+    }
+    if (source.includes('pet-bub-tier-line') || source.includes('is-tier')) throw Error('harness-modular-runtime-049-anchor-mismatch');
+    native[file] = source;
+  }
+  if (modes.size !== 1) throw Error('harness-modular-runtime-049-anchor-mismatch');
+  return native;
+}
+
 export function validateModularHelper049(files) {
+  const verification = normalizeBalanceTier049(files, BALANCE_TIER_DESKTOP_049);
   // 独立版脚下状态条只增加 DOM 槽标记，核验时还原这一行；输出仍保留调用方的装饰器。
-  const bubble = files['sprite/bubble.js']?.replace('\n    this.bubble.dataset.slot=slot;', '');
-  const native = { ...files, 'sprite/bubble.js': bubble };
+  const bubble = verification['sprite/bubble.js']?.replace('\n    this.bubble.dataset.slot=slot;', '');
+  const native = { ...verification, 'sprite/bubble.js': bubble };
   validateModularHelperWith048Policy(native, DESKTOP_CHANGES_049, ['constants.js', 'sprite/bubble.js'], NATIVE_BLOCKS_049, '049');
   requireOnce(files['constants.js'], 'const WHISPER_POP_MS = 420;');
   requireOnce(files['index.html'], 'animation: popOut 0.42s cubic-bezier(0.2, 0.72, 0.3, 1) forwards;');
@@ -658,7 +705,7 @@ export function validateModularHelper049(files) {
 
 export function patchModularHelper049(files) {
   validateModularHelper049(files);
-  return applyDesktopChanges(files, DESKTOP_CHANGES_049);
+  return applyDesktopChanges(applyDesktopChanges(files, DESKTOP_CHANGES_049), BALANCE_TIER_DESKTOP_049);
 }
 
 export function validateModularOwnedElectron049(input) {
@@ -745,6 +792,9 @@ const CLIENT_CHANGES_049 = [
 ];
 
 const CLIENT_SCOPES_049 = [
+  ['const bubbleCss = [', '].join("\\n");', '373f32385616908526aa214d507e24b014bc73185d343abd375869279b3ec847'],
+  ['function rowsToNodes(h, rows) {', '\n}', 'ecf04149648a8ae5c51f9ce3de13c628be04b3c51e791521d3e158ae9bc8160e'],
+  ['function makeBalanceBubble(rt) {', '\n}', '72fe939b382771701e7940ae2ba247eae6eaac87679348469251c26808ca504e'],
   ['function makeWhisperBubble(rt) {', '\n}', 'b1d6ef67ecfd27713883006693b3c7c916f95cc876eb2de3a2f2ba0da4c71c72'],
   ['function createBubbleSlots(rt, components) {', '\n}', '041b54264646b8fec4cfc7f010f1a77274c13d4441d6123bcda74cc7541215b9'],
   ['function makeVoiceCard(rt, picker) {', '\n}', '6c621d70d523ce45efd391d981cf2bf5ce12f28f440612d71e2917853893e67a'],
@@ -760,7 +810,7 @@ const OWN_BALANCE_SLOT = 'if (!input.balanceEnabled && input.balanceOn && input.
 
 export function patchModularClient049(input) {
   const source = validateModularClient043(input).replaceAll('\r\n', '\n');
-  let native = source;
+  let native = normalizeBalanceTier049({ 'lib/client.js': source }, BALANCE_TIER_WEB_049)['lib/client.js'];
   const modes = new Set();
   for (const [before, after] of CLIENT_CHANGES_049) {
     const patched = inspectExact048(native, before, after, '049');
@@ -773,6 +823,6 @@ export function patchModularClient049(input) {
   const verification = native.replace(OWN_BALANCE_SLOT, WEB_BALANCE_SLOT);
   for (const [start, end, digest] of CLIENT_SCOPES_049) validateSourceScope049(verification, start, end, digest);
   requireOnce(native, 'function shouldRemind(whenFocused, pageActive) {\n\treturn whenFocused || !pageActive;\n}');
-  if (modes.has(true)) return source;
-  return CLIENT_CHANGES_049.slice(2).reduce((current, [before, after]) => current.replace(before, () => after), fixed);
+  const patched = modes.has(true) ? source : CLIENT_CHANGES_049.slice(2).reduce((current, [before, after]) => current.replace(before, () => after), fixed);
+  return applyDesktopChanges({ 'lib/client.js': patched }, BALANCE_TIER_WEB_049)['lib/client.js'];
 }

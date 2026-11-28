@@ -263,7 +263,7 @@ Want to see more dragon-girl animations? You can help fund the video work throug
 
 ## Credits and license
 
-This adaptation uses `dsh-pet@0.4.9` and retains the fixes for submenus, desktop canvas alignment, lingering tooltips, and video transparency. Thanks to the upstream project for the desktop pet, animations, and interactions. [PC2005-cloud/dsh-pet](https://github.com/PC2005-cloud/dsh-pet)
+This adaptation uses `dsh-pet@0.4.9` and retains the fixes for submenus, desktop canvas alignment, lingering tooltips, and video transparency. Harness peak/off-peak balance rows use a separate left-aligned layout and more of the available window width on small pets. Thanks to the upstream project for the desktop pet, animations, and interactions. [PC2005-cloud/dsh-pet](https://github.com/PC2005-cloud/dsh-pet)
 
 Startup scenes draw on ideas from [884048454/codex-startup-animation](https://github.com/884048454/codex-startup-animation), [yushua0808-cpu/dragon-codex-boot](https://github.com/yushua0808-cpu/dragon-codex-boot), and [linke-e/dsh-opening-animation](https://github.com/linke-e/dsh-opening-animation). Thanks also to [jingh12312-rgb/bailong-desktop-pet](https://github.com/jingh12312-rgb/bailong-desktop-pet) for desktop interaction ideas. This project uses its own dragon clips and startup visuals.
 
